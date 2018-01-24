@@ -36,7 +36,41 @@ import (
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/core/util"
 	pb "github.com/abchain/fabric/protos"
+	"github.com/abchain/fabric/core/chaincode/shim"
+	"github.com/abchain/fabric/peer/chaincode/native/go/native_chaincode03/impl"
 )
+
+var nativeCcMap map[string]shim.Chaincode
+
+func (ccs *ChaincodeSupport) LoadNativeChaincode() {
+
+	nativeCcMap = make(map[string]shim.Chaincode)
+	//nativeCcMap["native_chaincode01"] = &native_chaincode01.SimpleChaincode{}
+	//nativeCcMap["native_chaincode02"] = &native_chaincode02.SimpleChaincode{}
+	//nativeCcMap["native_chaincode02"] = &native_chaincode02.SimpleChaincode{}
+	nativeCcMap["mycc"] = &native_chaincode03.SimpleChaincode{}
+
+	ccs.startNativeChaincode()
+}
+
+
+func (ccs *ChaincodeSupport) startNativeChaincode() {
+
+	shim.Init(false)
+	go ccs.startNcc("mycc")
+	//go ccs.startNcc("native_chaincode01")
+	//go ccs.startNcc("native_chaincode02")
+	//go ccs.startNcc("native_chaincode03")
+}
+
+
+func (chaincodeSupport *ChaincodeSupport) startNcc(name string) {
+
+	if nativeCcMap[name] != nil {
+
+		shim.StartNative(nativeCcMap[name], name)
+	}
+}
 
 // ChainName is the name of the chain to which this chaincode support belongs to.
 type ChainName string
@@ -46,6 +80,8 @@ const (
 	DefaultChain ChainName = "default"
 	// DevModeUserRunsChaincode property allows user to run chaincode in development environment
 	DevModeUserRunsChaincode       string = "dev"
+	NativeModeChaincode            string = "native"
+	NetworkModeChaincode           string = "net"
 	chaincodeStartupTimeoutDefault int    = 5000
 	chaincodeExecTimeoutDefault    int    = 30000
 	chaincodeInstallPathDefault    string = "/opt/gopath/bin/"

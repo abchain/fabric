@@ -57,6 +57,7 @@ type Handler struct {
 	// Track which TXIDs are transactions and which are queries, to decide whether get/put state and invoke chaincode are allowed.
 	isTransaction map[string]bool
 	nextState     chan *nextStateInfo
+	ccname        string
 }
 
 func shorttxid(txid string) string {
@@ -69,10 +70,16 @@ func shorttxid(txid string) string {
 func (handler *Handler) serialSend(msg *pb.ChaincodeMessage) error {
 	handler.serialLock.Lock()
 	defer handler.serialLock.Unlock()
+
+
 	if err := handler.ChatStream.Send(msg); err != nil {
 		chaincodeLogger.Errorf("[%s]Error sending %s: %s", shorttxid(msg.Txid), msg.Type.String(), err)
 		return fmt.Errorf("Error sending %s: %s", msg.Type.String(), err)
 	}
+
+	chaincodeLogger.Debugf("[%s] [%s] sending %s",
+		handler.ccname, shorttxid(msg.Txid), msg.Type.String())
+
 	return nil
 }
 
@@ -140,10 +147,12 @@ func (handler *Handler) deleteIsTransaction(txid string) {
 }
 
 // NewChaincodeHandler returns a new instance of the shim side handler.
-func newChaincodeHandler(peerChatStream PeerChaincodeStream, chaincode Chaincode) *Handler {
+func newChaincodeHandler(peerChatStream PeerChaincodeStream,
+	chaincode Chaincode, chaincodename string) *Handler {
 	v := &Handler{
 		ChatStream: peerChatStream,
 		cc:         chaincode,
+		ccname:		chaincodename,
 	}
 	v.responseChannel = make(map[string]chan pb.ChaincodeMessage)
 	v.isTransaction = make(map[string]bool)
@@ -223,6 +232,7 @@ func (handler *Handler) handleInit(msg *pb.ChaincodeMessage) {
 		// Create the ChaincodeStub which the chaincode can use to callback
 		stub := new(ChaincodeStub)
 		stub.init(msg.Txid, msg.SecurityContext)
+		stub.handler = handler
 		function, params := getFunctionAndParams(stub)
 		res, err := handler.cc.Init(stub, function, params)
 
@@ -290,6 +300,7 @@ func (handler *Handler) handleTransaction(msg *pb.ChaincodeMessage) {
 		// Call chaincode's Run
 		// Create the ChaincodeStub which the chaincode can use to callback
 		stub := new(ChaincodeStub)
+		stub.handler = handler
 		stub.init(msg.Txid, msg.SecurityContext)
 		function, params := getFunctionAndParams(stub)
 		res, err := handler.cc.Invoke(stub, function, params)
@@ -338,6 +349,7 @@ func (handler *Handler) handleQuery(msg *pb.ChaincodeMessage) {
 		// Call chaincode's Query
 		// Create the ChaincodeStub which the chaincode can use to callback
 		stub := new(ChaincodeStub)
+		stub.handler = handler
 		stub.init(msg.Txid, msg.SecurityContext)
 		function, params := getFunctionAndParams(stub)
 		res, err := handler.cc.Query(stub, function, params)

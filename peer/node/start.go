@@ -149,7 +149,7 @@ func serve(args []string) error {
 		return secHelper
 	}
 
-	registerChaincodeSupport(chaincode.DefaultChain, grpcServer, secHelper)
+	ccSrv := registerChaincodeSupport(chaincode.DefaultChain, grpcServer, secHelper)
 
 	var peerServer *peer.Impl
 
@@ -252,16 +252,22 @@ func serve(args []string) error {
 		}()
 	}
 
+	mode := viper.GetString("chaincode.mode")
+	if mode == chaincode.NativeModeChaincode {
+		ccSrv.LoadNativeChaincode()
+	}
+
 	// Block until grpc server exits
 	return <-serve
 }
 
 func registerChaincodeSupport(chainname chaincode.ChainName, grpcServer *grpc.Server,
-	secHelper crypto.Peer) {
+	secHelper crypto.Peer) *chaincode.ChaincodeSupport {
 
 	//get user mode
 	userRunsCC := false
-	if viper.GetString("chaincode.mode") == chaincode.DevModeUserRunsChaincode {
+	mode := viper.GetString("chaincode.mode")
+	if mode != chaincode.NetworkModeChaincode {
 		userRunsCC = true
 	}
 
@@ -271,6 +277,9 @@ func registerChaincodeSupport(chainname chaincode.ChainName, grpcServer *grpc.Se
 	system_chaincode.RegisterSysCCs()
 
 	pb.RegisterChaincodeSupportServer(grpcServer, ccSrv)
+
+
+	return ccSrv
 }
 
 func createEventHubServer() (net.Listener, *grpc.Server, error) {

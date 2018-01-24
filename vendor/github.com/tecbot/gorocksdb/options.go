@@ -324,9 +324,9 @@ func (opts *Options) SetMinLevelToCompress(value int) {
 
 // SetCompressionOptions sets different options for compression algorithms.
 // Default: nil
-func (opts *Options) SetCompressionOptions(value *CompressionOptions) {
-	C.rocksdb_options_set_compression_options(opts.c, C.int(value.WindowBits), C.int(value.Level), C.int(value.Strategy))
-}
+//func (opts *Options) SetCompressionOptions(value *CompressionOptions) {
+//	C.rocksdb_options_set_compression_options(opts.c, C.int(value.WindowBits), C.int(value.Level), C.int(value.Strategy))
+//}
 
 // SetPrefixExtractor sets the prefic extractor.
 //
@@ -430,9 +430,9 @@ func (opts *Options) SetMaxBytesForLevelBase(value uint64) {
 
 // SetMaxBytesForLevelMultiplier sets the max Bytes for level multiplier.
 // Default: 10
-func (opts *Options) SetMaxBytesForLevelMultiplier(value int) {
-	C.rocksdb_options_set_max_bytes_for_level_multiplier(opts.c, C.int(value))
-}
+//func (opts *Options) SetMaxBytesForLevelMultiplier(value int) {
+//	C.rocksdb_options_set_max_bytes_for_level_multiplier(opts.c, C.int(value))
+//}
 
 // SetMaxBytesForLevelMultiplierAdditional sets different max-size multipliers
 // for different levels.
@@ -456,9 +456,9 @@ func (opts *Options) SetMaxBytesForLevelMultiplierAdditional(value []int) {
 // if it would make the total compaction cover more than
 // (expanded_compaction_factor * targetFileSizeLevel()) many bytes.
 // Default: 25
-func (opts *Options) SetExpandedCompactionFactor(value int) {
-	C.rocksdb_options_set_expanded_compaction_factor(opts.c, C.int(value))
-}
+//func (opts *Options) SetExpandedCompactionFactor(value int) {
+//	C.rocksdb_options_set_expanded_compaction_factor(opts.c, C.int(value))
+//}
 
 // SetSourceCompactionFactor sets the maximum number of bytes
 // in all source files to be compacted in a single compaction run.
@@ -468,17 +468,17 @@ func (opts *Options) SetExpandedCompactionFactor(value int) {
 // for compaction to exceed
 // (source_compaction_factor * targetFileSizeLevel()) many bytes.
 // Default: 1
-func (opts *Options) SetSourceCompactionFactor(value int) {
-	C.rocksdb_options_set_source_compaction_factor(opts.c, C.int(value))
-}
+//func (opts *Options) SetSourceCompactionFactor(value int) {
+//	C.rocksdb_options_set_source_compaction_factor(opts.c, C.int(value))
+//}
 
 // SetMaxGrandparentOverlapFactor sets the maximum bytes
 // of overlaps in grandparent (i.e., level+2) before we
 // stop building a single file in a level->level+1 compaction.
 // Default: 10
-func (opts *Options) SetMaxGrandparentOverlapFactor(value int) {
-	C.rocksdb_options_set_max_grandparent_overlap_factor(opts.c, C.int(value))
-}
+//func (opts *Options) SetMaxGrandparentOverlapFactor(value int) {
+//	C.rocksdb_options_set_max_grandparent_overlap_factor(opts.c, C.int(value))
+//}
 
 // SetDisableDataSync enable/disable data sync.
 //
@@ -488,9 +488,9 @@ func (opts *Options) SetMaxGrandparentOverlapFactor(value int) {
 // of data. Once the bulk-loading is complete, please issue a
 // sync to the OS to flush all dirty buffers to stable storage.
 // Default: false
-func (opts *Options) SetDisableDataSync(value bool) {
-	C.rocksdb_options_set_disable_data_sync(opts.c, C.int(btoi(value)))
-}
+//func (opts *Options) SetDisableDataSync(value bool) {
+//	C.rocksdb_options_set_disable_data_sync(opts.c, C.int(btoi(value)))
+//}
 
 // SetUseFsync enable/disable fsync.
 //
@@ -709,9 +709,9 @@ func (opts *Options) SetPurgeRedundantKvsWhileFlush(value bool) {
 //
 // Data being read from file storage may be buffered in the OS
 // Default: true
-func (opts *Options) SetAllowOsBuffer(value bool) {
-	C.rocksdb_options_set_allow_os_buffer(opts.c, boolToChar(value))
-}
+//func (opts *Options) SetAllowOsBuffer(value bool) {
+//	C.rocksdb_options_set_allow_os_buffer(opts.c, boolToChar(value))
+//}
 
 // SetAllowMmapReads enable/disable mmap reads for reading sst tables.
 // Default: false
@@ -808,9 +808,9 @@ func (opts *Options) SetFIFOCompactionOptions(value *FIFOCompactionOptions) {
 // If true, compaction will verify checksum on every read that happens
 // as part of compaction
 // Default: true
-func (opts *Options) SetVerifyChecksumsInCompaction(value bool) {
-	C.rocksdb_options_set_verify_checksums_in_compaction(opts.c, boolToChar(value))
-}
+//func (opts *Options) SetVerifyChecksumsInCompaction(value bool) {
+//	C.rocksdb_options_set_verify_checksums_in_compaction(opts.c, boolToChar(value))
+//}
 
 // SetFilterDeletes enable/disable filtering of deleted keys.
 //
@@ -819,9 +819,9 @@ func (opts *Options) SetVerifyChecksumsInCompaction(value bool) {
 // the delete is a noop. KeyMayExist only incurs in-memory look up.
 // This optimization avoids writing the delete to storage when appropriate.
 // Default: false
-func (opts *Options) SetFilterDeletes(value bool) {
-	C.rocksdb_options_set_filter_deletes(opts.c, boolToChar(value))
-}
+//func (opts *Options) SetFilterDeletes(value bool) {
+//	C.rocksdb_options_set_filter_deletes(opts.c, boolToChar(value))
+//}
 
 // SetMaxSequentialSkipInIterations specifies whether an iteration->Next()
 // sequentially skips over keys with the same user-key or not.
@@ -855,15 +855,15 @@ func (opts *Options) SetInplaceUpdateNumLocks(value int) {
 // If prefix_extractor is set and bloom_bits is not 0, create prefix bloom
 // for memtable.
 // Default: 0
-func (opts *Options) SetMemtablePrefixBloomBits(value uint32) {
-	C.rocksdb_options_set_memtable_prefix_bloom_bits(opts.c, C.uint32_t(value))
-}
+//func (opts *Options) SetMemtablePrefixBloomBits(value uint32) {
+//	C.rocksdb_options_set_memtable_prefix_bloom_bits(opts.c, C.uint32_t(value))
+//}
 
 // SetMemtablePrefixBloomProbes sets the number of hash probes per key.
 // Default: 6
-func (opts *Options) SetMemtablePrefixBloomProbes(value uint32) {
-	C.rocksdb_options_set_memtable_prefix_bloom_probes(opts.c, C.uint32_t(value))
-}
+//func (opts *Options) SetMemtablePrefixBloomProbes(value uint32) {
+//	C.rocksdb_options_set_memtable_prefix_bloom_probes(opts.c, C.uint32_t(value))
+//}
 
 // SetBloomLocality sets the bloom locality.
 //
@@ -900,9 +900,9 @@ func (opts *Options) SetMaxSuccessiveMerges(value int) {
 // is less than min_partial_merge_operands.
 // If min_partial_merge_operands < 2, then it will be treated as 2.
 // Default: 2
-func (opts *Options) SetMinPartialMergeOperands(value uint32) {
-	C.rocksdb_options_set_min_partial_merge_operands(opts.c, C.uint32_t(value))
-}
+//func (opts *Options) SetMinPartialMergeOperands(value uint32) {
+//	C.rocksdb_options_set_min_partial_merge_operands(opts.c, C.uint32_t(value))
+//}
 
 // EnableStatistics enable statistics.
 func (opts *Options) EnableStatistics() {

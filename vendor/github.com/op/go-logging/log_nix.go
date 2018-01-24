@@ -10,7 +10,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"bufio"
 	"log"
+	"os"
+	"sync"
 )
 
 type color int
@@ -106,4 +109,52 @@ func doFmtVerbLevelColor(layout string, level Level, output io.Writer) {
 	} else {
 		output.Write([]byte(colors[level]))
 	}
+}
+
+
+// LogBackend utilizes the standard log module.
+type FileLogBackend struct {
+	Logger      *log.Logger
+	file		*os.File
+	writer	    *bufio.Writer
+	flushLevel  Level
+	syncLevel   Level
+	lock        sync.Mutex
+}
+
+// NewLogBackend creates a new LogBackend.
+func NewFileLogBackend(filePath string, prefix string, flag int,
+	flushLevel  Level, syncLevel  Level) (*FileLogBackend, error) {
+	var backend *FileLogBackend
+	backend = nil
+
+	fileHandler, err  := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY,0666)
+	if err != nil{
+		fmt.Println(err)
+	} else {
+		w := bufio.NewWriter(fileHandler)
+
+		backend = &FileLogBackend{Logger: log.New(fileHandler, prefix, flag),
+			file: fileHandler,
+			writer: w,
+			flushLevel: flushLevel,
+			syncLevel: syncLevel}
+	}
+	return backend, err
+}
+
+// Log implements the Backend interface.
+func (b *FileLogBackend) Log(level Level, calldepth int, rec *Record) error {
+
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	err := b.Logger.Output(calldepth+2, rec.Formatted(calldepth+1))
+
+	if level <= b.syncLevel {
+		err = b.file.Sync()
+	} else if level >= b.flushLevel && level < DEBUG {
+		err = b.writer.Flush()
+	}
+	return err
 }

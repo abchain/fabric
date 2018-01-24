@@ -17,11 +17,11 @@ limitations under the License.
 package flogging
 
 import (
-	"os"
 	"strings"
 
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
+	"os"
 )
 
 // A logger to log logging logs!
@@ -47,6 +47,7 @@ func LoggingInit(command string) {
 	if spec == "" {
 		spec = viper.GetString("logging." + command)
 	}
+	initFileLog()
 	if spec != "" {
 		fields := strings.Split(spec, ":")
 		for _, field := range fields {
@@ -56,7 +57,9 @@ func LoggingInit(command string) {
 				// Default level
 				defaultLevel, err = logging.LogLevel(field)
 				if err != nil {
-					loggingLogger.Warningf("Logging level '%s' not recognized, defaulting to %s : %s", field, loggingDefaultLevel, err)
+					loggingLogger.Warningf(
+						"Logging level '%s' not recognized, defaulting to %s : %s",
+						field, loggingDefaultLevel, err)
 					defaultLevel = loggingDefaultLevel // NB - 'defaultLevel' was overwritten
 				}
 			case 2:
@@ -64,22 +67,28 @@ func LoggingInit(command string) {
 				if level, err := logging.LogLevel(split[1]); err != nil {
 					loggingLogger.Warningf("Invalid logging level in '%s' ignored", field)
 				} else if split[0] == "" {
-					loggingLogger.Warningf("Invalid logging override specification '%s' ignored - no module specified", field)
+					loggingLogger.Warningf(
+						"Invalid logging override specification '%s' " +
+							"ignored - no module specified", field)
 				} else {
 					modules := strings.Split(split[0], ",")
 					for _, module := range modules {
 						logging.SetLevel(level, module)
-						loggingLogger.Debugf("Setting logging level for module '%s' to %s", module, level)
+						loggingLogger.Debugf(
+							"Setting logging level for module '%s' to %s", module, level)
 					}
 				}
 			default:
-				loggingLogger.Warningf("Invalid logging override '%s' ignored; Missing ':' ?", field)
+				loggingLogger.Warningf(
+					"Invalid logging override '%s' ignored; Missing ':' ?", field)
 			}
 		}
 	}
 	// Set the default logging level for all modules
 	logging.SetLevel(defaultLevel, "")
-	loggingLogger.Debugf("Setting default logging level to %s for command '%s'", defaultLevel, command)
+
+	loggingLogger.Debugf("Setting default logging level to %s for command '%s'",
+		defaultLevel, command)
 }
 
 // DefaultLoggingLevel returns the fallback value for loggers to use if parsing fails
@@ -88,13 +97,34 @@ func DefaultLoggingLevel() logging.Level {
 }
 
 // Initiate 'leveled' logging to stderr.
-func init() {
+func initFileLog() {
 
 	format := logging.MustStringFormatter(
-		"%{color}%{time:15:04:05.000} [%{module}] %{shortfunc} -> %{level:.4s} %{id:03x}%{color:reset} %{message}",
+		"%{time:15:04:05.000} %{level:.4s} " +
+			"[%{pid}][%{module}][%{longfunc}]: %{message}",
 	)
 
-	backend := logging.NewLogBackend(os.Stderr, "", 0)
-	backendFormatter := logging.NewBackendFormatter(backend, format)
-	logging.SetBackend(backendFormatter).SetLevel(loggingDefaultLevel, "")
+	backendStdout := logging.NewLogBackend(os.Stderr, "", 0)
+	backendStdoutFormatter := logging.NewBackendFormatter(backendStdout, format)
+
+	var backendFile *logging.FileLogBackend
+	backendFile = nil
+	outputfile := viper.GetString("logging.outputfile")
+
+	if outputfile != "" {
+
+		tmp, err := logging.NewFileLogBackend(outputfile, "", 0,
+			logging.WARNING, logging.ERROR)
+
+		if err == nil {
+			backendFile = tmp
+		}
+	}
+
+	if backendFile != nil {
+		logging.SetBackend(logging.NewBackendFormatter(backendFile, format),
+			backendStdoutFormatter).SetLevel(loggingDefaultLevel, "")
+	} else {
+		logging.SetBackend(backendStdoutFormatter).SetLevel(loggingDefaultLevel, "")
+	}
 }
