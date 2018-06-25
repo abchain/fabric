@@ -38,25 +38,12 @@ type clientImpl struct {
 
 // NewChaincodeDeployTransaction is used to deploy chaincode.
 func (client *clientImpl) NewChaincodeDeployTransaction(chaincodeDeploymentSpec *obc.ChaincodeDeploymentSpec, uuid string, attributes ...string) (*obc.Transaction, error) {
-	// Verify that the client is initialized
-	if !client.IsInitialized() {
-		return nil, utils.ErrNotInitialized
-	}
-
-	// Get next available (not yet used) transaction certificate
-	tCerts, err := client.tCertPool.GetNextTCerts(1, attributes...)
+	tCert, err := client.getEndorseTCert(attributes)
 	if err != nil {
-		client.Errorf("Failed to obtain a (not yet used) TCert for Chaincode Deploy[%s].", err.Error())
 		return nil, err
 	}
-
-	if len(tCerts) != 1 {
-		client.Error("Failed to obtain a (not yet used) TCert.")
-		return nil, errors.New("Failed to obtain a TCert for Chaincode Deploy Transaction using TCert. Expected exactly one returned TCert.")
-	}
-
 	// Create Transaction
-	return client.newChaincodeDeployUsingTCert(chaincodeDeploymentSpec, uuid, attributes, tCerts[0].tCert, nil)
+	return client.newChaincodeDeployUsingTCert(chaincodeDeploymentSpec, uuid, tCert, nil)
 }
 
 // GetNextTCerts Gets next available (not yet used) transaction certificate.
@@ -85,33 +72,43 @@ func (client *clientImpl) GetNextTCerts(nCerts int, attributes ...string) (tCert
 
 // NewChaincodeInvokeTransaction is used to invoke chaincode's functions.
 func (client *clientImpl) NewChaincodeExecute(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string, attributes ...string) (*obc.Transaction, error) {
-	// Verify that the client is initialized
-	if !client.IsInitialized() {
-		return nil, utils.ErrNotInitialized
-	}
-
-	// Get next available (not yet used) transaction certificate
-	tBlocks, err := client.tCertPool.GetNextTCerts(1, attributes...)
+	tCert, err := client.getEndorseTCert(attributes)
 	if err != nil {
-		client.Errorf("Failed to obtain a (not yet used) TCert [%s].", err.Error())
 		return nil, err
 	}
 
-	if len(tBlocks) != 1 {
-		client.Error("Failed to obtain a (not yet used) TCert.")
-		return nil, errors.New("Failed to obtain a TCert for Chaincode Execution. Expected exactly one returned TCert.")
-	}
-
 	// Create Transaction
-	return client.newChaincodeExecuteUsingTCert(chaincodeInvocation, uuid, attributes, tBlocks[0].tCert, nil)
+	return client.newChaincodeExecuteUsingTCert(chaincodeInvocation, uuid, tCert, nil)
 }
 
-// NewChaincodeQuery is used to query chaincode's functions.
-func (client *clientImpl) NewChaincodeQuery(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string, attributes ...string) (*obc.Transaction, error) {
-	// Verify that the client is initialized
-	if !client.IsInitialized() {
-		return nil, utils.ErrNotInitialized
+// Used to endorse a transaction (i.e. signed with certs)
+func (client *clientImpl) EndorseExecuteTransaction(tx *obc.Transaction, attributes ...string) (*obc.Transaction, error) {
+	tCert, err := client.getEndorseTCert(attributes)
+	if err != nil {
+		return nil, err
 	}
+
+	return client.tx_endorse(tx, tCert)
+}
+
+func (client *clientImpl) EncryptTransaction(tx *obc.Transaction) (*obc.Transaction, error) {
+
+	//set tx to corresponding identify level
+	tx.ConfidentialityLevel = obc.ConfidentialityLevel_CONFIDENTIAL
+	// 2. set confidentiality protocol version
+	tx.ConfidentialityProtocolVersion = client.conf.GetConfidentialityProtocolVersion()
+
+	// 3. encrypt tx
+	err := client.encryptTx(tx)
+	if err != nil {
+		client.Errorf("Failed encrypting payload [%s].", err.Error())
+		return nil, err
+	}
+
+	return tx, nil
+}
+
+func (client *clientImpl) getEndorseTCert(attributes []string) (tCert, error) {
 
 	// Get next available (not yet used) transaction certificate
 	tBlocks, err := client.tCertPool.GetNextTCerts(1, attributes...)
@@ -125,8 +122,18 @@ func (client *clientImpl) NewChaincodeQuery(chaincodeInvocation *obc.ChaincodeIn
 		return nil, errors.New("Failed to obtain a TCert for Chaincode Invocation. Expected exactly one returned TCert.")
 	}
 
+	return tBlocks[0].tCert, nil
+}
+
+// NewChaincodeQuery is used to query chaincode's functions.
+func (client *clientImpl) NewChaincodeQuery(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string, attributes ...string) (*obc.Transaction, error) {
+	tCert, err := client.getEndorseTCert(attributes)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create Transaction
-	return client.newChaincodeQueryUsingTCert(chaincodeInvocation, uuid, attributes, tBlocks[0].tCert, nil)
+	return client.newChaincodeQueryUsingTCert(chaincodeInvocation, uuid, tCert, nil)
 }
 
 // GetEnrollmentCertHandler returns a CertificateHandler whose certificate is the enrollment certificate

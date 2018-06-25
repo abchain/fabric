@@ -153,6 +153,7 @@ func NewChaincodeDeployTransaction(chaincodeDeploymentSpec *ChaincodeDeploymentS
 		return nil, fmt.Errorf("Could not marshal payload for chaincode deployment: %s", err)
 	}
 	transaction.Payload = data
+	transaction.Metadata = chaincodeDeploymentSpec.ChaincodeSpec.Metadata
 	return transaction, nil
 }
 
@@ -175,6 +176,7 @@ func NewChaincodeExecute(chaincodeInvocationSpec *ChaincodeInvocationSpec, uuid 
 		return nil, fmt.Errorf("Could not marshal payload for chaincode invocation: %s", err)
 	}
 	transaction.Payload = data
+	transaction.Metadata = chaincodeInvocationSpec.ChaincodeSpec.Metadata
 	return transaction, nil
 }
 

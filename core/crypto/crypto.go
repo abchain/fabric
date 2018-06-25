@@ -57,6 +57,11 @@ type Client interface {
 	// NewChaincodeQuery is used to query chaincode's functions.
 	NewChaincodeQuery(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string, attributes ...string) (*obc.Transaction, error)
 
+	EncryptTransaction(tx *obc.Transaction) (*obc.Transaction, error)
+
+	// Used to endorse a transaction (i.e. signed with certs)
+	EndorseExecuteTransaction(tx *obc.Transaction, attributes ...string) (*obc.Transaction, error)
+
 	// DecryptQueryResult is used to decrypt the result of a query transaction
 	DecryptQueryResult(queryTx *obc.Transaction, result []byte) ([]byte, error)
 
@@ -150,11 +155,11 @@ type TransactionHandler interface {
 	GetBinding() ([]byte, error)
 
 	// NewChaincodeDeployTransaction is used to deploy chaincode
-	NewChaincodeDeployTransaction(chaincodeDeploymentSpec *obc.ChaincodeDeploymentSpec, uuid string, attributeNames ...string) (*obc.Transaction, error)
+	NewChaincodeDeployTransaction(chaincodeDeploymentSpec *obc.ChaincodeDeploymentSpec, uuid string) (*obc.Transaction, error)
 
 	// NewChaincodeExecute is used to execute chaincode's functions
-	NewChaincodeExecute(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string, attributeNames ...string) (*obc.Transaction, error)
+	NewChaincodeExecute(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string) (*obc.Transaction, error)
 
 	// NewChaincodeQuery is used to query chaincode's functions
-	NewChaincodeQuery(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string, attributeNames ...string) (*obc.Transaction, error)
+	NewChaincodeQuery(chaincodeInvocation *obc.ChaincodeInvocationSpec, uuid string) (*obc.Transaction, error)
 }

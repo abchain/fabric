@@ -483,3 +483,16 @@ func (node *nodeImpl) getECACertificate() ([]byte, error) {
 
 	return responce.Cert, nil
 }
+
+//provide tCertEndorsment interface
+type ecertAsTCert struct {
+	*nodeImpl
+}
+
+func (ecert *ecertAsTCert) GetCertificate() *x509.Certificate {
+	return ecert.enrollCert
+}
+
+func (ecert *ecertAsTCert) Sign(msg []byte) ([]byte, error) {
+	return ecert.signWithEnrollmentKey(msg)
+}

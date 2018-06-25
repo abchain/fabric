@@ -1791,7 +1791,7 @@ func createConfidentialTCertHDeployTransaction(t *testing.T) (*obc.Transaction, 
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := txHandler.NewChaincodeDeployTransaction(cds, uuid, attrs...)
+	tx, err := txHandler.NewChaincodeDeployTransaction(cds, uuid)
 
 	// Check binding consistency
 	binding, err := txHandler.GetBinding()
@@ -1805,7 +1805,7 @@ func createConfidentialTCertHDeployTransaction(t *testing.T) (*obc.Transaction, 
 	}
 
 	if !reflect.DeepEqual(binding, txBinding) {
-		t.Fatal("Binding is malformed!")
+		t.Fatalf("Binding is malformed! [%x] vs [%x]", binding, txBinding)
 	}
 
 	// Check confidentiality level
@@ -1846,7 +1846,7 @@ func createConfidentialTCertHExecuteTransaction(t *testing.T) (*obc.Transaction,
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := txHandler.NewChaincodeExecute(cis, uuid, attrs...)
+	tx, err := txHandler.NewChaincodeExecute(cis, uuid)
 
 	// Check binding consistency
 	binding, _ := txHandler.GetBinding()
@@ -1891,7 +1891,7 @@ func createConfidentialTCertHQueryTransaction(t *testing.T) (*obc.Transaction, *
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := txHandler.NewChaincodeQuery(cis, uuid, attrs...)
+	tx, err := txHandler.NewChaincodeQuery(cis, uuid)
 
 	// Check binding consistency
 	binding, _ := txHandler.GetBinding()
@@ -1938,7 +1938,7 @@ func createConfidentialECertHDeployTransaction(t *testing.T) (*obc.Transaction, 
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := txHandler.NewChaincodeDeployTransaction(cds, uuid, attrs...)
+	tx, err := txHandler.NewChaincodeDeployTransaction(cds, uuid)
 
 	// Check binding consistency
 	binding, _ := txHandler.GetBinding()
@@ -1983,7 +1983,7 @@ func createConfidentialECertHExecuteTransaction(t *testing.T) (*obc.Transaction,
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := txHandler.NewChaincodeExecute(cis, uuid, attrs...)
+	tx, err := txHandler.NewChaincodeExecute(cis, uuid)
 	// Check binding consistency
 	binding, _ := txHandler.GetBinding()
 	if !reflect.DeepEqual(binding, primitives.Hash(append(handler.GetCertificate(), tx.Nonce...))) {
@@ -2027,7 +2027,7 @@ func createConfidentialECertHQueryTransaction(t *testing.T) (*obc.Transaction, *
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := txHandler.NewChaincodeQuery(cis, uuid, attrs...)
+	tx, err := txHandler.NewChaincodeQuery(cis, uuid)
 	// Check binding consistency
 	binding, _ := txHandler.GetBinding()
 	if !reflect.DeepEqual(binding, primitives.Hash(append(handler.GetCertificate(), tx.Nonce...))) {
