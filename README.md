@@ -20,6 +20,8 @@ The original readme can be found [here](https://github.com/hyperledger/fabric/bl
 
 * New mode for reusing transaction certification
 
+    **Now a Peer of 0.8 could not work with peers built by old version**
+
 * Gossip-base transaction flows (alpha version)
 
 * Lots of code refoctoring
