@@ -15,6 +15,35 @@ import (
 func init() {
 }
 
+
+type ISyncHandler interface {
+	handshake() error
+	getFsm() *fsm.FSM
+	sendLedgerInfo(code pb.SyncMsg_Type) error
+	onRecvLedgerInfo(e *fsm.Event) error
+	beforeQueryLedger(e *fsm.Event)
+	beforeQueryLedgerResponse(e *fsm.Event)
+	runSyncBlock(ctx context.Context, targetState []byte) error
+	beforeSyncStart(e *fsm.Event)
+	fini()
+	sendSyncMsg(e *fsm.Event, msgType pb.SyncMsg_Type, payloadMsg proto.Message) error
+	onRecvSyncMsg(e *fsm.Event, payloadMsg proto.Message) *pb.SyncMsg
+	leaveIdle(e *fsm.Event)
+	enterIdle(e *fsm.Event)
+	dumpStateUpdate(stateUpdate string)
+	remotePeerIdName() string
+	Stop()
+	Tag() string
+	EnableLoss() bool
+	NewMessage() proto.Message
+	HandleMessage(m proto.Message) error
+	BeforeSendMessage(proto.Message) error
+	OnWriteError(e error)
+	runSyncState(ctx context.Context, targetStateHash []byte) error
+	getServer() *stateServer
+	getClient() *syncer
+}
+
 type stateSyncHandler struct {
 	remotePeerId *pb.PeerID
 	fsmHandler   *fsm.FSM
@@ -44,6 +73,10 @@ func newStateSyncHandler(remoterId *pb.PeerID, l *ledger.Ledger, sstub *pb.Strea
 
 func (syncHandler *stateSyncHandler) handshake() error {
 	return syncHandler.sendLedgerInfo(pb.SyncMsg_SYNC_QUERY_LEDGER)
+}
+
+func (syncHandler *stateSyncHandler) getFsm() *fsm.FSM {
+	return syncHandler.fsmHandler
 }
 
 func (syncHandler *stateSyncHandler) sendLedgerInfo(code pb.SyncMsg_Type) error {
@@ -145,7 +178,7 @@ func (syncHandler *stateSyncHandler) runSyncBlock(ctx context.Context, targetSta
 	syncHandler.fsmHandler.Event(enterGetDelta)
 	handler := newBlockMessageHandler(startBlockNumber, endBlockNumber, syncHandler.client)
 	syncHandler.client.syncMessageHandler = handler
-	err = syncHandler.client.executeSync()
+	err = syncHandler.client.executeSync() // sync block cf
 
 	if err != nil {
 		logger.Errorf("[%s]: Failed to sync state detals. err: %s", flogging.GoRDef, err)
@@ -327,6 +360,13 @@ func (h *stateSyncHandler) OnWriteError(e error) {
 	logger.Error("Sync handler encounter writer error:", e)
 }
 
+func (h *stateSyncHandler) getClient() *syncer{
+	return h.client
+}
+func (h *stateSyncHandler) getServer() *stateServer{
+	return h.server
+}
+
 func (syncHandler *stateSyncHandler) runSyncState(ctx context.Context, targetStateHash []byte) error {
 
 	var err error
@@ -350,7 +390,7 @@ func (syncHandler *stateSyncHandler) runSyncState(ctx context.Context, targetSta
 	_, err = syncHandler.client.issueSyncRequest(req)
 	if err == nil {
 		// sync all k-v(s)
-		err = syncHandler.client.executeSync()
+		err = syncHandler.client.executeSync() // sync state cf
 	}
 
 	//---------------------------------------------------------------------------

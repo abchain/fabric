@@ -82,7 +82,7 @@ func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset) (e error) {
 }
 
 //populate a moderate size of state collection for testing
-func PopulateStateForTest(t testing.TB, target HashAndDividableState, int datakeys) {
+func PopulateStateForTest(t testing.TB, target HashAndDividableState, datakeys int) {
 
 	err := target.PrepareWorkingSet(ConstructRandomStateDelta(t, "", 4, 8, datakeys, 32))
 	testutil.AssertNoError(t, err, "populate state")

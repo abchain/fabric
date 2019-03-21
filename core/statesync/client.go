@@ -17,8 +17,9 @@ import (
 
 type syncer struct {
 	context.Context
-	parent     *stateSyncHandler
+	//parent     *stateSyncHandler
 	ledger     *ledger.Ledger
+	parent 		ISyncHandler
 
 	positionResp chan *pb.SyncStateResp
 	//deltaResp    chan *pb.SyncBlockState
@@ -910,7 +911,7 @@ func (sts *syncer) afterSyncMessage(e *fsm.Event) {
 
 func (sts *syncer) issueSyncRequest(request *pb.SyncStartRequest) (uint64, error) {
 
-	sts.parent.fsmHandler.Event(enterSyncBegin)
+	sts.parent.getFsm().Event(enterSyncBegin)
 	err := sts.parent.sendSyncMsg(nil, pb.SyncMsg_SYNC_SESSION_START, request)
 	endBlockNumber := uint64(0)
 
