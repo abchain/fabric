@@ -1,7 +1,6 @@
 package statesync
 
 import (
-	"fmt"
 	_ "github.com/abchain/fabric/core/config"
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/core/ledger/testutil"
@@ -12,27 +11,6 @@ import (
 	"os"
 	"testing"
 )
-
-type itest interface {
-	call()
-}
-
-type base struct {
-	aa int
-}
-
-func (b *base) call()  {
-	fmt.Printf("base call\n")
-}
-
-type child struct {
-	*base
-}
-
-//func (b *child) call()  {
-//	fmt.Printf("child call\n")
-//}
-
 
 
 //func TestMain(m *testing.M) {
@@ -46,14 +24,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-
-
-func TestBaseChild(t *testing.T) {
-	var obj itest
-	obj = &child{}
-
-	obj.call()
-}
 
 func formTestData(t *testing.T, ledger *ledger.Ledger, height int) {
 
