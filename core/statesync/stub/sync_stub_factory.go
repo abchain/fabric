@@ -65,7 +65,3 @@ func (t SyncFactory) Data(stream pb.Sync_DataServer) error {
 	return t.stateSyncStub.HandleServer(stream)
 }
 
-//func (t SyncFactory) Control(stream pb.Sync_ControlServer) error {
-//
-//	return nil
-//}
