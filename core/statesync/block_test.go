@@ -92,34 +92,17 @@ func TestBlockSync(t *testing.T) {
 
 	testLedger := ledger.InitTestLedger(t)
 
-	clientMockSyncHandler := newMockSyncHandler2(&pb.PeerID{Name: "server"}, testLedger)
+	clientMockSyncHandler := newMockSyncHandler(&pb.PeerID{Name: "server"}, testLedger)
 	client := newTestClient(testLedger, clientMockSyncHandler)
 	clientMockSyncHandler.client = client
 
 	height := 2019
 	formTestData(t, testLedger, height)
 
-	serverMockSyncHandler := newMockSyncHandler2(&pb.PeerID{Name: "client"}, testLedger)
-	server := newTestServer(testLedger, serverMockSyncHandler)
-	serverMockSyncHandler.server = server
-
-	for i := 1; i < height; i++ {
-
-		stateDelta, err := server.ledger.GetStateDelta(uint64(i))
-		if err != nil {
-			t.Fatalf("[%s]: Failed to get state detals. err: %s", flogging.GoRDef, err)
-		}
-		if stateDelta == nil {
-			t.Fatalf("[%s]: Invalid state detals. height: %d", flogging.GoRDef, i)
-		}
-	}
+	serverMockSyncHandler := newMockSyncHandler(&pb.PeerID{Name: "client"}, testLedger)
 
 	clientMockSyncHandler.peer = serverMockSyncHandler
 	serverMockSyncHandler.peer = clientMockSyncHandler
-
-
-	//mk := server.parent.(mockSyncHandler2)
-
 
 	go clientMockSyncHandler.handleServerChat()
 	go serverMockSyncHandler.handleClientChat()
@@ -139,17 +122,6 @@ func TestBlockSync(t *testing.T) {
 	}
 }
 
-
-func newTestServer(l *ledger.Ledger, parent ISyncHandler) (*stateServer) {
-	s := &stateServer{
-		parent: parent,
-	}
-	s.ledger = l.CreateSnapshot()
-
-	s.parent.sendSyncMsg(nil,9,nil)
-	return s
-
-}
 
 func newTestClient(l *ledger.Ledger, parent ISyncHandler) (*syncer) {
 

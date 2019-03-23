@@ -20,7 +20,7 @@ type stateServer struct {
 func newStateServer(h *stateSyncHandler) (s *stateServer) {
 
 	s = &stateServer{
-		parent: h,
+		parent: h.this,
 	}
 	l, _ := ledger.GetLedger()
 	s.ledger = l.CreateSnapshot()

@@ -54,7 +54,7 @@ func newSyncer(ctx context.Context, h *stateSyncHandler) (sts *syncer) {
 	sts = &syncer{
 		ledger:  l,
 		Context: ctx,
-		parent:  h,
+		parent:  h.this,
 	}
 
 	var err error

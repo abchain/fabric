@@ -17,34 +17,22 @@ func init() {
 
 
 type ISyncHandler interface {
-	handshake() error
 	getFsm() *fsm.FSM
-	sendLedgerInfo(code pb.SyncMsg_Type) error
-	onRecvLedgerInfo(e *fsm.Event) error
 	beforeQueryLedger(e *fsm.Event)
 	beforeQueryLedgerResponse(e *fsm.Event)
-	runSyncBlock(ctx context.Context, targetState []byte) error
 	beforeSyncStart(e *fsm.Event)
-	fini()
 	sendSyncMsg(e *fsm.Event, msgType pb.SyncMsg_Type, payloadMsg proto.Message) error
 	onRecvSyncMsg(e *fsm.Event, payloadMsg proto.Message) *pb.SyncMsg
 	leaveIdle(e *fsm.Event)
 	enterIdle(e *fsm.Event)
-	dumpStateUpdate(stateUpdate string)
 	remotePeerIdName() string
-	Stop()
-	Tag() string
-	EnableLoss() bool
-	NewMessage() proto.Message
 	HandleMessage(m proto.Message) error
-	BeforeSendMessage(proto.Message) error
-	OnWriteError(e error)
-	runSyncState(ctx context.Context, targetStateHash []byte) error
 	getServer() *stateServer
 	getClient() *syncer
 }
 
 type stateSyncHandler struct {
+	this ISyncHandler
 	remotePeerId *pb.PeerID
 	fsmHandler   *fsm.FSM
 	server       *stateServer
@@ -58,7 +46,7 @@ type ErrHandlerFatal struct {
 	error
 }
 
-func newStateSyncHandler(remoterId *pb.PeerID, l *ledger.Ledger, sstub *pb.StreamStub) pb.StreamHandlerImpl {
+func newStateSyncHandler(remoterId *pb.PeerID, l *ledger.Ledger, sstub *pb.StreamStub) *stateSyncHandler {
 	logger.Debug("create handler for peer", remoterId)
 
 	h := &stateSyncHandler{
@@ -66,6 +54,7 @@ func newStateSyncHandler(remoterId *pb.PeerID, l *ledger.Ledger, sstub *pb.Strea
 		streamStub:   sstub,
 		ledger:       l,
 	}
+	h.this = h
 	h.fsmHandler = newFsmHandler(h)
 	return h
 }
@@ -221,7 +210,7 @@ func (syncHandler *stateSyncHandler) beforeSyncStart(e *fsm.Event) {
 		e.Cancel(err)
 	}
 
-	err = syncHandler.sendSyncMsg(e, pb.SyncMsg_SYNC_SESSION_START_ACK, resp)
+	err = syncHandler.this.sendSyncMsg(e, pb.SyncMsg_SYNC_SESSION_START_ACK, resp)
 	if err != nil {
 		syncHandler.server.ledger.Release()
 	}
