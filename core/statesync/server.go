@@ -11,7 +11,7 @@ import (
 )
 
 type stateServer struct {
-	parent        *stateSyncHandler
+	parent        ISyncHandler
 	ledger        *ledger.LedgerSnapshot
 	correlationId uint64
 	pit           statemgmt.PartialRangeIterator
@@ -20,7 +20,7 @@ type stateServer struct {
 func newStateServer(h *stateSyncHandler) (s *stateServer) {
 
 	s = &stateServer{
-		parent: h,
+		parent: h.this,
 	}
 	l, _ := ledger.GetLedger()
 	s.ledger = l.CreateSnapshot()
@@ -318,7 +318,7 @@ func (server *stateServer) sendStateChuck(e *fsm.Event, offset *pb.SyncOffset) {
 	if err != nil {
 		failedReason = fmt.Sprintf("%s; ", err)
 	} else {
-		logger.Debugf("send <%s> stateDelta: <%s>", server.parent.remotePeerId, stateChunkArray)
+		logger.Debugf("send <%s> stateDelta: <%s>", server.parent.remotePeerIdName(), stateChunkArray)
 	}
 
 	var syncMessage *pb.SyncMessage

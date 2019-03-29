@@ -44,7 +44,7 @@ func (h *BlockMessageHandler) getInitialOffset() (*pb.SyncOffset, error) {
 	blockOffset := &pb.BlockOffset{h.startBlockNumber,
 		end}
 
-	logger.Debugf("Initial offset: <%v>", blockOffset)
+	logger.Infof("Initial offset: <%v>", blockOffset)
 
 	data, err := blockOffset.Byte()
 	if err == nil {
@@ -118,7 +118,8 @@ func (h *BlockMessageHandler) processBlockState(deltaMessage *pb.SyncBlockState)
 			logger.Warningf("err <Put block fail: %s>", errPutBlock)
 		}
 
-		logger.Debugf("Successfully moved state to block %d", h.currentStateBlockNumber)
+		logger.Infof("Successfully moved state to height %d",
+			h.currentStateBlockNumber + 1)
 
 		if h.currentStateBlockNumber == endBlockNumber {
 			break

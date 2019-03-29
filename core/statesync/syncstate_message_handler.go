@@ -114,7 +114,7 @@ func (h *StateMessageHandler) processResponse(syncMessage *pb.SyncMessage) (*pb.
 
 	//we suppose always the first offset we cached is handled
 	if len(h.offsets) == 0 {
-		return nil, fmt.Errorf("handling an unexist offset <%v>?")
+		return nil, fmt.Errorf("handling an unexist offset")
 	} else {
 		h.offsets = h.offsets[1:]
 	}
@@ -126,21 +126,4 @@ func (h *StateMessageHandler) processResponse(syncMessage *pb.SyncMessage) (*pb.
 	}
 
 	return h.getOneOffset()
-
-	// if stateChunkArrayResp.Roothash != nil && res == nil {
-	// 	// all buckets synced, verify root hash
-	// 	var localHash []byte
-	// 	localHash, err = h.client.ledger.GetCurrentStateHash()
-	// 	if err == nil {
-	// 		logger.Infof("remote hash: <%x>", stateChunkArrayResp.Roothash)
-	// 		logger.Infof("local hash:  <%x>", localHash)
-
-	// 		if !bytes.Equal(localHash, stateChunkArrayResp.Roothash) {
-	// 			err = fmt.Errorf("Sync state failed! Target root hash <%x>, local root hash <%x>",
-	// 				stateChunkArrayResp.Roothash, localHash)
-	// 		}
-	// 	}
-	// }
-
-	//  return res, err
 }
