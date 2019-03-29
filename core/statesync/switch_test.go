@@ -18,10 +18,6 @@ import (
 var populatedTxCnt = 32
 
 
-func TestMain(m *testing.M) {
-	setupTestConfig()
-	os.Exit(m.Run())
-}
 
 func b2s(bv []byte) string {
 	return string(bv)
