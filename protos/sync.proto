@@ -197,9 +197,14 @@ message BlockOffset {
 }
 
 
-message SyncMetadata {
-    repeated bytes bucketNodeHashList = 1;
+message BucketNode {
+    uint64 level = 1;
+    uint64 bucketNum = 2;
+    bytes cryptoHash = 3;
+}
 
+message SyncMetadata {
+    repeated BucketNode bucketNodeList = 1;
 }
 
 

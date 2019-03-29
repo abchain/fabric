@@ -145,6 +145,9 @@ func (stateImpl *StateImpl) ComputeCryptoHash() ([]byte, error) {
 }
 
 func (stateImpl *StateImpl) processDataNodeDelta() error {
+	if stateImpl.dataNodesDelta == nil {
+		return nil
+	}
 	afftectedBuckets := stateImpl.dataNodesDelta.getAffectedBuckets()
 	for _, bucketKeyLite := range afftectedBuckets {
 		bucketKey := bucketKeyLite.getBucketKey(stateImpl.currentConfig)
@@ -278,6 +281,9 @@ func (stateImpl *StateImpl) AddChangesForPersistence(writeBatch *db.DBWriteBatch
 }
 
 func (stateImpl *StateImpl) addDataNodeChangesForPersistence(writeBatch *db.DBWriteBatch) {
+	if stateImpl.dataNodesDelta == nil {
+		return
+	}
 	openchainDB := writeBatch.GetDBHandle()
 	affectedBuckets := stateImpl.dataNodesDelta.getAffectedBuckets()
 	for _, affectedBucket := range affectedBuckets {
@@ -295,6 +301,9 @@ func (stateImpl *StateImpl) addDataNodeChangesForPersistence(writeBatch *db.DBWr
 }
 
 func (stateImpl *StateImpl) addBucketNodeChangesForPersistence(writeBatch *db.DBWriteBatch) {
+	if stateImpl.bucketTreeDelta == nil {
+		return
+	}
 	openchainDB := writeBatch.GetDBHandle()
 	secondLastLevel := stateImpl.currentConfig.getLowestLevel() - 1
 	for level := secondLastLevel; level >= 0; level-- {

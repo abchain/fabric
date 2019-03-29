@@ -191,8 +191,15 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() []byte {
 	}
 
 	for partialItr.NextBucketNode() {
-		_, v := partialItr.GetRawKeyValue()
-		md.BucketNodeHashList = append(md.BucketNodeHashList, v)
+		k, v := partialItr.GetRawKeyValue()
+
+		bucketKey := decodeBucketKey(partialItr.config, k)
+
+		node := &protos.BucketNode{uint64(bucketKey.level),
+			uint64(bucketKey.bucketNumber),
+			v}
+
+		md.BucketNodeList = append(md.BucketNodeList, node)
 	}
 	metadata, err := proto.Marshal(md)
 	if err != nil {
