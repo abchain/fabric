@@ -683,6 +683,105 @@ func TestTxDBGlobalState_BranchRW(t *testing.T) {
 
 }
 
+func TestTxDBGlobalState_ComplexBranch(t *testing.T) {
+
+	//test many different type of connectionstate: T-shape, H-shape etc
+
+	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	Start()
+	globalDataDB.globalHashLimit = 8
+	defer deleteTestDBPath()
+	defer Stop()
+
+	err := globalDataDB.PutGenesisGlobalState([]byte("sroot"))
+	if err != nil {
+		t.Fatal("Add state fail", err)
+	}
+
+	testPopulatePath(t, "sroot", []string{"s1", "s2", "s3"})
+	testPopulatePath(t, "s4", []string{"s5", "s6", "s7"})
+	dumpCF(t)
+
+	//H shape
+	if err := globalDataDB.AddGlobalState([]byte("s1"), []byte("s5")); err != nil {
+		t.Fatal("Add state fail", err)
+	}
+	dumpCF(t)
+
+	gs := globalDataDB.GetGlobalState([]byte("s7"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s5")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	gs = globalDataDB.GetGlobalState([]byte("s4"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+	gs = globalDataDB.GetGlobalState([]byte("s5"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s5")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	//T shape (from head)
+	testPopulatePath(t, "s8", []string{"s9", "s10"})
+	if err := globalDataDB.AddGlobalState([]byte("s10"), []byte("s2")); err != nil {
+		t.Fatal("Add state fail", err)
+	}
+	dumpCF(t)
+
+	gs = globalDataDB.GetGlobalState([]byte("s8"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	gs = globalDataDB.GetGlobalState([]byte("s2"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	//T shape (from tail)
+	testPopulatePath(t, "s11", []string{"s12", "s13"})
+	if err := globalDataDB.AddGlobalState([]byte("s6"), []byte("s11")); err != nil {
+		t.Fatal("Add state fail", err)
+	}
+	dumpCF(t)
+
+	gs = globalDataDB.GetGlobalState([]byte("s7"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s6")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	gs = globalDataDB.GetGlobalState([]byte("s13"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s6")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	gs = globalDataDB.GetGlobalState([]byte("s11"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s6")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	//cyclic
+	if err := globalDataDB.AddGlobalState([]byte("s12"), []byte("s9")); err != nil {
+		t.Fatal("Add state fail", err)
+	}
+	dumpCF(t)
+
+	gs = globalDataDB.GetGlobalState([]byte("s12"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s6")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s12")
+
+	gs = globalDataDB.GetGlobalState([]byte("s10"))
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s9")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+}
+
+func TestTxDBGlobalState_Purecylic(t *testing.T) {
+
+	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	Start()
+	globalDataDB.globalHashLimit = 8
+	defer deleteTestDBPath()
+	defer Stop()
+
+}
+
 func TestTxDBGlobalState_RandomRW(t *testing.T) {
 
 	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))

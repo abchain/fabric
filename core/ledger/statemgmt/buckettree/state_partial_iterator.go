@@ -13,7 +13,10 @@ type PartialSnapshotIterator struct {
 	*config
 	keyCache, valueCache []byte
 	lastBucketNum        int
-	curLevel        int
+	currentBucketNum     int
+	//we use 0 to indicate we should interate on datanode instead of bucketnode
+	//(we should never iterate on level 0 for bucketnode)
+	curLevel int
 }
 
 func newPartialSnapshotIterator(snapshot *db.DBSnapshot, cfg *config) (*PartialSnapshotIterator, error) {
@@ -25,20 +28,21 @@ func newPartialSnapshotIterator(snapshot *db.DBSnapshot, cfg *config) (*PartialS
 	return &PartialSnapshotIterator{
 		StateSnapshotIterator: *iit,
 		config:                cfg,
-		lastBucketNum:         cfg.getNumBuckets(cfg.getSyncLevel()),
+		lastBucketNum:         1,
 	}, nil
 }
 
 //overwrite the original GetRawKeyValue and Next
 func (partialItr *PartialSnapshotIterator) Next() bool {
 
-	if partialItr.curLevel != partialItr.getLowestLevel() {
+	if partialItr.curLevel != 0 {
 		return false
 	}
 
 	partialItr.keyCache = nil
 	partialItr.valueCache = nil
 
+	//notice the order of datakey is preserved, so we just need one seeking
 	if !partialItr.StateSnapshotIterator.Next() {
 		return false
 	}
@@ -47,6 +51,7 @@ func (partialItr *PartialSnapshotIterator) Next() bool {
 	valueBytes := statemgmt.Copy(partialItr.dbItr.Value().Data())
 	dataNode := unmarshalDataNodeFromBytes(keyBytes, valueBytes)
 
+	partialItr.currentBucketNum = dataNode.dataKey.bucketNumber
 	if dataNode.dataKey.bucketNumber > partialItr.lastBucketNum {
 		return false
 	}
@@ -89,6 +94,17 @@ func (partialItr *PartialSnapshotIterator) NextBucketNode() bool {
 	return true
 }
 
+func (partialItr *PartialSnapshotIterator) innerSeek() error {
+
+	if partialItr.curLevel == 0 {
+		partialItr.dbItr.Seek(minimumPossibleDataKeyBytesFor(newBucketKeyAtLowestLevel(partialItr.config, partialItr.currentBucketNum)))
+	} else {
+		partialItr.dbItr.Seek(newBucketKey(partialItr.config, partialItr.curLevel, partialItr.currentBucketNum).getEncodedBytes())
+	}
+	partialItr.dbItr.Prev()
+	return nil
+}
+
 func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error {
 
 	bucketTreeOffset, err := offset.Unmarshal2BucketTree()
@@ -101,6 +117,9 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 		return fmt.Errorf("level %d outbound: [%d]", level, partialItr.getLowestLevel())
 	}
 	partialItr.curLevel = level
+	if level == 0 { //it was datanode, so set level to lowest
+		level = partialItr.getLowestLevel()
+	}
 
 	startNum := int(bucketTreeOffset.BucketNum)
 	if startNum > partialItr.getNumBuckets(level) {
@@ -115,25 +134,62 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 	logger.Infof("Required bucketTreeOffset: [%+v] start-end [%d-%d]",
 		bucketTreeOffset, startNum, endNum)
 
-	if level == partialItr.getLowestLevel() {
-		partialItr.dbItr.Seek(minimumPossibleDataKeyBytesFor(newBucketKey(partialItr.config, level, startNum)))
-	} else {
-		partialItr.dbItr.Seek(newBucketKey(partialItr.config, level, startNum).getEncodedBytes())
-	}
-	partialItr.dbItr.Prev()
+	partialItr.currentBucketNum = startNum
 	partialItr.lastBucketNum = endNum
 
-	return nil
+	return partialItr.innerSeek()
 
 }
 
 func (partialItr *PartialSnapshotIterator) GetMetaData() []byte {
 
-	if partialItr.curLevel == partialItr.getLowestLevel() {
+	if partialItr.curLevel > partialItr.getLowestLevel() || partialItr.curLevel == 0 {
 		return nil
 	}
 
 	md := &protos.SyncMetadata{}
+	seeked := true
+
+	//bucketkey is saved in protobuf's variat number format and notice:
+	//1. number in any expected range is ordered (i.e. larger number is always laid after smaller)
+	//2. number is not always ordered in an iterator (i.e. a possible sequence may be :256, 512, 257 ...)
+
+	for {
+		for partialItr.currentBucketNum <= partialItr.lastBucketNum {
+			if !partialItr.StateSnapshotIterator.Next() {
+				//we can stop iterating, according to rule 1 before
+				break
+			}
+			bucketKey := decodeBucketKey(partialItr.config, partialItr.dbItr.Key().Data())
+
+			if bucketKey.level > partialItr.curLevel {
+				//can also stop iterating, (still rule 1)
+				return false
+			} else if bucketKey.bucketNumber != partialItr.partialItr.currentBucketNum {
+				//try another seek (according to rule 2)
+				if err := partialItr.innerSeek() err != nil{
+					logger.Errorf("seek fail on [%v]", partialItr)
+					break
+				}
+				continue
+			}
+
+			partialItr.currentBucketNum++
+
+		}
+		//try by another seek, or end
+		if !seeked && partialItr.innerSeek() == nil {
+			seeked = true
+		} else {
+			break
+		}
+
+	}
+
+	for partialItr.StateSnapshotIterator.Next() {
+
+	}
+
 	for partialItr.NextBucketNode() {
 		_, v := partialItr.GetRawKeyValue()
 		md.BucketNodeHashList = append(md.BucketNodeHashList, v)

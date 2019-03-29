@@ -82,10 +82,19 @@ func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset) (e error) {
 }
 
 //populate a moderate size of state collection for testing
-func PopulateStateForTest(t testing.TB, target HashAndDividableState, datakeys int) {
+func PopulateStateForTest(t testing.TB, target HashAndDividableState, db *db.OpenchainDB, datakeys int) {
 
 	err := target.PrepareWorkingSet(ConstructRandomStateDelta(t, "", 4, 8, datakeys, 32))
 	testutil.AssertNoError(t, err, "populate state")
+
+	wb := db.NewWriteBatch()
+	defer wb.Destroy()
+
+	err = target.AddChangesForPersistence(wb)
+	testutil.AssertNoError(t, err, "write persist")
+	err = wb.BatchCommit()
+	testutil.AssertNoError(t, err, "commit")
+	target.ClearWorkingSet(true)
 }
 
 func StartFullSyncTest(t testing.TB, src, target HashAndDividableState, db *db.OpenchainDB) {
@@ -100,6 +109,12 @@ func StartFullSyncTest(t testing.TB, src, target HashAndDividableState, db *db.O
 	simulator.AttachSource(srci)
 	simulator.AttachTarget(target)
 
+	srchash, err := src.ComputeCryptoHash()
+	t.Logf("try to sync target hash [%x]", srchash)
+	testutil.AssertNoError(t, err, "src hash")
+
+	target.InitPartialSync(srchash)
+
 	for tsk := simulator.PollTask(); tsk != nil; tsk = simulator.PollTask() {
 		simulator.TestSyncEachStep(tsk)
 		t.Logf("syncing: <%v> --- <%v>", simulator.SyncingOffset, simulator.SyncingData)
@@ -108,8 +123,6 @@ func StartFullSyncTest(t testing.TB, src, target HashAndDividableState, db *db.O
 
 	testutil.AssertEquals(t, target.IsCompleted(), true)
 
-	srchash, err := src.ComputeCryptoHash()
-	testutil.AssertNoError(t, err, "src hash")
 	targethash, err := target.ComputeCryptoHash()
 	testutil.AssertNoError(t, err, "target hash")
 

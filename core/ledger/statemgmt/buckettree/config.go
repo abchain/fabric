@@ -39,8 +39,6 @@ const ConfigBucketCacheMaxSize = "bucketcachesize"
 // DefaultNumBuckets - total buckets
 const DefaultNumBuckets = 10009
 
-const DefaultSyncDeltaNumBuckets = 5
-
 // DefaultMaxGroupingAtEachLevel - Number of max buckets to group at each level.
 // Grouping is started from left. The last group may have less buckets
 const DefaultMaxGroupingAtEachLevel = 10
@@ -69,13 +67,15 @@ func initConfig(configs map[string]interface{}) *config {
 		logger.Debugf("buckettree: maxGroupingAtEachLevel: [%d]", maxGroupingAtEachLevel)
 	}
 
-	syncDelta := DefaultSyncDeltaNumBuckets
+	//the default delta is sqrt(numBucket)
+	syncDelta := int(math.Sqrt(float64(numBuckets)))
 	//additional configs
 	if v, ok := configs[ConfigPartialDelta]; ok {
 		syncDelta = cast.ToInt(v)
 		logger.Debugf("syncDelta = cast.ToInt(v)	: syncDelta: [%s]", v)
 	}
-	logger.Debugf("buckettree: syncDelta: [%d]", syncDelta)
+
+	logger.Debugf("buckettree: syncDelta is [%d]", syncDelta)
 
 	bucketCacheMaxSize := defaultBucketCacheMaxSize
 	if v, ok := configs[ConfigBucketCacheMaxSize]; ok {
@@ -105,6 +105,7 @@ func newConfig(numBuckets, maxGroupingAtEachLevel int) *config {
 		lowestLevel:          -1,
 		levelToNumBucketsMap: make(map[int]int),
 		hashFunc:             fnvHash,
+		syncDelta:            maxGroupingAtEachLevel,
 	}
 
 	currentLevel := 0

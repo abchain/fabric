@@ -80,14 +80,17 @@ func newSyncProcess(parent *StateImpl, stateHash []byte) *syncProcess {
 	return sp
 }
 
-var metaReferenceDelta = 125
-
 func (proc *syncProcess) resetCurrentOffset() {
+	cfg := proc.StateImpl.currentConfig
 	if l := len(proc.syncLevels); l == 0 {
 		proc.current = &protos.BucketTreeOffset{
-			Level:     uint64(proc.StateImpl.currentConfig.getLowestLevel()),
+			Level:     uint64(cfg.getLowestLevel() + 1),
 			BucketNum: 1,
-			Delta:     uint64(proc.StateImpl.currentConfig.syncDelta),
+			Delta:     uint64(cfg.syncDelta),
+		}
+
+		if proc.current.BucketNum+proc.current.Delta > uint64(cfg.getNumBucketsAtLowestLevel()) {
+			proc.current.Delta = uint64(cfg.getNumBucketsAtLowestLevel()) - proc.current.BucketNum
 		}
 
 	} else {
@@ -95,6 +98,11 @@ func (proc *syncProcess) resetCurrentOffset() {
 			Level:     uint64(proc.syncLevels[l-1]),
 			BucketNum: 1,
 			Delta:     uint64(proc.metaDelta),
+		}
+
+		maxBuckets := uint64(cfg.getNumBuckets(int(proc.current.Level)))
+		if proc.current.BucketNum+proc.current.Delta > maxBuckets {
+			proc.current.Delta = maxBuckets - proc.current.BucketNum
 		}
 	}
 
@@ -105,21 +113,32 @@ func (proc *syncProcess) calcSyncLevels(conf *config) {
 
 	syncLevels := []int{}
 	//estimate a suitable delta for metadata: one bucketnode is 32-bytes hash
-	//and ~4k bytes in total (i.e.: 125 hashes) is acceptable
-	//(but we must calculate a number which is just an exponent of maxgroup)
+	//and we expect it was 1/3 size of the datanode (no providence yet)
+	//so we decide it as 3*syncdelta in config and then align it to
+	//an exponent of maxgroup
 	metaDelta := conf.getMaxGroupingAtEachLevel()
+	metaReferenceDelta := conf.syncDelta * 3
 	lvldistance := 1
 	for ; metaDelta < metaReferenceDelta; metaDelta = metaDelta * conf.getMaxGroupingAtEachLevel() {
 		lvldistance++
 	}
+	//let's check which is larger, to avoid a unusual maxgrouping leads to too great metaDelta ...
+	if lvldistance > 1 && metaReferenceDelta-(lvldistance-1)*conf.getMaxGroupingAtEachLevel() < metaDelta-metaReferenceDelta {
+		//in this case, we select a less distance ...
+		lvldistance--
+	}
 
-	//the syncdelta may be small and different with metaDelta, so we should test the
-	//suitable level for last meta-syncing ...
+	//test syncdelta to see which bucket level we can stopped at: the level
+	//must aligned on maxgroup level
 	testSyncDelta := conf.syncDelta
 	curlvl := conf.getLowestLevel()
-	for ; curlvl > 0; curlvl-- {
-		if testSyncDelta >= conf.getMaxGroupingAtEachLevel() {
-			testSyncDelta = testSyncDelta / conf.getMaxGroupingAtEachLevel()
+	grpNum := conf.getMaxGroupingAtEachLevel()
+	for ; curlvl >= 0; curlvl-- {
+		if testSyncDelta%grpNum == 0 && testSyncDelta >= grpNum {
+			testSyncDelta = testSyncDelta / grpNum
+		} else if testSyncDelta > conf.getNumBuckets(curlvl) {
+			//a rare case, but we still consider
+			testSyncDelta = testSyncDelta / grpNum
 		} else {
 			break
 		}
@@ -205,78 +224,4 @@ func (proc *syncProcess) CompletePart(part *protos.BucketTreeOffset) error {
 	}
 
 	return nil
-}
-
-// func (underSync *syncProcess) verifyMetadata() error {
-
-// 	curLevelIndex := underSync.curLevelIndex
-// 	tempTreeDelta := underSync.StateImpl.bucketTreeDelta
-// 	if underSync.metadataTreeDelta != nil {
-// 		tempTreeDelta = underSync.metadataTreeDelta
-// 	}
-
-// 	var err error
-// 	if curLevelIndex < len(underSync.syncLevels)-1 {
-
-// 		lastSyncLevel := underSync.syncLevels[curLevelIndex+1]
-// 		bucketNodes := tempTreeDelta.getBucketNodesAt(lastSyncLevel)
-
-// 		var localBucketNode *bucketNode
-// 		for _, bkNode := range bucketNodes {
-
-// 			localBucketNode, err = fetchBucketNodeFromDB(underSync.StateImpl.OpenchainDB,
-// 				bkNode.bucketKey.getBucketKey(underSync.currentConfig))
-
-// 			if err == nil {
-// 				if bytes.Equal(localBucketNode.computeCryptoHash(), bkNode.computeCryptoHash()) {
-// 					logger.Infof("Pass: verify metadata: bucketKey[%+v] cryptoHash[%x]",
-// 						bkNode.bucketKey,
-// 						bkNode.computeCryptoHash())
-// 				} else {
-// 					err = fmt.Errorf("Failed to verify metadata: error: mismatch, "+
-// 						"bucketKey[%+v] cryptoHash[%x] localCryptoHash[%x]",
-// 						bkNode.bucketKey,
-// 						bkNode.computeCryptoHash(),
-// 						localBucketNode.computeCryptoHash())
-// 					break
-// 				}
-// 			} else {
-// 				err = fmt.Errorf("Failed to verify metadata: error: %s, bucketKey[%+v] cryptoHash[%x]",
-// 					err,
-// 					bkNode.bucketKey,
-// 					bkNode.computeCryptoHash())
-// 				break
-// 			}
-
-// 		}
-// 	}
-
-// 	underSync.metadataTreeDelta = nil
-// 	return err
-// }
-
-func sqrt(x float64) float64 {
-	z := 1.0
-
-	if x < 0 {
-		return 0
-	} else if x == 0 {
-		return 0
-	} else {
-
-		getabs := func(x float64) float64 {
-			if x < 0 {
-				return -x
-			}
-			if x == 0 {
-				return 0
-			}
-			return x
-		}
-
-		for getabs(z*z-x) > 1e-6 {
-			z = (z + x/z) / 2
-		}
-		return z
-	}
 }
