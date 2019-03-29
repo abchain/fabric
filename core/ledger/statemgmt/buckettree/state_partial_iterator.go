@@ -62,38 +62,6 @@ func (partialItr *PartialSnapshotIterator) Next() bool {
 	return true
 }
 
-func (partialItr *PartialSnapshotIterator) NextBucketNode() bool {
-	partialItr.keyCache = nil
-	partialItr.valueCache = nil
-
-	if !partialItr.StateSnapshotIterator.Next() {
-		return false
-	}
-
-	keyBytes := statemgmt.Copy(partialItr.dbItr.Key().Data())
-	valueBytes := statemgmt.Copy(partialItr.dbItr.Value().Data())
-
-	bucketKey := decodeBucketKey(partialItr.config, keyBytes)
-
-	if bucketKey.bucketNumber > partialItr.lastBucketNum {
-		return false
-	}
-	if bucketKey.level > partialItr.curLevel {
-		return false
-	}
-
-	bucketNode := unmarshalBucketNode(bucketKey, valueBytes)
-
-	partialItr.keyCache = bucketKey.getEncodedBytes()
-	partialItr.valueCache = bucketNode.marshal()
-
-	logger.Debugf("Produce metadata: bucketNode[%+v], computeCryptoHash[%x]",
-		bucketNode.bucketKey,
-		bucketNode.computeCryptoHash())
-
-	return true
-}
-
 func (partialItr *PartialSnapshotIterator) innerSeek() error {
 
 	if partialItr.curLevel == 0 {
@@ -148,59 +116,56 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() []byte {
 	}
 
 	md := &protos.SyncMetadata{}
-	seeked := true
 
 	//bucketkey is saved in protobuf's variat number format and notice:
-	//1. number in any expected range is ordered (i.e. larger number is always laid after smaller)
-	//2. number is not always ordered in an iterator (i.e. a possible sequence may be :256, 512, 257 ...)
+	//1. numbers in any expected range are ordered (i.e. larger number is always laid after smaller)
+	//2. numbers are not always ordered when picked from iterator (i.e. a possible sequence may be :256, 512, 257 ...)
 
-	for {
-		for partialItr.currentBucketNum <= partialItr.lastBucketNum {
-			if !partialItr.StateSnapshotIterator.Next() {
-				//we can stop iterating, according to rule 1 before
-				break
-			}
-			bucketKey := decodeBucketKey(partialItr.config, partialItr.dbItr.Key().Data())
+	for partialItr.currentBucketNum <= partialItr.lastBucketNum && partialItr.StateSnapshotIterator.Next() {
 
-			if bucketKey.level > partialItr.curLevel {
-				//can also stop iterating, (still rule 1)
-				return false
-			} else if bucketKey.bucketNumber != partialItr.partialItr.currentBucketNum {
-				//try another seek (according to rule 2)
-				if err := partialItr.innerSeek() err != nil{
-					logger.Errorf("seek fail on [%v]", partialItr)
-					break
-				}
-				continue
-			}
-
-			partialItr.currentBucketNum++
-
-		}
-		//try by another seek, or end
-		if !seeked && partialItr.innerSeek() == nil {
-			seeked = true
-		} else {
+		kBytes := partialItr.dbItr.Key().Data()
+		if len(kBytes) == 0 || kBytes[0] != 0 /*bucket key prefix*/ {
+			//we can stop iterating, according to rule 1 before
 			break
 		}
 
-	}
+		bucketKey := decodeBucketKey(partialItr.config, kBytes)
+		if bucketKey.level > partialItr.curLevel {
+			//still rule 1 exit (level is come before bucketnumber)
+			break
+		}
 
-	for partialItr.StateSnapshotIterator.Next() {
+		if bucketKey.bucketNumber > partialItr.currentBucketNum {
+			//here is a trick for the variat number in protobuf: the out-of-order
+			//sequence is always occur with numbers with a least interval in 128
+			//and a number A larger than expected by no more than 128 will be the
+			//"true" successor of the expected one (that is, there will not be any
+			//number less than A when iteration continues)
+			if bucketKey.bucketNumber >= partialItr.currentBucketNum+128 {
+				//try another seek (according to rule 2)
+				partialItr.currentBucketNum++
+				if err := partialItr.innerSeek(); err != nil {
+					logger.Errorf("seek fail on [%v]: %s", partialItr, err)
+					break
+				}
+				continue
+			} else {
+				partialItr.currentBucketNum = bucketKey.bucketNumber
+				//notice out-of-bound may occur
+				if partialItr.currentBucketNum > partialItr.lastBucketNum {
+					break
+				}
+			}
+		}
 
-	}
-
-	for partialItr.NextBucketNode() {
-		k, v := partialItr.GetRawKeyValue()
-
-		bucketKey := decodeBucketKey(partialItr.config, k)
-
+		//good, we have a new bucketnode
 		node := &protos.BucketNode{uint64(bucketKey.level),
 			uint64(bucketKey.bucketNumber),
-			v}
-
+			statemgmt.Copy(partialItr.dbItr.Value().Data())}
 		md.BucketNodeList = append(md.BucketNodeList, node)
+		partialItr.currentBucketNum++
 	}
+
 	metadata, err := proto.Marshal(md)
 	if err != nil {
 		return nil

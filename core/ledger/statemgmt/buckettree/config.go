@@ -75,7 +75,16 @@ func initConfig(configs map[string]interface{}) *config {
 		logger.Debugf("syncDelta = cast.ToInt(v)	: syncDelta: [%s]", v)
 	}
 
-	logger.Debugf("buckettree: syncDelta is [%d]", syncDelta)
+	//syncdelta MUST be adjusted to aligned on group number for a better efficient
+	if syncDelta%maxGroupingAtEachLevel != 0 {
+		//take the ceiling
+		syncDelta = (syncDelta/maxGroupingAtEachLevel + 1) * maxGroupingAtEachLevel
+	} else if syncDelta == 0 {
+		//panic it!
+		panic("syncdelta in 0 is specified")
+	}
+
+	logger.Debugf("buckettree: syncDelta is [%d] after adjusted", syncDelta)
 
 	bucketCacheMaxSize := defaultBucketCacheMaxSize
 	if v, ok := configs[ConfigBucketCacheMaxSize]; ok {

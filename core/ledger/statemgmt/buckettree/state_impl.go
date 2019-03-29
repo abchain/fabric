@@ -481,25 +481,21 @@ func (stateImpl *StateImpl) applyPartialMetalData(md []byte, offset *pb.BucketTr
 		stateImpl.bucketTreeDelta = newBucketTreeDelta()
 	}
 
-	treeDelta := stateImpl.bucketTreeDelta
-	byBucketNumber := make(map[int]*bucketNode)
-	treeDelta.byLevel[int(offset.Level)] = byBucketNumber
-
 	//if list has data more than delta specified, we trunctate it (so save cost)
-	//but we don't care a shorter list than delta for verify process can handle that
-	if len(metadata.BucketNodeHashList) > int(offset.Delta) {
-		metadata.BucketNodeHashList = metadata.BucketNodeHashList[:offset.Delta]
+	if len(metadata.BucketNodeList) > int(offset.Delta) {
+		metadata.BucketNodeList = metadata.BucketNodeList[:offset.Delta]
 	}
 
-	for i, hashes := range metadata.BucketNodeHashList {
-		bucketNum := int(offset.BucketNum) + i
-		bk := newBucketKey(stateImpl.currentConfig, int(offset.Level), bucketNum)
-		unmarshaledBucketNode := unmarshalBucketNode(bk, hashes)
-		if unmarshaledBucketNode == nil {
+	for _, node := range metadata.BucketNodeList {
+
+		if node.BucketNum < offset.BucketNum || node.Level != offset.Level {
+			//we simply omit out-of-range node
 			continue
 		}
-		byBucketNumber[bucketNum] = unmarshaledBucketNode
-		logger.Debugf("Recv metadata: bucketNode[%v]", unmarshaledBucketNode)
+		bk := newBucketKey(stateImpl.currentConfig, int(offset.Level), int(node.BucketNum))
+		stateImpl.bucketTreeDelta.setBucketNode(unmarshalBucketNode(bk, node.CryptoHash))
+
+		logger.Debugf("Recv metadata at bucketKey[%+v]", bk)
 	}
 
 	return nil

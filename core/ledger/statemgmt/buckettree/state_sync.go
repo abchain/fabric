@@ -143,6 +143,13 @@ func (proc *syncProcess) calcSyncLevels(conf *config) {
 			break
 		}
 	}
+
+	//sanity check, because we have always adjust the syncdelta
+	if curlvl == conf.getLowestLevel() {
+		//end at lowest level means we have to transfer too many hashes
+		logger.Warningf("We have metadata sync level end at lowest")
+	}
+
 	for ; curlvl > 0; curlvl = curlvl - lvldistance {
 		//twe shrink the lvls by metaDelta
 		syncLevels = append(syncLevels, curlvl)
