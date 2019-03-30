@@ -35,7 +35,7 @@ func newPartialSnapshotIterator(snapshot *db.DBSnapshot, cfg *config) (*PartialS
 //overwrite the original GetRawKeyValue and Next
 func (partialItr *PartialSnapshotIterator) Next() bool {
 
-	if partialItr.curLevel != 0 {
+	if partialItr.curLevel != partialItr.getLowestLevel() {
 		return false
 	}
 
@@ -64,7 +64,7 @@ func (partialItr *PartialSnapshotIterator) Next() bool {
 
 func (partialItr *PartialSnapshotIterator) innerSeek() error {
 
-	if partialItr.curLevel == 0 {
+	if partialItr.curLevel == partialItr.getLowestLevel() {
 		partialItr.dbItr.Seek(minimumPossibleDataKeyBytesFor(newBucketKeyAtLowestLevel(partialItr.config, partialItr.currentBucketNum)))
 	} else {
 		partialItr.dbItr.Seek(newBucketKey(partialItr.config, partialItr.curLevel, partialItr.currentBucketNum).getEncodedBytes())
@@ -85,9 +85,6 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 		return fmt.Errorf("level %d outbound: [%d]", level, partialItr.getLowestLevel())
 	}
 	partialItr.curLevel = level
-	if level == 0 { //it was datanode, so set level to lowest
-		level = partialItr.getLowestLevel()
-	}
 
 	startNum := int(bucketTreeOffset.BucketNum)
 	if startNum > partialItr.getNumBuckets(level) {
@@ -111,7 +108,7 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 
 func (partialItr *PartialSnapshotIterator) GetMetaData() []byte {
 
-	if partialItr.curLevel > partialItr.getLowestLevel() || partialItr.curLevel == 0 {
+	if partialItr.curLevel >= partialItr.getLowestLevel() {
 		return nil
 	}
 

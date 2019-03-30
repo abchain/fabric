@@ -12,6 +12,7 @@ type syncProcess struct {
 	targetStateHash []byte
 	current         *protos.BucketTreeOffset
 	metaDelta       int
+	verifyLevel     int
 	syncLevels      []int
 }
 
@@ -71,6 +72,7 @@ func newSyncProcess(parent *StateImpl, stateHash []byte) *syncProcess {
 	sp := &syncProcess{
 		StateImpl:       parent,
 		targetStateHash: stateHash,
+		verifyLevel:     -1,
 	}
 
 	sp.calcSyncLevels(parent.currentConfig)
@@ -84,7 +86,7 @@ func (proc *syncProcess) resetCurrentOffset() {
 	cfg := proc.StateImpl.currentConfig
 	if l := len(proc.syncLevels); l == 0 {
 		proc.current = &protos.BucketTreeOffset{
-			Level:     uint64(cfg.getLowestLevel() + 1),
+			Level:     uint64(cfg.getLowestLevel()),
 			BucketNum: 1,
 			Delta:     uint64(cfg.syncDelta),
 		}
@@ -177,6 +179,36 @@ func (proc *syncProcess) PersistProgress(writeBatch *db.DBWriteBatch) error {
 	return nil
 }
 
+//return a range, which is in the verifylevel and the minimun cover of current sync range
+//and a "remainder" index for the last index in last node we must check
+func (proc *syncProcess) verifiedRange() ([2]int, int) {
+
+	cfg := proc.currentConfig
+	if proc.current == nil {
+		return [2]int{0, 0}, 0
+	}
+
+	grpnum := cfg.getMaxGroupingAtEachLevel()
+	//use the 0-start indexed, closed interval
+	ret := [2]int{int(proc.current.GetBucketNum()) - 1,
+		int(proc.current.GetBucketNum()+proc.current.GetDelta()) - 1}
+	remainder := 0
+
+	for lvl := int(proc.current.GetLevel()); lvl > proc.verifyLevel; lvl-- {
+		ret[0] = ret[0] / grpnum
+
+		//we only care the remainder in next level, it may just changed for the
+		//maxium bucket number may not always align on maxgrouping
+		remainder = ret[1]%grpnum + 1
+		if remainder == grpnum {
+			remainder = 0
+		}
+		ret[1] = ret[1] / grpnum
+	}
+
+	return [2]int{ret[0] + 1, ret[1] + 1}, remainder
+}
+
 func (proc *syncProcess) RequiredParts() ([]*protos.SyncOffset, error) {
 
 	if proc.current == nil {
@@ -212,6 +244,7 @@ func (proc *syncProcess) CompletePart(part *protos.BucketTreeOffset) error {
 	if maxNum <= nextNum-1 {
 		//current level is done
 		if l := len(proc.syncLevels); l > 0 {
+			proc.verifyLevel = proc.syncLevels[l-1]
 			proc.syncLevels = proc.syncLevels[:l-1]
 		} else {
 			logger.Infof("Finally hit maxBucketNum<%d> @ target Level<%d>",
