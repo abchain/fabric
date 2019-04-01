@@ -117,7 +117,7 @@ type StateSnapshotIterator interface {
 type PartialRangeIterator interface {
 	StateSnapshotIterator
 	Seek(*protos.SyncOffset) error
-	GetMetaData() []byte
+	GetMetaData() *protos.SyncMetadata
 }
 
 // RangeScanIterator - is to be implemented by the return value of

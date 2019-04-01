@@ -24,11 +24,26 @@ func NewSyncSimulator(db *db.OpenchainDB) *SyncSimulator {
 }
 
 func (s *SyncSimulator) AttachSource(t PartialRangeIterator) {
+	if s.src == t {
+		return
+	} else if s.src != nil {
+		s.src.Close()
+	}
 	s.src = t
 }
 
 func (s *SyncSimulator) AttachTarget(t HashAndDividableState) {
 	s.target = t
+}
+
+func (s *SyncSimulator) Release() {
+	if s.src != nil {
+		s.src.Close()
+	}
+}
+
+func (s *SyncSimulator) PeekTasks() []*protos.SyncOffset {
+	return s.cachingTasks
 }
 
 func (s *SyncSimulator) PollTask() *protos.SyncOffset {

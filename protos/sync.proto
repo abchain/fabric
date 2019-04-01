@@ -156,7 +156,7 @@ message ChaincodeStateDelta {
 message SyncStateChunk {
     SyncOffset offset = 1;
 //    bytes roothash = 2;
-    bytes metaData = 4;
+    SyncMetadata metaData = 5;
     map<string, ChaincodeStateDelta> ChaincodeStateDeltas = 3;
 }
 
@@ -181,10 +181,6 @@ message SyncState {
     SyncOffset offset = 2;
 }
 
-message SyncOffset {
-    bytes data = 1;
-}
-
 message BucketTreeOffset {
     uint64 level = 1;
     uint64 bucketNum = 2;
@@ -196,6 +192,12 @@ message BlockOffset {
     uint64 endNum = 2;
 }
 
+message SyncOffset {
+    oneof data {
+        BlockOffset block = 1;
+        BucketTreeOffset buckettree = 2;
+    }
+}
 
 message BucketNode {
     uint64 level = 1;
@@ -203,8 +205,14 @@ message BucketNode {
     bytes cryptoHash = 3;
 }
 
+message BucketNodes {
+    repeated BucketNode nodes = 1;
+}
+
 message SyncMetadata {
-    repeated BucketNode bucketNodeList = 1;
+    oneof data {
+        BucketNodes buckettree = 1;
+    }
 }
 
 

@@ -4,7 +4,7 @@
 #
 ###############################################################################
 logging:
-   test: debug
+   test: info
 
 peer:
     # Path on the file system where peer will store data

@@ -25,8 +25,7 @@ func checkSyncProcess(parent *StateImpl) *syncProcess {
 	for ; dbItr.Valid() && dbItr.ValidForPrefix([]byte{partialStatusKeyPrefixByte}); dbItr.Next() {
 
 		targetStateHash := statemgmt.Copy(dbItr.Key().Data())[1:]
-		data := &protos.SyncOffset{Data: statemgmt.Copy(dbItr.Value().Data())}
-		offset, err := data.Unmarshal2BucketTree()
+		offset, err := protos.UnmarshalBucketTree(statemgmt.Copy(dbItr.Value().Data()))
 
 		if err == nil {
 
@@ -110,35 +109,48 @@ func (proc *syncProcess) resetCurrentOffset() {
 
 }
 
+var bucketDataRatio = 5
+
 // compute the levels by which metadata will be sent for sanity check
 func (proc *syncProcess) calcSyncLevels(conf *config) {
 
 	syncLevels := []int{}
 	//estimate a suitable delta for metadata: one bucketnode is 32-bytes hash
-	//and we expect it was 1/3 size of the datanode (no providence yet)
-	//so we decide it as 3*syncdelta in config and then align it to
+	//and we expect it was 1/5 size of the datanode (set by bucketDataRatio, no providence yet)
+	//so we decide it as 5*syncdelta in config and then align it to
 	//an exponent of maxgroup
 	metaDelta := conf.getMaxGroupingAtEachLevel()
-	metaReferenceDelta := conf.syncDelta * 3
-	lvldistance := 1
-	for ; metaDelta < metaReferenceDelta; metaDelta = metaDelta * conf.getMaxGroupingAtEachLevel() {
+	metaReferenceDelta := conf.syncDelta * bucketDataRatio
+	lvldistance := 0
+	//too small, assign it as large as maxgrouping
+	if metaDelta > metaReferenceDelta {
+		metaReferenceDelta = metaDelta
+	}
+
+	for ; metaDelta <= metaReferenceDelta; metaDelta = metaDelta * conf.getMaxGroupingAtEachLevel() {
+
+		//for non-align case, we allow an adjusting within 10% range, but for the first level we
+		//always do adjust
+		r := metaReferenceDelta % metaDelta
+		if lvldistance != 0 && r != 0 && metaReferenceDelta < metaDelta*10 {
+			break
+		} else if r != 0 {
+			metaReferenceDelta = metaReferenceDelta + metaDelta - r
+		}
 		lvldistance++
 	}
-	//let's check which is larger, to avoid a unusual maxgrouping leads to too great metaDelta ...
-	if lvldistance > 1 && metaReferenceDelta-(lvldistance-1)*conf.getMaxGroupingAtEachLevel() < metaDelta-metaReferenceDelta {
-		//in this case, we select a less distance ...
-		lvldistance--
-	}
+
+	logger.Debugf("Calculate sync on metadata can skip by %d levels", lvldistance)
 
 	//test syncdelta to see which bucket level we can stopped at: the level
 	//must aligned on maxgroup level
 	testSyncDelta := conf.syncDelta
-	curlvl := conf.getLowestLevel()
+	curlvl := conf.getLowestLevel() - 1
 	grpNum := conf.getMaxGroupingAtEachLevel()
 	for ; curlvl >= 0; curlvl-- {
 		if testSyncDelta%grpNum == 0 && testSyncDelta >= grpNum {
 			testSyncDelta = testSyncDelta / grpNum
-		} else if testSyncDelta > conf.getNumBuckets(curlvl) {
+		} else if testSyncDelta >= conf.getNumBuckets(curlvl) {
 			//a rare case, but we still consider
 			testSyncDelta = testSyncDelta / grpNum
 		} else {
@@ -146,20 +158,23 @@ func (proc *syncProcess) calcSyncLevels(conf *config) {
 		}
 	}
 
-	//sanity check, because we have always adjust the syncdelta
-	if curlvl == conf.getLowestLevel() {
-		//end at lowest level means we have to transfer too many hashes
-		logger.Warningf("We have metadata sync level end at lowest")
-	}
+	logger.Debugf("Calculate starting sync on metadata should be level %d", curlvl)
 
-	for ; curlvl > 0; curlvl = curlvl - lvldistance {
-		//twe shrink the lvls by metaDelta
+	//notice: delta indicate how many bucketnodes we should pass and one bucketnode has <maxgrouping> hashes
+	proc.metaDelta = metaReferenceDelta / conf.getMaxGroupingAtEachLevel()
+	for ; curlvl >= 0; curlvl = curlvl - lvldistance {
+		//we shrink the lvls by metaDelta
 		syncLevels = append(syncLevels, curlvl)
+		//notice lvldistance do not indicate the size but the "ability" for metasync can "jump"
+		//among layers (only if the delta is aligned to group number), it was possible in one
+		//level we can transfer it once, so we do not need to transfer more layers
+		if conf.getNumBuckets(curlvl) <= proc.metaDelta {
+			break
+		}
 	}
 
-	proc.metaDelta = metaDelta
 	proc.syncLevels = syncLevels
-	logger.Infof("Calculate sync plan as: %v", syncLevels)
+	logger.Infof("Calculate sync plan as: %v (delta %d)", syncLevels, proc.metaDelta)
 }
 
 //implement for syncinprogress interface
@@ -215,11 +230,8 @@ func (proc *syncProcess) RequiredParts() ([]*protos.SyncOffset, error) {
 		return nil, nil
 	}
 
-	if data, err := proc.current.Byte(); err != nil {
-		return nil, err
-	} else {
-		return []*protos.SyncOffset{&protos.SyncOffset{Data: data}}, err
-	}
+	theOffset := &protos.SyncOffset{Data: &protos.SyncOffset_Buckettree{Buckettree: proc.current}}
+	return []*protos.SyncOffset{theOffset}, nil
 
 }
 

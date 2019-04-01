@@ -18,7 +18,6 @@ package buckettree
 
 import (
 	"bytes"
-	"github.com/golang/protobuf/proto"
 
 	"fmt"
 	"github.com/abchain/fabric/core/db"
@@ -413,9 +412,9 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 		return fmt.Errorf("Not under syncing progress")
 	}
 
-	offset, err := syncData.GetOffset().Unmarshal2BucketTree()
-	if err != nil {
-		return err
+	offset := syncData.GetOffset().GetBuckettree()
+	if offset == nil {
+		return fmt.Errorf("chunk [%v] has no content for buckettree", syncData)
 	}
 
 	// representNode := stateImpl.currentConfig.getRepresentNode(int(offset.Level), offset.BucketNum, offset.Delta)
@@ -424,10 +423,8 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 	// }
 	logger.Infof("---- ApplyPartialSync offset [%v]  -----", offset)
 
-	if md := syncData.GetMetaData(); len(md) > 0 {
-		if err := stateImpl.applyPartialMetalData(md, offset); err != nil {
-			return err
-		}
+	if err := stateImpl.applyPartialMetaData(syncData.GetMetaData(), offset); err != nil {
+		return err
 	}
 
 	vlevel := stateImpl.underSync.verifyLevel
@@ -511,16 +508,15 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 	return nil
 }
 
-func (stateImpl *StateImpl) applyPartialMetalData(md []byte, offset *pb.BucketTreeOffset) error {
+func (stateImpl *StateImpl) applyPartialMetaData(metadata *pb.SyncMetadata, offset *pb.BucketTreeOffset) error {
 
 	logger.Infof("Start: applyPartialMetalData: offset[%+v]", offset)
 	defer logger.Infof("Fnished: applyPartialMetalData: offset[%+v]", offset)
 
-	metadata := &pb.SyncMetadata{}
-	err := proto.Unmarshal(md, metadata)
+	nodes := metadata.GetBuckettree()
 
-	if err != nil {
-		return err
+	if nodes == nil {
+		return fmt.Errorf("metadata [%v] has no content for buckettree", metadata)
 	}
 
 	if stateImpl.bucketTreeDelta == nil {
@@ -528,11 +524,11 @@ func (stateImpl *StateImpl) applyPartialMetalData(md []byte, offset *pb.BucketTr
 	}
 
 	//if list has data more than delta specified, we trunctate it (so save cost)
-	if len(metadata.BucketNodeList) > int(offset.Delta) {
-		metadata.BucketNodeList = metadata.BucketNodeList[:offset.Delta]
+	if len(nodes.Nodes) > int(offset.Delta)+1 {
+		nodes.Nodes = nodes.Nodes[:offset.Delta]
 	}
 
-	for _, node := range metadata.BucketNodeList {
+	for _, node := range nodes.Nodes {
 
 		if node.BucketNum < offset.BucketNum || node.Level != offset.Level {
 			//we simply omit out-of-range node

@@ -5,7 +5,6 @@ import (
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/ledger/statemgmt"
 	"github.com/abchain/fabric/protos"
-	"github.com/golang/protobuf/proto"
 )
 
 type PartialSnapshotIterator struct {
@@ -75,9 +74,9 @@ func (partialItr *PartialSnapshotIterator) innerSeek() error {
 
 func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error {
 
-	bucketTreeOffset, err := offset.Unmarshal2BucketTree()
-	if err != nil {
-		return err
+	bucketTreeOffset := offset.GetBuckettree()
+	if bucketTreeOffset == nil {
+		return fmt.Errorf("offset [%v] has no content for buckettree", offset)
 	}
 
 	level := int(bucketTreeOffset.Level)
@@ -91,7 +90,7 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 		return fmt.Errorf("Start numbucket %d outbound: [%d]", startNum, partialItr.getNumBuckets(level))
 	}
 
-	endNum := int(bucketTreeOffset.Delta + bucketTreeOffset.BucketNum - 1)
+	endNum := int(bucketTreeOffset.Delta + bucketTreeOffset.BucketNum)
 	if endNum > partialItr.getNumBuckets(level) {
 		endNum = partialItr.getNumBuckets(level)
 	}
@@ -106,13 +105,13 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 
 }
 
-func (partialItr *PartialSnapshotIterator) GetMetaData() []byte {
+func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
 
 	if partialItr.curLevel >= partialItr.getLowestLevel() {
 		return nil
 	}
 
-	md := &protos.SyncMetadata{}
+	md := &protos.BucketNodes{}
 
 	//bucketkey is saved in protobuf's variat number format and notice:
 	//1. numbers in any expected range are ordered (i.e. larger number is always laid after smaller)
@@ -159,15 +158,11 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() []byte {
 		node := &protos.BucketNode{uint64(bucketKey.level),
 			uint64(bucketKey.bucketNumber),
 			statemgmt.Copy(partialItr.dbItr.Value().Data())}
-		md.BucketNodeList = append(md.BucketNodeList, node)
+		md.Nodes = append(md.Nodes, node)
 		partialItr.currentBucketNum++
 	}
 
-	metadata, err := proto.Marshal(md)
-	if err != nil {
-		return nil
-	}
-	return metadata
+	return &protos.SyncMetadata{Data: &protos.SyncMetadata_Buckettree{Buckettree: md}}
 }
 
 func (partialItr *PartialSnapshotIterator) GetRawKeyValue() ([]byte, []byte) {

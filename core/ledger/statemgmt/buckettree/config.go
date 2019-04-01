@@ -84,7 +84,7 @@ func initConfig(configs map[string]interface{}) *config {
 		panic("syncdelta in 0 is specified")
 	}
 
-	logger.Debugf("buckettree: syncDelta is [%d] after adjusted", syncDelta)
+	logger.Debugf("buckettree: syncDelta is [%d]", syncDelta)
 
 	bucketCacheMaxSize := defaultBucketCacheMaxSize
 	if v, ok := configs[ConfigBucketCacheMaxSize]; ok {
