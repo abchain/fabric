@@ -36,8 +36,6 @@ func (h *BlockMessageHandler) feedPayload(syncMessage *pb.SyncMessage) error {
 
 func (h *BlockMessageHandler) getInitialOffset() (*pb.SyncOffset, error) {
 
-	offset := &pb.SyncOffset{}
-
 	end := h.startBlockNumber + h.delta - 1
 	end = util.Min(end, h.endBlockNumber)
 
@@ -46,12 +44,7 @@ func (h *BlockMessageHandler) getInitialOffset() (*pb.SyncOffset, error) {
 
 	logger.Infof("Initial offset: <%v>", blockOffset)
 
-	data, err := blockOffset.Byte()
-	if err == nil {
-		offset.Data = data
-	}
-
-	return offset, err
+	return &pb.SyncOffset{Data: &pb.SyncOffset_Block{Block: blockOffset}}, nil
 }
 
 func (h *BlockMessageHandler) produceSyncStartRequest() *pb.SyncStartRequest {
@@ -119,7 +112,7 @@ func (h *BlockMessageHandler) processBlockState(deltaMessage *pb.SyncBlockState)
 		}
 
 		logger.Infof("Successfully moved state to height %d",
-			h.currentStateBlockNumber + 1)
+			h.currentStateBlockNumber+1)
 
 		if h.currentStateBlockNumber == endBlockNumber {
 			break

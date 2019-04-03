@@ -186,15 +186,16 @@ func (d *stateServer) sendSyncMessageResponse(e *fsm.Event, message *pb.SyncMess
 
 func (d *stateServer) sendStateDeltasArray(e *fsm.Event, offset *pb.SyncOffset, correlationId uint64) {
 
-	blockOffset, err := offset.Unmarshal2BlockOffset()
-	if err != nil {
-		logger.Errorf("Error Unmarshal2BlockOffset: %s", err)
+	blockOffset := offset.GetBlock()
+	if blockOffset == nil {
+		logger.Errorf("no block offset content in value [%v]", offset)
 		panic("todo")
 	}
 
 	logger.Debugf("Sending state deltas for block range <%d-%d>", blockOffset.StartNum, blockOffset.EndNum)
 
 	var blockNums []uint64
+	var err error
 	syncBlockRange := &pb.SyncBlockRange{}
 
 	syncBlockRange.Start = blockOffset.StartNum
@@ -252,13 +253,7 @@ func (d *stateServer) sendStateDeltasArray(e *fsm.Event, offset *pb.SyncOffset, 
 		Range:    &pb.SyncBlockRange{Start: blockOffset.StartNum, End: currBlockNum, CorrelationId: correlationId},
 		Syncdata: blockStateArray}
 
-	var data []byte
-	data, err = blockOffset.Byte()
-	offset.Data = data
-
-	if err != nil {
-		failedReason += fmt.Sprintf("%s; ", err)
-	}
+	offset.Data = &pb.SyncOffset_Block{Block: blockOffset}
 
 	var syncMessage *pb.SyncMessage
 	syncMessage, err = feedSyncMessage(offset, syncStateDeltas, pb.SyncType_SYNC_BLOCK_ACK)
