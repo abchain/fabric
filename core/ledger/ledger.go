@@ -918,6 +918,11 @@ func (syncer *PartialSync) ApplyPartialSync(data *protos.SyncStateChunk) error {
 		return err
 	}
 
+	applyDone := false
+	defer func() {
+		syncer.ClearWorkingSet(applyDone)
+	}()
+
 	if err := syncer.DividableSyncState.ApplyPartialSync(data); err != nil {
 		return err
 	}
@@ -933,6 +938,7 @@ func (syncer *PartialSync) ApplyPartialSync(data *protos.SyncStateChunk) error {
 		return err
 	}
 
+	applyDone = true
 	if syncer.IsCompleted() {
 		ledger.snapshots.ForceUpdate()
 	}

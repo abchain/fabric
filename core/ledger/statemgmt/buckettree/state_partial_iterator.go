@@ -50,6 +50,8 @@ func (partialItr *PartialSnapshotIterator) Next() bool {
 	valueBytes := statemgmt.Copy(partialItr.dbItr.Value().Data())
 	dataNode := unmarshalDataNodeFromBytes(keyBytes, valueBytes)
 
+	//logger.Debugf("seeking data at bucket %d, get %v [key %X]", partialItr.currentBucketNum, dataNode, keyBytes)
+
 	partialItr.currentBucketNum = dataNode.dataKey.bucketNumber
 	if dataNode.dataKey.bucketNumber > partialItr.lastBucketNum {
 		return false
@@ -90,7 +92,7 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 		return fmt.Errorf("Start numbucket %d outbound: [%d]", startNum, partialItr.getNumBuckets(level))
 	}
 
-	endNum := int(bucketTreeOffset.Delta + bucketTreeOffset.BucketNum)
+	endNum := int(bucketTreeOffset.Delta+bucketTreeOffset.BucketNum) - 1
 	if endNum > partialItr.getNumBuckets(level) {
 		endNum = partialItr.getNumBuckets(level)
 	}

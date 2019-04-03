@@ -61,13 +61,23 @@ func (s *SyncSimulator) PollTask() *protos.SyncOffset {
 
 }
 
-func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset) (e error) {
+func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset, onFinish ...func()) (e error) {
 
 	s.SyncingOffset = task
 	s.SyncingData = nil
 	s.SyncingError = nil
 	defer func() {
+
+		for _, f := range onFinish {
+			f()
+		}
+
 		e = s.SyncingError
+		if e == nil {
+			s.target.ClearWorkingSet(true)
+		} else {
+			s.target.ClearWorkingSet(false)
+		}
 	}()
 
 	if data, err := GetRequiredParts(s.src, task); err != nil {
@@ -99,7 +109,12 @@ func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset) (e error) {
 //populate a moderate size of state collection for testing
 func PopulateStateForTest(t testing.TB, target HashAndDividableState, db *db.OpenchainDB, datakeys int) {
 
-	err := target.PrepareWorkingSet(ConstructRandomStateDelta(t, "", 4, 8, datakeys, 32))
+	//notice in ConstructRandomStateDelta the arg. "maxKeySuffix" do not indicate the bytelength but the
+	//max decimal value of keysuffix (which must be an integer), so we must provide many possible value
+	//to made the key random enough, here we always make the possiblily of key is 1000 times of required
+	//datakeys (8 for chaincode and 125*datakeys for keys)
+
+	err := target.PrepareWorkingSet(ConstructRandomStateDelta(t, "", 8, 125*datakeys, datakeys, 32))
 	testutil.AssertNoError(t, err, "populate state")
 
 	wb := db.NewWriteBatch()

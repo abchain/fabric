@@ -90,8 +90,8 @@ func (proc *syncProcess) resetCurrentOffset() {
 			Delta:     uint64(cfg.syncDelta),
 		}
 
-		if proc.current.BucketNum+proc.current.Delta > uint64(cfg.getNumBucketsAtLowestLevel()) {
-			proc.current.Delta = uint64(cfg.getNumBucketsAtLowestLevel()) - proc.current.BucketNum
+		if proc.current.BucketNum+proc.current.Delta > uint64(cfg.getNumBucketsAtLowestLevel())+1 {
+			proc.current.Delta = uint64(cfg.getNumBucketsAtLowestLevel()) - proc.current.BucketNum + 1
 		}
 
 	} else {
@@ -102,8 +102,8 @@ func (proc *syncProcess) resetCurrentOffset() {
 		}
 
 		maxBuckets := uint64(cfg.getNumBuckets(int(proc.current.Level)))
-		if proc.current.BucketNum+proc.current.Delta > maxBuckets {
-			proc.current.Delta = maxBuckets - proc.current.BucketNum
+		if proc.current.BucketNum+proc.current.Delta > maxBuckets+1 {
+			proc.current.Delta = maxBuckets - proc.current.BucketNum + 1
 		}
 	}
 
@@ -196,32 +196,27 @@ func (proc *syncProcess) PersistProgress(writeBatch *db.DBWriteBatch) error {
 
 //return a range, which is in the verifylevel and the minimun cover of current sync range
 //and a "remainder" index for the last index in last node we must check
-func (proc *syncProcess) verifiedRange() ([2]int, int) {
+func (proc *syncProcess) verifiedRange() [2]int {
 
 	cfg := proc.currentConfig
 	if proc.current == nil {
-		return [2]int{0, 0}, 0
+		return [2]int{0, 0}
 	}
 
 	grpnum := cfg.getMaxGroupingAtEachLevel()
 	//use the 0-start indexed, closed interval
 	ret := [2]int{int(proc.current.GetBucketNum()) - 1,
-		int(proc.current.GetBucketNum()+proc.current.GetDelta()) - 1}
-	remainder := 0
+		int(proc.current.GetBucketNum()+proc.current.GetDelta()) - 2}
 
-	for lvl := int(proc.current.GetLevel()); lvl > proc.verifyLevel; lvl-- {
+	for lvl := int(proc.current.GetLevel()); lvl > proc.verifyLevel+1; lvl-- {
 		ret[0] = ret[0] / grpnum
-
-		//we only care the remainder in next level, it may just changed for the
-		//maxium bucket number may not always align on maxgrouping
-		remainder = ret[1]%grpnum + 1
-		if remainder == grpnum {
-			remainder = 0
-		}
 		ret[1] = ret[1] / grpnum
 	}
 
-	return [2]int{ret[0] + 1, ret[1] + 1}, remainder
+	ret = [2]int{ret[0] + 1, ret[1] + 1}
+	logger.Debugf("Calc verify range for current proc [%v]: %v", proc.current, ret)
+
+	return ret
 }
 
 func (proc *syncProcess) RequiredParts() ([]*protos.SyncOffset, error) {
@@ -245,15 +240,10 @@ func (proc *syncProcess) CompletePart(part *protos.BucketTreeOffset) error {
 
 	conf := proc.currentConfig
 
-	// err := proc.verifyMetadata()
-	// if err != nil {
-	// 	return err
-	// }
-
 	maxNum := uint64(conf.getNumBuckets(int(proc.current.Level)))
 	nextNum := proc.current.BucketNum + proc.current.Delta
 
-	if maxNum <= nextNum-1 {
+	if maxNum < nextNum {
 		//current level is done
 		if l := len(proc.syncLevels); l > 0 {
 			proc.verifyLevel = proc.syncLevels[l-1]

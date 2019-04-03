@@ -104,7 +104,10 @@ func (stateImpl *StateImpl) PrepareWorkingSet(stateDelta *statemgmt.StateDelta) 
 	}
 	stateImpl.dataNodesDelta = newDataNodesDelta(stateImpl.currentConfig, stateDelta)
 	stateImpl.bucketTreeDelta = newBucketTreeDelta()
-	stateImpl.recomputeCryptoHash = true
+	if stateImpl.underSync == nil {
+		stateImpl.recomputeCryptoHash = true
+	}
+
 	return nil
 }
 
@@ -131,7 +134,7 @@ func (stateImpl *StateImpl) ComputeCryptoHash() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = stateImpl.processBucketTreeDelta() // feed all other nodes(level n-2 to level 0)
+		err = stateImpl.processBucketTreeDelta(0) // feed all other nodes(level n-2 to level 0)
 		if err != nil {
 			return nil, err
 		}
@@ -165,7 +168,11 @@ func (stateImpl *StateImpl) processDataNodeDelta() error {
 	return nil
 }
 
-func (stateImpl *StateImpl) processBucketTreeDeltaEx(tillLevel int, mergeMode bool) error {
+func (stateImpl *StateImpl) processBucketTreeDelta(tillLevel int) error {
+	if stateImpl.bucketTreeDelta == nil {
+		return nil
+	}
+
 	secondLastLevel := stateImpl.currentConfig.getLowestLevel() - 1
 	for level := secondLastLevel; level >= tillLevel; level-- {
 		bucketNodes := stateImpl.bucketTreeDelta.getBucketNodesAt(level)
@@ -174,22 +181,19 @@ func (stateImpl *StateImpl) processBucketTreeDeltaEx(tillLevel int, mergeMode bo
 			logger.Debugf("bucketNode in tree-delta [%s]", bucketNode)
 			bucketKey := bucketNode.bucketKey.getBucketKey(stateImpl.currentConfig)
 
-			if mergeMode {
-				// get middle node from db
-				dbBucketNode, err := stateImpl.bucketCache.get(bucketKey)
-				logger.Debugf("bucket node from db [%s]", dbBucketNode)
-				if err != nil {
-					return err
-				}
-
-				// merge updated child hash into middle node by index
-				if dbBucketNode != nil {
-					bucketNode.mergeBucketNode(dbBucketNode)
-					logger.Debugf("After merge... bucketNode in tree-delta [%s]", bucketNode)
-				}
+			dbBucketNode, err := stateImpl.bucketCache.get(bucketKey)
+			logger.Debugf("bucket node from db [%s]", dbBucketNode)
+			if err != nil {
+				return err
 			}
 
-			if level == tillLevel {
+			// merge updated child hash into middle node by index
+			if dbBucketNode != nil {
+				bucketNode.mergeBucketNode(dbBucketNode)
+				logger.Debugf("After merge... bucketNode in tree-delta [%s]", bucketNode)
+			}
+
+			if level == 0 {
 				continue
 			}
 
@@ -204,10 +208,6 @@ func (stateImpl *StateImpl) processBucketTreeDeltaEx(tillLevel int, mergeMode bo
 		}
 	}
 	return nil
-}
-
-func (stateImpl *StateImpl) processBucketTreeDelta() error {
-	return stateImpl.processBucketTreeDeltaEx(0, true)
 }
 
 func (stateImpl *StateImpl) computeRootNodeCryptoHash() []byte {
@@ -386,7 +386,7 @@ func (stateImpl *StateImpl) InitPartialSync(statehash []byte) {
 	stateImpl.persistedStateHash = nil
 	stateImpl.dataNodesDelta = nil
 	stateImpl.bucketTreeDelta = nil
-	stateImpl.recomputeCryptoHash = true
+	stateImpl.recomputeCryptoHash = false
 	stateImpl.bucketCache = newBucketCache(stateImpl.currentConfig.bucketCacheMaxSize, stateImpl.OpenchainDB)
 
 	logger.Infof("start sync to state %x", statehash)
@@ -434,66 +434,70 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 		return err
 	}
 
-	if vlevel == -1 {
-		//first verification, which is special, we calc root for verification
-		if err := stateImpl.processBucketTreeDeltaEx(0, false); err != nil {
-			return err
-		}
+	if err := stateImpl.processBucketTreeDelta(vlevel + 1); err != nil {
+		return err
+	}
 
-		if rn := stateImpl.bucketTreeDelta.getRootNode(); rn == nil || bytes.Compare(
-			rn.computeCryptoHash(), stateImpl.underSync.targetStateHash) != 0 {
+	//first verification, which is special, we calc root for verification
+	if vlevel == -1 {
+
+		if stateImpl.bucketTreeDelta == nil {
+			return fmt.Errorf("Verify fail for no content in root-updating step")
+		} else if rn := stateImpl.bucketTreeDelta.getRootNode(); rn == nil {
+			return fmt.Errorf("Verify fail for no content in root-updating step")
+		} else if rhash := rn.computeCryptoHash(); bytes.Compare(
+			rhash, stateImpl.underSync.targetStateHash) != 0 {
 			return fmt.Errorf("Verify fail on root: expected root hash [%X] but get [%X]",
-				stateImpl.underSync.targetStateHash, rn.computeCryptoHash())
+				rhash, rn.computeCryptoHash())
 		}
 
 	} else {
 
-		if err := stateImpl.processBucketTreeDeltaEx(vlevel, false); err != nil {
-			return err
+		var vbucketLevel byBucketNumber
+		if stateImpl.bucketTreeDelta != nil {
+			vbucketLevel = stateImpl.bucketTreeDelta.byLevel[vlevel]
+			//notice: data in this level is not correct (only part of the childhash) and can not be
+			//merged into cache
+			defer delete(stateImpl.bucketTreeDelta.byLevel, vlevel)
+		}
+		if vbucketLevel == nil {
+			vbucketLevel = byBucketNumber(map[int]*bucketNode{})
 		}
 
-		verifyRange, verifyRemainder := stateImpl.underSync.verifiedRange()
-
+		verifyRange := stateImpl.underSync.verifiedRange()
 		//first, we check out the buckets in verify level must in verify range
-		vbucketLevel := stateImpl.bucketTreeDelta.byLevel[vlevel]
-		for ind, _ := range vbucketLevel {
-			if ind < verifyRange[0] || ind > verifyRange[1] {
-				return fmt.Errorf("found polluted bucket at [%d], (should %v)", ind, verifyRange)
-			}
-		}
-
-		//verify the hash we calculated with which it obtained
-		for representK := newBucketKey(stateImpl.currentConfig, vlevel+1,
-			int(verifyRange[0])); representK.bucketNumber <= int(verifyRange[1]); representK.bucketNumber++ {
-
-			if cachedbuck, err := stateImpl.bucketCache.get(representK); err != nil {
-				return fmt.Errorf("read cache for key [%s] fail: %s", representK, err)
-			} else {
-				checkedN := stateImpl.bucketTreeDelta.getOrCreateBucketNode(representK)
-				if ckh := checkedN.computeCryptoHash(); len(ckh) != 0 && cachedbuck == nil {
-					return fmt.Errorf("Verify fail @[%s]: expected empty bucket but get [%s]", representK, checkedN)
-				} else if cachedbuck != nil {
-					//now do comparison ...
-					if representK.bucketNumber < int(verifyRange[1]) || verifyRemainder == 0 {
-						//for not-final case, calc hash faster than comparing all ?
-						if chh := cachedbuck.computeCryptoHash(); bytes.Compare(chh, ckh) != 0 {
-							return fmt.Errorf("Verify fail @[%s]: expected bucket hash [%X] but get [%X]", representK, chh, ckh)
-						}
-					} else {
-						//has to compare all childhash ...
-						for i, chh := range cachedbuck.childrenCryptoHash[:verifyRemainder] {
-							if bytes.Compare(chh, checkedN.childrenCryptoHash[i]) != 0 {
-								return fmt.Errorf("Verify fail @[%s]: expected bucket [%V] but get [%V] (till %d)",
-									representK, cachedbuck, checkedN, i)
-							}
-						}
-					}
-
+		for ind, node := range vbucketLevel {
+			for i, hash := range node.childrenCryptoHash {
+				if pos := stateImpl.currentConfig.computeChildPosition(ind, i); (pos < verifyRange[0] || pos > verifyRange[1]) && len(hash) != 0 {
+					return fmt.Errorf("found polluted bucket at [%d-%d], (should %v)", vlevel, ind)
 				}
-				//ok, we finally passed
 			}
 		}
 
+		var cachedbuck *bucketNode
+		var representK *bucketKey
+		for i := verifyRange[0]; i <= verifyRange[1]; i++ {
+			ind, child := stateImpl.currentConfig.computeParentPosition(i)
+			if representK == nil || representK.bucketNumber != ind {
+				representK = newBucketKey(stateImpl.currentConfig, vlevel, ind)
+				cachedbuck, _ = stateImpl.bucketCache.get(representK)
+			}
+
+			checkedN := vbucketLevel[ind]
+			var ch, vh []byte
+			if cachedbuck != nil {
+				vh = cachedbuck.childrenCryptoHash[child]
+			}
+
+			if checkedN != nil {
+				ch = checkedN.childrenCryptoHash[child]
+			}
+
+			if bytes.Compare(ch, vh) != 0 {
+				return fmt.Errorf("Verify fail @%d(<%s>/%d): expected buckethash [%X] but get [%X]", i, representK, child, vh, ch)
+			}
+			//ok, we finally passed
+		}
 	}
 
 	if err := stateImpl.underSync.CompletePart(offset); err != nil {
@@ -510,13 +514,14 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 
 func (stateImpl *StateImpl) applyPartialMetaData(metadata *pb.SyncMetadata, offset *pb.BucketTreeOffset) error {
 
-	logger.Infof("Start: applyPartialMetalData: offset[%+v]", offset)
-	defer logger.Infof("Fnished: applyPartialMetalData: offset[%+v]", offset)
+	// logger.Infof("Start: applyPartialMetalData: offset[%+v]", offset)
+	// defer logger.Infof("Fnished: applyPartialMetalData: offset[%+v]", offset)
 
 	nodes := metadata.GetBuckettree()
 
 	if nodes == nil {
-		return fmt.Errorf("metadata [%v] has no content for buckettree", metadata)
+		//nothing to apply
+		return nil
 	}
 
 	if stateImpl.bucketTreeDelta == nil {
@@ -524,7 +529,7 @@ func (stateImpl *StateImpl) applyPartialMetaData(metadata *pb.SyncMetadata, offs
 	}
 
 	//if list has data more than delta specified, we trunctate it (so save cost)
-	if len(nodes.Nodes) > int(offset.Delta)+1 {
+	if len(nodes.Nodes) > int(offset.Delta) {
 		nodes.Nodes = nodes.Nodes[:offset.Delta]
 	}
 

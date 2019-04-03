@@ -27,7 +27,7 @@ func TestSyncStepCalc(t *testing.T) {
 		t.Logf("%s: %v", header, first)
 
 		testutil.AssertEquals(t, first.BucketNum, uint64(1))
-		testutil.AssertEquals(t, int(first.BucketNum+first.Delta), cfg.getNumBuckets(int(first.Level)))
+		testutil.AssertEquals(t, int(first.BucketNum+first.Delta), cfg.getNumBuckets(int(first.Level))+1)
 		if l := len(s.stateImpl.underSync.syncLevels); l == 0 {
 			testutil.AssertEquals(t, int(first.Level), cfg.getLowestLevel())
 		} else {
@@ -108,6 +108,13 @@ func logMetaOutput(t *testing.T, sim *statemgmt.SyncSimulator) {
 	}
 }
 
+func logDataOutput(t *testing.T, sim *statemgmt.SyncSimulator) {
+	t.Logf("Now log delta chunk: [%v]", sim.SyncingOffset.GetBuckettree())
+	for k, v := range sim.SyncingData.GetChaincodeStateDeltas() {
+		t.Logf("   %s: %d kvpairs", k, len(v.GetUpdatedKVs()))
+	}
+}
+
 func logCacheOutput(t *testing.T, s *stateImplTestWrapper, minL, maxL int) {
 
 	for _, node := range s.stateImpl.bucketCache.c {
@@ -140,12 +147,9 @@ func TestSyncBasic(t *testing.T) {
 	defer sim.Release()
 
 	//first turn, must have nodes as many as target level
-	retE := sim.TestSyncEachStep(sim.PollTask())
-	testutil.AssertEquals(t, len(sim.SyncingData.GetMetaData().GetBuckettree().GetNodes()),
-		target.stateImpl.currentConfig.getNumBuckets(int(sim.SyncingData.GetOffset().GetBuckettree().GetLevel())))
+	retE := sim.TestSyncEachStep(sim.PollTask(), func() { logDeltaOutput(t, target, 2, 2) })
+	logCacheOutput(t, src, 2, 3)
 	logMetaOutput(t, sim)
-	logCacheOutput(t, src, 2, 2)
-	logDeltaOutput(t, target, 2, 2)
 
 	testutil.AssertNoError(t, retE, "1-1")
 
@@ -155,11 +159,50 @@ func TestSyncBasic(t *testing.T) {
 	t.Log(tsk)
 	//second turn, it was data turn
 	retE = sim.TestSyncEachStep(tsk)
-	logMetaOutput(t, sim)
+	logDataOutput(t, sim)
+	logCacheOutput(t, target, 3, 3)
 
 	testutil.AssertNil(t, sim.SyncingData.GetMetaData().GetBuckettree())
 	testutil.AssertNotNil(t, sim.SyncingData.GetChaincodeStateDeltas())
 	testutil.AssertNoError(t, retE, "data-1")
+
+	retE = sim.TestSyncEachStep(sim.PollTask())
+	testutil.AssertNoError(t, retE, "data-2")
+}
+
+func TestSyncBasic2(t *testing.T) {
+	//with data not aligned
+	testDBWrapper.CleanDB(t)
+
+	src, target := prepare(t, 100, 2), prepare(t, 100, 2)
+	defer finalize(src)
+	defer finalize(target)
+
+	sim := start(t, 60, 8, src, target)
+	defer sim.Release()
+
+	//first turn, must have nodes as many as target level
+	retE := sim.TestSyncEachStep(sim.PollTask(), func() { logDeltaOutput(t, target, 2, 2) })
+	logCacheOutput(t, src, 2, 3)
+	logMetaOutput(t, sim)
+
+	testutil.AssertNoError(t, retE, "1-1")
+
+	t.Log(sim.PeekTasks(), target.stateImpl.underSync.current)
+	tsk := sim.PollTask()
+	testutil.AssertNoError(t, sim.SyncingError, "data-1-poll")
+	t.Log(tsk)
+	//second turn, it was data turn
+	retE = sim.TestSyncEachStep(tsk)
+	logDataOutput(t, sim)
+	logCacheOutput(t, target, 3, 3)
+
+	testutil.AssertNil(t, sim.SyncingData.GetMetaData().GetBuckettree())
+	testutil.AssertNotNil(t, sim.SyncingData.GetChaincodeStateDeltas())
+	testutil.AssertNoError(t, retE, "data-1")
+
+	retE = sim.TestSyncEachStep(sim.PollTask())
+	testutil.AssertNoError(t, retE, "data-2")
 }
 
 func TestSync(t *testing.T) {

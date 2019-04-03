@@ -68,7 +68,8 @@ func (bucketTreeDelta *bucketTreeDelta) getBucketNodesAt(level int) []*bucketNod
 func (bucketTreeDelta *bucketTreeDelta) getRootNode() *bucketNode {
 	bucketNodes := bucketTreeDelta.getBucketNodesAt(0)
 	if bucketNodes == nil || len(bucketNodes) == 0 {
-		panic("This method should be called after processing is completed (i.e., the root node has been created)")
+		//panic("This method should be called after processing is completed (i.e., the root node has been created)")
+		return nil
 	}
 	return bucketNodes[0]
 }
