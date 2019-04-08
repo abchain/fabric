@@ -1,11 +1,11 @@
 package statemgmt
 
 import (
+	"errors"
 	"github.com/abchain/fabric/core/db"
-	"testing"
-
 	"github.com/abchain/fabric/core/ledger/testutil"
 	"github.com/abchain/fabric/protos"
+	"testing"
 )
 
 type SyncSimulator struct {
@@ -46,7 +46,7 @@ func (s *SyncSimulator) PeekTasks() []*protos.SyncOffset {
 	return s.cachingTasks
 }
 
-func (s *SyncSimulator) PollTask() *protos.SyncOffset {
+func (s *SyncSimulator) pollTask() *protos.SyncOffset {
 	if len(s.cachingTasks) == 0 {
 		s.cachingTasks, s.SyncingError = s.target.RequiredParts()
 	}
@@ -61,37 +61,41 @@ func (s *SyncSimulator) PollTask() *protos.SyncOffset {
 
 }
 
-func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset, onFinish ...func()) (e error) {
+func (s *SyncSimulator) Result() error {
+	return s.SyncingError
+}
 
-	s.SyncingOffset = task
-	s.SyncingData = nil
-	s.SyncingError = nil
-	defer func() {
+func (s *SyncSimulator) TestSyncEachStep_Taskphase() *SyncSimulator {
+	s.SyncingOffset = s.pollTask()
+	return s
+}
 
-		for _, f := range onFinish {
-			f()
-		}
+func (s *SyncSimulator) TestSyncEachStep_Pollphase() *SyncSimulator {
 
-		e = s.SyncingError
-		if e == nil {
-			s.target.ClearWorkingSet(true)
-		} else {
-			s.target.ClearWorkingSet(false)
-		}
-	}()
+	if s.SyncingError != nil {
+		return s
+	}
 
-	if data, err := GetRequiredParts(s.src, task); err != nil {
+	if data, err := GetRequiredParts(s.src, s.SyncingOffset); err != nil {
 		s.SyncingError = err
-		return
 	} else {
 		s.SyncingData = data
+	}
+
+	return s
+}
+
+func (s *SyncSimulator) TestSyncEachStep_Applyphase() *SyncSimulator {
+
+	if s.SyncingError != nil {
+		return s
 	}
 
 	s.target.PrepareWorkingSet(GenUpdateStateDelta(s.SyncingData.ChaincodeStateDeltas))
 
 	if err := s.target.ApplyPartialSync(s.SyncingData); err != nil {
 		s.SyncingError = err
-		return
+		return s
 	}
 
 	writeBatch := s.NewWriteBatch()
@@ -99,17 +103,57 @@ func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset, onFinish ...fu
 
 	if err := s.target.AddChangesForPersistence(writeBatch); err != nil {
 		s.SyncingError = err
-		return
+		return s
 	}
 
 	s.SyncingError = writeBatch.BatchCommit()
-	return
+	return s
+
+}
+
+func (s *SyncSimulator) TestSyncEachStep_Finalphase() {
+	if s.SyncingError == nil {
+		s.target.ClearWorkingSet(true)
+	} else {
+		s.target.ClearWorkingSet(false)
+	}
+}
+
+func (s *SyncSimulator) TestSyncEachStep(onFinish ...func()) (e error) {
+
+	s.SyncingOffset = nil
+	s.SyncingData = nil
+	s.SyncingError = nil
+
+	s.TestSyncEachStep_Taskphase()
+	if s.SyncingOffset == nil {
+		return errors.New("No task available")
+	}
+
+	if err := s.TestSyncEachStep_Pollphase().Result(); err != nil {
+		return err
+	}
+
+	defer func() {
+
+		for _, f := range onFinish {
+			f()
+		}
+
+		s.TestSyncEachStep_Finalphase()
+	}()
+
+	if err := s.TestSyncEachStep_Applyphase().Result(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *SyncSimulator) PullOut(onTask ...func()) error {
 
-	for tsk := s.PollTask(); tsk != nil; tsk = s.PollTask() {
-		s.TestSyncEachStep(tsk, onTask...)
+	for s.TestSyncEachStep(onTask...) == nil {
+
 		if s.SyncingError != nil {
 			return s.SyncingError
 		}

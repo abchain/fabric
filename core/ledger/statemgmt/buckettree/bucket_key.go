@@ -27,14 +27,6 @@ type bucketKeyLite struct {
 	bucketNumber int
 }
 
-func (bucketKey *bucketKeyLite) getEncodedBytes() []byte {
-	encodedBytes := []byte{}
-	encodedBytes = append(encodedBytes, byte(0))
-	encodedBytes = append(encodedBytes, proto.EncodeVarint(uint64(bucketKey.level))...)
-	encodedBytes = append(encodedBytes, proto.EncodeVarint(uint64(bucketKey.bucketNumber))...)
-	return encodedBytes
-}
-
 func (bucketKey *bucketKeyLite) String() string {
 	return fmt.Sprintf("level=[%d], bucketNumber=[%d]", bucketKey.level, bucketKey.bucketNumber)
 }
@@ -86,8 +78,29 @@ func constructRootBucketKey(conf *config) *bucketKey {
 
 func decodeBucketKey(conf *config, keyBytes []byte) *bucketKey {
 	level, numBytesRead := proto.DecodeVarint(keyBytes[1:])
-	bucketNumber, _ := proto.DecodeVarint(keyBytes[numBytesRead+1:])
+	var bucketNumber uint64
+	if conf.newBucketKeyEncoding {
+		bkn, _ := decodeBucketNumber(keyBytes[numBytesRead+1:])
+		bucketNumber = uint64(bkn)
+	} else {
+		bucketNumber, _ = proto.DecodeVarint(keyBytes[numBytesRead+1:])
+	}
+
 	return newBucketKey(conf, int(level), int(bucketNumber))
+}
+
+func (bucketKey *bucketKey) getEncodedBytes() []byte {
+	encodedBytes := []byte{}
+	encodedBytes = append(encodedBytes, byte(0))
+	//level is never exceed 128 and it equal to a byte
+	//encodedBytes = append(encodedBytes, proto.EncodeVarint(uint64(bucketKey.level))...)
+	encodedBytes = append(encodedBytes, byte(bucketKey.level))
+	if bucketKey.config.newBucketKeyEncoding {
+		encodedBytes = append(encodedBytes, encodeBucketNumber(bucketKey.bucketNumber)...)
+	} else {
+		encodedBytes = append(encodedBytes, proto.EncodeVarint(uint64(bucketKey.bucketNumber))...)
+	}
+	return encodedBytes
 }
 
 func (bucketKey *bucketKey) getParentKey() *bucketKey {

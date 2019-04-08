@@ -48,7 +48,27 @@ func NewStateImpl(db *db.OpenchainDB) *StateImpl {
 
 // Initialize - method implementation for interface 'statemgmt.HashableState'
 func (stateImpl *StateImpl) Initialize(configs map[string]interface{}) error {
-	stateImpl.currentConfig = initConfig(configs)
+
+	//load config first, which will replace the configs in argument
+	if cfgSaved, err := stateImpl.GetValue(db.StateCF, configDataKey); err != nil {
+		return err
+	} else if len(cfgSaved) != 0 {
+		stateImpl.currentConfig, err = loadconfig(cfgSaved)
+		if err != nil {
+			return fmt.Errorf("loading config fail: %s", err)
+		}
+	} else {
+		stateImpl.currentConfig = initConfig(configs)
+		persisted, err := stateImpl.currentConfig.persist()
+		if err == nil {
+			err = stateImpl.PutValue(db.StateCF, configDataKey, persisted)
+		}
+
+		if err != nil {
+			return fmt.Errorf("saving config fail: %s", err)
+		}
+	}
+
 	rootBucketNode, err := fetchBucketNodeFromDB(stateImpl.OpenchainDB, constructRootBucketKey(stateImpl.currentConfig))
 	if err != nil {
 		return err
@@ -317,17 +337,18 @@ func (stateImpl *StateImpl) addBucketNodeChangesForPersistence(writeBatch *db.DB
 	for level := secondLastLevel; level >= 0; level-- {
 		bucketNodes := stateImpl.bucketTreeDelta.getBucketNodesAt(level)
 		for _, bucketNode := range bucketNodes {
+			bk := bucketNode.bucketKey.getBucketKey(stateImpl.currentConfig)
 			if bucketNode.markedForDeletion {
-				writeBatch.DeleteCF(openchainDB.StateCF, bucketNode.bucketKey.getEncodedBytes())
+				writeBatch.DeleteCF(openchainDB.StateCF, bk.getEncodedBytes())
 			} else {
 
+				bkByte := bk.getEncodedBytes()
 				logger.Debugf("Persist bucketNode<%+v>, dataKey<%x>, value <%x>",
 					bucketNode.bucketKey,
-					bucketNode.bucketKey.getEncodedBytes(),
+					bkByte,
 					bucketNode.marshal())
 
-				writeBatch.PutCF(openchainDB.StateCF,
-					bucketNode.bucketKey.getEncodedBytes(), bucketNode.marshal())
+				writeBatch.PutCF(openchainDB.StateCF, bkByte, bucketNode.marshal())
 			}
 		}
 	}
@@ -417,6 +438,11 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 		return fmt.Errorf("chunk [%v] has no content for buckettree", syncData)
 	}
 
+	//forbid unexpected range ...
+	if cur := stateImpl.underSync.current; offset.GetLevel() != cur.GetLevel() || offset.GetBucketNum() != cur.GetBucketNum() {
+		return fmt.Errorf("Unexpected range, expected [%v] but have [%v]", cur, offset)
+	}
+
 	// representNode := stateImpl.currentConfig.getRepresentNode(int(offset.Level), offset.BucketNum, offset.Delta)
 	// if representNode == nil {
 	// 	return fmt.Errorf("Not a valid represent for range [%v], abandon it", offset)
@@ -472,7 +498,7 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 		for ind, node := range vbucketLevel {
 			for i, hash := range node.childrenCryptoHash {
 				if pos := stateImpl.currentConfig.computeChildPosition(ind, i); (pos < verifyRange[0] || pos > verifyRange[1]) && len(hash) != 0 {
-					return fmt.Errorf("found polluted bucket at [%d-%d], (should %v)", vlevel, pos, ind)
+					return fmt.Errorf("found polluted bucket %d (at level %d), (should %v)", pos, vlevel, verifyRange)
 				}
 			}
 		}

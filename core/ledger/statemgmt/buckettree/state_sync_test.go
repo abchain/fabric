@@ -147,18 +147,16 @@ func TestSyncBasic1(t *testing.T) {
 	defer sim.Release()
 
 	//first turn, must have nodes as many as target level
-	retE := sim.TestSyncEachStep(sim.PollTask(), func() { logDeltaOutput(t, target, 2, 2) })
+	retE := sim.TestSyncEachStep(func() { logDeltaOutput(t, target, 2, 2) })
 	logCacheOutput(t, src, 2, 3)
 	logMetaOutput(t, sim)
 
 	testutil.AssertNoError(t, retE, "1-1")
 
 	t.Log(sim.PeekTasks(), target.stateImpl.underSync.current)
-	tsk := sim.PollTask()
-	testutil.AssertNoError(t, sim.SyncingError, "data-1-poll")
-	t.Log(tsk)
 	//second turn, it was data turn
-	retE = sim.TestSyncEachStep(tsk)
+	retE = sim.TestSyncEachStep()
+	t.Log(sim.SyncingOffset)
 	logDataOutput(t, sim)
 	logCacheOutput(t, target, 3, 3)
 
@@ -166,7 +164,7 @@ func TestSyncBasic1(t *testing.T) {
 	testutil.AssertNotNil(t, sim.SyncingData.GetChaincodeStateDeltas())
 	testutil.AssertNoError(t, retE, "data-1")
 
-	retE = sim.TestSyncEachStep(sim.PollTask())
+	retE = sim.TestSyncEachStep()
 	testutil.AssertNoError(t, retE, "data-2")
 }
 
@@ -182,15 +180,14 @@ func TestSyncBasic2(t *testing.T) {
 	defer sim.Release()
 
 	//first turn, must have nodes as many as target level
-	retE := sim.TestSyncEachStep(sim.PollTask(), func() { logDeltaOutput(t, target, 2, 2) })
+	retE := sim.TestSyncEachStep(func() { logDeltaOutput(t, target, 2, 2) })
 	logCacheOutput(t, src, 2, 3)
 	logMetaOutput(t, sim)
 
 	testutil.AssertNoError(t, retE, "1-1")
 
 	//second turn, still meta data
-	tsk := sim.PollTask()
-	retE = sim.TestSyncEachStep(tsk)
+	retE = sim.TestSyncEachStep()
 	testutil.AssertNotNil(t, sim.SyncingData.GetMetaData().GetBuckettree())
 	testutil.AssertNoError(t, retE, "2-1")
 
@@ -212,12 +209,11 @@ func TestSyncLarge(t *testing.T) {
 	//we sync 45 times (1+2+4+10+28) to level 6 (lowest -1) and will encounter buckets larger than 128
 	//can we iterate it correctly?
 	for i := 0; i < 45; i++ {
-		testutil.AssertNoError(t, sim.TestSyncEachStep(sim.PollTask()), fmt.Sprintf("first syncing step %d", i))
+		testutil.AssertNoError(t, sim.TestSyncEachStep(), fmt.Sprintf("first syncing step %d", i))
 	}
 
-	tsk := sim.PollTask()
-	retE := sim.TestSyncEachStep(tsk)
-	testutil.AssertEquals(t, int(tsk.GetBuckettree().GetLevel()), 6)
+	retE := sim.TestSyncEachStep()
+	testutil.AssertEquals(t, int(sim.SyncingOffset.GetBuckettree().GetLevel()), 6)
 	logMetaOutput(t, sim)
 	testutil.AssertNoError(t, retE, "syncing on lvl 6 step 1")
 
@@ -225,4 +221,129 @@ func TestSyncLarge(t *testing.T) {
 	logMetaOutput(t, sim)
 	logCacheOutput(t, src, 6, 6)
 	testutil.AssertNoError(t, retE, "pullout")
+}
+
+func TestSyncFlaw1(t *testing.T) {
+
+	//when we have missed a whole metadata deliberately
+	testDBWrapper.CleanDB(t)
+
+	src, target := prepare(t, 100, 4), prepare(t, 100, 4)
+	defer finalize(src)
+	defer finalize(target)
+
+	//fill more keys so metadata table become full enough
+	sim := start(t, 200, 3, src, target)
+	defer sim.Release()
+
+	testutil.AssertNoError(t, sim.TestSyncEachStep(), "first meta")
+
+	testutil.AssertNoError(t, sim.TestSyncEachStep(), "meta sync 2-1")
+
+	//test clean the whole metadata ...
+	retE := sim.TestSyncEachStep_Taskphase().TestSyncEachStep_Pollphase().Result()
+	testutil.AssertNoError(t, retE, "meta sync 2-2-1")
+
+	data := sim.SyncingData.MetaData.GetBuckettree()
+	//rarely case ...
+	if len(data.Nodes) == 0 {
+		t.Log("initial data has empty metadata here, fail and try again")
+		t.FailNow()
+	}
+	//clean all nodes
+	data.Nodes = data.Nodes[:0]
+	sim.TestSyncEachStep_Applyphase().TestSyncEachStep_Finalphase()
+	testutil.AssertError(t, sim.SyncingError, "meta sync 2-2-1-apply")
+	t.Log("Obtain expected error:", sim.SyncingError)
+
+	//and we must be able to resume from error
+	testutil.AssertNoError(t, sim.PullOut(), "pullout")
+}
+
+func TestSyncFlaw2(t *testing.T) {
+
+	//when we have a "replay" attacking
+	testDBWrapper.CleanDB(t)
+
+	src, target := prepare(t, 100, 4), prepare(t, 100, 4)
+	defer finalize(src)
+	defer finalize(target)
+
+	//fill more keys so metadata table become full enough
+	sim := start(t, 200, 3, src, target)
+	defer sim.Release()
+
+	testutil.AssertNoError(t, sim.TestSyncEachStep(), "first meta")
+
+	testutil.AssertNoError(t, sim.TestSyncEachStep(), "meta sync 2-1")
+	replayedData := sim.SyncingData
+
+	//test clean the whole metadata ...
+	retE := sim.TestSyncEachStep_Taskphase().TestSyncEachStep_Pollphase().Result()
+	testutil.AssertNoError(t, retE, "meta sync 2-2-1")
+
+	sim.SyncingData = replayedData
+	sim.TestSyncEachStep_Applyphase().TestSyncEachStep_Finalphase()
+	testutil.AssertError(t, sim.SyncingError, "meta sync 2-2-1-apply")
+	t.Log("Obtain expected error:", sim.SyncingError)
+
+	//and we must be able to resume from error
+	for i := 0; i < 8; i++ {
+		testutil.AssertNoError(t, sim.TestSyncEachStep(), "finish meta sync")
+	}
+
+	replayedData = sim.SyncingData
+	if len(replayedData.ChaincodeStateDeltas) == 0 {
+		t.Log("initial data has empty delta here, fail and try again")
+		t.FailNow()
+	}
+
+	sim.TestSyncEachStep_Taskphase().TestSyncEachStep_Pollphase()
+	sim.SyncingData = replayedData
+	sim.TestSyncEachStep_Applyphase().TestSyncEachStep_Finalphase()
+	testutil.AssertError(t, sim.SyncingError, "data sync replay")
+	t.Log("Obtain expected error:", sim.SyncingError)
+
+	testutil.AssertNoError(t, sim.PullOut(), "pullout")
+}
+
+func TestSyncFlaw3(t *testing.T) {
+
+	//simply change the value in a k-v pair of delta
+	testDBWrapper.CleanDB(t)
+
+	src, target := prepare(t, 100, 4), prepare(t, 100, 4)
+	defer finalize(src)
+	defer finalize(target)
+
+	//fill more keys so metadata table become full enough
+	sim := start(t, 200, 3, src, target)
+	defer sim.Release()
+
+	//and we must be able to resume from error
+	for i := 0; i < 10; i++ {
+		testutil.AssertNoError(t, sim.TestSyncEachStep(), "finish first phase")
+	}
+
+	sim.TestSyncEachStep_Taskphase().TestSyncEachStep_Pollphase()
+
+	for _, cc := range sim.SyncingData.ChaincodeStateDeltas {
+		for _, v := range cc.GetUpdatedKVs() {
+			if v.ValueWrap == nil {
+				continue
+			}
+
+			v.ValueWrap.Value = []byte("Wrong value")
+
+			sim.TestSyncEachStep_Applyphase().TestSyncEachStep_Finalphase()
+			t.Log("Obtain expected error:", sim.SyncingError)
+
+			testutil.AssertNoError(t, sim.PullOut(), "pullout")
+
+			return
+		}
+	}
+
+	t.Log("data has empty delta, fail and try again")
+	t.FailNow()
 }

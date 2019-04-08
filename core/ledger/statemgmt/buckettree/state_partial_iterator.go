@@ -130,17 +130,10 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 
 }
 
-func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
-
-	if partialItr.curLevel >= partialItr.getLowestLevel() {
-		return nil
-	}
-
-	md := &protos.BucketNodes{}
+func (partialItr *PartialSnapshotIterator) iterateBucketLegacy(md *protos.BucketNodes) {
 
 	//bucketkey is saved in protobuf's variat number format and notice:
 	// numbers are not always ordered when picked from iterator (i.e. a possible sequence may be :256, 512, 257 ...)
-
 	for justSeeked := partialItr.justSeeked; partialItr.currentBucketNum <= partialItr.lastBucketNum && partialItr.innerNext(); justSeeked = partialItr.justSeeked {
 
 		kBytes := partialItr.dbItr.Key().Data()
@@ -154,7 +147,7 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
 				//number less than A when iteration continues)
 				if bucketKey.bucketNumber >= partialItr.currentBucketNum && bucketKey.bucketNumber < partialItr.currentBucketNum+127 {
 					if partialItr.currentBucketNum != bucketKey.bucketNumber {
-						logger.Infof("reset bucketnum from %d to %d ", partialItr.currentBucketNum, bucketKey.bucketNumber)
+						logger.Debugf("reset bucketnum from %d to %d ", partialItr.currentBucketNum, bucketKey.bucketNumber)
 						partialItr.currentBucketNum = bucketKey.bucketNumber
 
 						//notice out-of-bound may occur for we have restted current number
@@ -185,11 +178,50 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
 			}
 		}
 
-		logger.Infof("seek for %d (get %X) ", partialItr.currentBucketNum, kBytes)
+		logger.Debugf("seek for %d (get %X) ", partialItr.currentBucketNum, kBytes)
 		if err := partialItr.innerSeek(); err != nil {
 			logger.Errorf("seek fail on [%v]: %s", partialItr, err)
 			break
 		}
+	}
+
+}
+
+func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
+
+	if partialItr.curLevel >= partialItr.getLowestLevel() {
+		return nil
+	}
+
+	md := &protos.BucketNodes{}
+
+	if partialItr.config.newBucketKeyEncoding {
+
+		for partialItr.innerNext() {
+			//we need not currentBucketNum, just keep it identify with legacy mode
+			partialItr.currentBucketNum++
+			kBytes := partialItr.dbItr.Key().Data()
+			if len(kBytes) == 0 || kBytes[0] != 0 /*bucket key prefix*/ {
+				break
+			}
+
+			bucketKey := decodeBucketKey(partialItr.config, kBytes)
+			if bucketKey.bucketNumber > partialItr.lastBucketNum {
+				break
+			}
+
+			partialItr.currentBucketNum = bucketKey.bucketNumber
+
+			node := &protos.BucketNode{uint64(bucketKey.level),
+				uint64(bucketKey.bucketNumber),
+				statemgmt.Copy(partialItr.dbItr.Value().Data())}
+			md.Nodes = append(md.Nodes, node)
+
+		}
+
+	} else {
+		logger.Infof("iterate bucketnode by legacy mode")
+		partialItr.iterateBucketLegacy(md)
 	}
 
 	return &protos.SyncMetadata{Data: &protos.SyncMetadata_Buckettree{Buckettree: md}}

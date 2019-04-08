@@ -17,6 +17,8 @@ limitations under the License.
 package buckettree
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"github.com/spf13/cast"
 	"hash/fnv"
@@ -43,6 +45,8 @@ const DefaultNumBuckets = 10009
 // Grouping is started from left. The last group may have less buckets
 const DefaultMaxGroupingAtEachLevel = 10
 
+var useLegacyBucketKeyEncoding = false
+
 type config struct {
 	maxGroupingAtEachLevel int
 	lowestLevel            int
@@ -50,6 +54,9 @@ type config struct {
 	hashFunc               hashFunc
 	syncDelta              int
 	bucketCacheMaxSize     int
+	//the original implement of bucketkey encoding made iterating heavy and we should
+	//change it to new implement
+	newBucketKeyEncoding bool
 }
 
 func initConfig(configs map[string]interface{}) *config {
@@ -119,6 +126,7 @@ func newConfig(numBuckets, maxGroupingAtEachLevel int) *config {
 		levelToNumBucketsMap: make(map[int]int),
 		hashFunc:             fnvHash,
 		syncDelta:            maxGroupingAtEachLevel,
+		newBucketKeyEncoding: !useLegacyBucketKeyEncoding,
 	}
 
 	currentLevel := 0
@@ -147,6 +155,35 @@ func newConfig(numBuckets, maxGroupingAtEachLevel int) *config {
 		conf.levelToNumBucketsMap[conf.lowestLevel-k] = v
 	}
 	return conf
+}
+
+var configDataKey = []byte{17, 1}
+
+func loadconfig(bts []byte) (*config, error) {
+	dec := gob.NewDecoder(bytes.NewReader(bts))
+	conf := &config{
+		levelToNumBucketsMap: make(map[int]int),
+		hashFunc:             fnvHash,
+	}
+
+	if err := dec.Decode(conf); err != nil {
+		return nil, err
+	}
+
+	logger.Infof("Load bucket tree state implemetation with configurations %+v", conf)
+	logger.Infof("bucket tree lowestLevel: %+v", conf.lowestLevel)
+	logger.Infof("bucket tree levelToNumBucketsMap: %+v", conf.levelToNumBucketsMap)
+
+	return conf, nil
+}
+
+func (config *config) persist() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := gob.NewEncoder(buf).Encode(config); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (config *config) getNumBuckets(level int) int {
