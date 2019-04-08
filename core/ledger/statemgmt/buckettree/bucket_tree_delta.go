@@ -65,11 +65,18 @@ func (bucketTreeDelta *bucketTreeDelta) getBucketNodesAt(level int) []*bucketNod
 	return bucketNodes
 }
 
-func (bucketTreeDelta *bucketTreeDelta) getRootNode() *bucketNode {
+func (bucketTreeDelta *bucketTreeDelta) getRootNodeSafe() *bucketNode {
 	bucketNodes := bucketTreeDelta.getBucketNodesAt(0)
 	if bucketNodes == nil || len(bucketNodes) == 0 {
-		//panic("This method should be called after processing is completed (i.e., the root node has been created)")
 		return nil
 	}
 	return bucketNodes[0]
+}
+
+func (bucketTreeDelta *bucketTreeDelta) getRootNode() *bucketNode {
+	r := bucketTreeDelta.getRootNodeSafe()
+	if r == nil {
+		panic("This method should be called after processing is completed (i.e., the root node has been created)")
+	}
+	return r
 }

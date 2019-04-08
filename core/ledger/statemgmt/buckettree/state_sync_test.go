@@ -1,7 +1,7 @@
 package buckettree
 
 import (
-	_ "fmt"
+	"fmt"
 	"testing"
 
 	"github.com/abchain/fabric/core/db"
@@ -136,7 +136,7 @@ func logDeltaOutput(t *testing.T, s *stateImplTestWrapper, minL, maxL int) {
 
 }
 
-func TestSyncBasic(t *testing.T) {
+func TestSyncBasic1(t *testing.T) {
 	testDBWrapper.CleanDB(t)
 
 	src, target := prepare(t, 100, 2), prepare(t, 100, 2)
@@ -174,11 +174,11 @@ func TestSyncBasic2(t *testing.T) {
 	//with data not aligned
 	testDBWrapper.CleanDB(t)
 
-	src, target := prepare(t, 100, 2), prepare(t, 100, 2)
+	src, target := prepare(t, 100, 4), prepare(t, 100, 4)
 	defer finalize(src)
 	defer finalize(target)
 
-	sim := start(t, 60, 8, src, target)
+	sim := start(t, 60, 3, src, target)
 	defer sim.Release()
 
 	//first turn, must have nodes as many as target level
@@ -188,72 +188,41 @@ func TestSyncBasic2(t *testing.T) {
 
 	testutil.AssertNoError(t, retE, "1-1")
 
-	t.Log(sim.PeekTasks(), target.stateImpl.underSync.current)
+	//second turn, still meta data
 	tsk := sim.PollTask()
-	testutil.AssertNoError(t, sim.SyncingError, "data-1-poll")
-	t.Log(tsk)
-	//second turn, it was data turn
 	retE = sim.TestSyncEachStep(tsk)
-	logDataOutput(t, sim)
-	logCacheOutput(t, target, 3, 3)
+	testutil.AssertNotNil(t, sim.SyncingData.GetMetaData().GetBuckettree())
+	testutil.AssertNoError(t, retE, "2-1")
 
-	testutil.AssertNil(t, sim.SyncingData.GetMetaData().GetBuckettree())
-	testutil.AssertNotNil(t, sim.SyncingData.GetChaincodeStateDeltas())
-	testutil.AssertNoError(t, retE, "data-1")
-
-	retE = sim.TestSyncEachStep(sim.PollTask())
-	testutil.AssertNoError(t, retE, "data-2")
+	testutil.AssertNoError(t, sim.PullOut(), "pullout")
 }
 
-func TestSync(t *testing.T) {
-
+func TestSyncLarge(t *testing.T) {
+	//large set with iteration must iterate on bucketnode larger than 128
 	testDBWrapper.CleanDB(t)
 
-	secondaryDB, _ := db.StartDB("secondary", nil)
-	defer db.StopDB(secondaryDB)
+	src, target := prepare(t, 1000, 3), prepare(t, 1000, 3)
+	defer finalize(src)
+	defer finalize(target)
 
-	srcImpl := newStateImplTestWrapperWithCustomConfig(t, 100, 3)
-	statemgmt.PopulateStateForTest(t, srcImpl.stateImpl, testDBWrapper.GetDB(), 60)
+	//so we have a meta-syncing on lowestlevel - 1, walk 4 buckets each time
+	sim := start(t, 350, 2, src, target)
+	defer sim.Release()
 
-	targetImpl := newStateImplTestWrapperOnDBWithCustomConfig(t, secondaryDB, 100, 3)
+	//we sync 45 times (1+2+4+10+28) to level 6 (lowest -1) and will encounter buckets larger than 128
+	//can we iterate it correctly?
+	for i := 0; i < 45; i++ {
+		testutil.AssertNoError(t, sim.TestSyncEachStep(sim.PollTask()), fmt.Sprintf("first syncing step %d", i))
+	}
 
-	simulator := statemgmt.NewSyncSimulator(secondaryDB)
+	tsk := sim.PollTask()
+	retE := sim.TestSyncEachStep(tsk)
+	testutil.AssertEquals(t, int(tsk.GetBuckettree().GetLevel()), 6)
+	logMetaOutput(t, sim)
+	testutil.AssertNoError(t, retE, "syncing on lvl 6 step 1")
 
-	sn := testDBWrapper.GetDB().GetSnapshot()
-	defer sn.Release()
-
-	srci, err := srcImpl.stateImpl.GetPartialRangeIterator(sn)
-	testutil.AssertNoError(t, err, "partial iterator")
-
-	simulator.AttachSource(srci)
-	simulator.AttachTarget(targetImpl.stateImpl)
+	retE = sim.PullOut()
+	logMetaOutput(t, sim)
+	logCacheOutput(t, src, 6, 6)
+	testutil.AssertNoError(t, retE, "pullout")
 }
-
-// func TestSync(t *testing.T) {
-// 	testDBWrapper.CleanDB(t)
-// 	stateImplTestWrapper := newStateImplTestWrapperWithCustomConfig(t, 100, 2)
-// 	stateImpl := stateImplTestWrapper.stateImpl
-// 	stateDelta := statemgmt.NewStateDelta()
-
-// 	i := 1
-// 	for i <= 100 {
-// 		chaincode := fmt.Sprintf("chaincode%d", i)
-// 		k := fmt.Sprintf("key%d", i)
-// 		v := fmt.Sprintf("value%d", i)
-// 		stateDelta.Set(chaincode, k, []byte(v), nil)
-// 		i++
-// 	}
-
-// 	stateImpl.PrepareWorkingSet(stateDelta)
-// 	targetHash := stateImplTestWrapper.computeCryptoHash()
-// 	stateImplTestWrapper.persistChangesAndResetInMemoryChanges()
-
-// 	err := stateImplTestWrapper.syncState(targetHash)
-// 	testutil.AssertNil(t, err)
-
-// 	localHash := stateImplTestWrapper.computeCryptoHash()
-// 	fmt.Printf("Local hash: %x\n", localHash)
-// 	fmt.Printf("Target hash: %x\n", targetHash)
-
-// 	testutil.AssertEquals(t, localHash, targetHash)
-// }

@@ -67,6 +67,10 @@ func initConfig(configs map[string]interface{}) *config {
 		logger.Debugf("buckettree: maxGroupingAtEachLevel: [%d]", maxGroupingAtEachLevel)
 	}
 
+	if maxGroupingAtEachLevel < 2 {
+		panic("maxgroup number can not be less than 2")
+	}
+
 	//the default delta is sqrt(numBucket)
 	syncDelta := int(math.Sqrt(float64(numBuckets)))
 	//additional configs
@@ -130,6 +134,12 @@ func newConfig(numBuckets, maxGroupingAtEachLevel int) *config {
 		numBucketAtCurrentLevel = numBucketAtParentLevel
 		currentLevel++
 		levelInfoMap[currentLevel] = numBucketAtCurrentLevel
+	}
+
+	//if level exceed 128, we have problem in iterating, but even use maxgrouping = 2,
+	// 2 ^ 128 just is not a possible number that buckettree can handle
+	if currentLevel >= 128 {
+		panic("We have levels too large")
 	}
 
 	conf.lowestLevel = currentLevel

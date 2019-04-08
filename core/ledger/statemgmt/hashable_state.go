@@ -117,6 +117,9 @@ type StateSnapshotIterator interface {
 type PartialRangeIterator interface {
 	StateSnapshotIterator
 	Seek(*protos.SyncOffset) error
+	//obtain the metadata for an iteration, that is, a calling after Seek,
+	//GetMetaData MUST be called BEFORE any Next() in StateSnapshotIterator
+	//is called
 	GetMetaData() *protos.SyncMetadata
 }
 

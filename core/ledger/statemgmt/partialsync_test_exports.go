@@ -106,6 +106,18 @@ func (s *SyncSimulator) TestSyncEachStep(task *protos.SyncOffset, onFinish ...fu
 	return
 }
 
+func (s *SyncSimulator) PullOut(onTask ...func()) error {
+
+	for tsk := s.PollTask(); tsk != nil; tsk = s.PollTask() {
+		s.TestSyncEachStep(tsk, onTask...)
+		if s.SyncingError != nil {
+			return s.SyncingError
+		}
+	}
+
+	return nil
+}
+
 //populate a moderate size of state collection for testing
 func PopulateStateForTest(t testing.TB, target HashAndDividableState, db *db.OpenchainDB, datakeys int) {
 
@@ -145,12 +157,8 @@ func StartFullSyncTest(t testing.TB, src, target HashAndDividableState, db *db.O
 
 	target.InitPartialSync(srchash)
 
-	for tsk := simulator.PollTask(); tsk != nil; tsk = simulator.PollTask() {
-		simulator.TestSyncEachStep(tsk)
-		t.Logf("syncing: <%v> --- <%v>", simulator.SyncingOffset, simulator.SyncingData)
-		testutil.AssertNoError(t, simulator.SyncingError, "sync step")
-	}
-
+	err = simulator.PullOut(func() { t.Logf("syncing: <%v> --- <%v>", simulator.SyncingOffset, simulator.SyncingData) })
+	testutil.AssertNoError(t, err, "sync finish")
 	testutil.AssertEquals(t, target.IsCompleted(), true)
 
 	targethash, err := target.ComputeCryptoHash()

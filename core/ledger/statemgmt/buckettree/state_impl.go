@@ -443,12 +443,15 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 
 		if stateImpl.bucketTreeDelta == nil {
 			return fmt.Errorf("Verify fail for no content in root-updating step")
-		} else if rn := stateImpl.bucketTreeDelta.getRootNode(); rn == nil {
+		} else if rn := stateImpl.bucketTreeDelta.getRootNodeSafe(); rn == nil {
 			return fmt.Errorf("Verify fail for no content in root-updating step")
 		} else if rhash := rn.computeCryptoHash(); bytes.Compare(
 			rhash, stateImpl.underSync.targetStateHash) != 0 {
 			return fmt.Errorf("Verify fail on root: expected root hash [%X] but get [%X]",
-				rhash, rn.computeCryptoHash())
+				rhash, stateImpl.underSync.targetStateHash)
+		} else {
+			//done, and we set statehash now
+			stateImpl.lastComputedCryptoHash = rhash
 		}
 
 	} else {
@@ -469,7 +472,7 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 		for ind, node := range vbucketLevel {
 			for i, hash := range node.childrenCryptoHash {
 				if pos := stateImpl.currentConfig.computeChildPosition(ind, i); (pos < verifyRange[0] || pos > verifyRange[1]) && len(hash) != 0 {
-					return fmt.Errorf("found polluted bucket at [%d-%d], (should %v)", vlevel, ind)
+					return fmt.Errorf("found polluted bucket at [%d-%d], (should %v)", vlevel, pos, ind)
 				}
 			}
 		}
@@ -505,7 +508,8 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 	}
 
 	if stateImpl.underSync.current == nil {
-		logger.Infof("---- Syncing to state [%x] finish -----", stateImpl.underSync.targetStateHash)
+		//we has got lastcomputedcryptohash when verify level is -1
+		logger.Infof("---- Syncing to state [%x] finish -----", stateImpl.lastComputedCryptoHash)
 		stateImpl.underSync = nil
 	}
 
