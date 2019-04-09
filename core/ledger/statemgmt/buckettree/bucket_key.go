@@ -59,7 +59,7 @@ type bucketKey struct {
 
 func newBucketKey(conf *config, level int, bucketNumber int) *bucketKey {
 	if level > conf.getLowestLevel() || level < 0 {
-		panic(fmt.Errorf("Invalid Level [%d] for bucket key. Level can be between 0 and [%d]", level, conf.lowestLevel))
+		panic(fmt.Errorf("Invalid Level [%d] for bucket key. Level can be between 0 and [%d]", level, conf.getLowestLevel()))
 	}
 
 	if bucketNumber < 1 || bucketNumber > conf.getNumBuckets(level) {
@@ -90,8 +90,7 @@ func decodeBucketKey(conf *config, keyBytes []byte) *bucketKey {
 }
 
 func (bucketKey *bucketKey) getEncodedBytes() []byte {
-	encodedBytes := []byte{}
-	encodedBytes = append(encodedBytes, byte(0))
+	encodedBytes := []byte{0}
 	//level is never exceed 128 and it equal to a byte
 	//encodedBytes = append(encodedBytes, proto.EncodeVarint(uint64(bucketKey.level))...)
 	encodedBytes = append(encodedBytes, byte(bucketKey.level))

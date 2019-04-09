@@ -78,44 +78,8 @@ func initConfig(configs map[string]interface{}) *config {
 		panic("maxgroup number can not be less than 2")
 	}
 
-	//the default delta is sqrt(numBucket)
-	syncDelta := int(math.Sqrt(float64(numBuckets)))
-	//additional configs
-	if v, ok := configs[ConfigPartialDelta]; ok {
-		syncDelta = cast.ToInt(v)
-		logger.Debugf("syncDelta = cast.ToInt(v)	: syncDelta: [%s]", v)
-	}
-
-	//syncdelta MUST be adjusted to aligned on group number for a better efficient
-	if syncDelta%maxGroupingAtEachLevel != 0 {
-		//take the ceiling
-		syncDelta = (syncDelta/maxGroupingAtEachLevel + 1) * maxGroupingAtEachLevel
-	} else if syncDelta == 0 {
-		//panic it!
-		panic("syncdelta in 0 is specified")
-	}
-
-	logger.Debugf("buckettree: syncDelta is [%d]", syncDelta)
-
-	bucketCacheMaxSize := defaultBucketCacheMaxSize
-	if v, ok := configs[ConfigBucketCacheMaxSize]; ok {
-		bucketCacheMaxSize = cast.ToInt(v)
-		logger.Debugf("buckettree: bucketCacheMaxSize: [%d]", bucketCacheMaxSize)
-	}
-
-	//TODO: what the hell ...
-	hashFunction, ok := configs[ConfigHashFunction].(hashFunc)
-	if !ok {
-		hashFunction = fnvHash
-	}
-
 	conf := newConfig(numBuckets, maxGroupingAtEachLevel)
-	conf.syncDelta = syncDelta
-	conf.hashFunc = hashFunction
-	conf.bucketCacheMaxSize = bucketCacheMaxSize
-	logger.Infof("Initializing bucket tree state implemetation with configurations %+v", conf)
-	logger.Infof("bucket tree lowestLevel: %+v", conf.lowestLevel)
-	logger.Infof("bucket tree levelToNumBucketsMap: %+v", conf.levelToNumBucketsMap)
+	conf.setting(configs)
 
 	return conf
 }
@@ -125,8 +89,6 @@ func newConfig(numBuckets, maxGroupingAtEachLevel int) *config {
 		lowestLevel:          -1,
 		levelToNumBucketsMap: make(map[int]int),
 		hashFunc:             fnvHash,
-		syncDelta:            maxGroupingAtEachLevel,
-		newBucketKeyEncoding: !useLegacyBucketKeyEncoding,
 	}
 
 	currentLevel := 0
@@ -154,32 +116,90 @@ func newConfig(numBuckets, maxGroupingAtEachLevel int) *config {
 	for k, v := range levelInfoMap {
 		conf.levelToNumBucketsMap[conf.lowestLevel-k] = v
 	}
+
+	logger.Infof("new bucket tree lowestLevel: %+v", conf.lowestLevel)
+	logger.Infof("new bucket tree levelToNumBucketsMap: %+v", conf.levelToNumBucketsMap)
+
 	return conf
+}
+
+func (conf *config) setting(configs map[string]interface{}) {
+
+	//the default delta is sqrt(numBucket)
+	syncDelta := int(math.Sqrt(float64(conf.getNumBucketsAtLowestLevel())))
+	//additional configs
+	if v, ok := configs[ConfigPartialDelta]; ok {
+		syncDelta = cast.ToInt(v)
+		logger.Debugf("syncDelta = cast.ToInt(v)	: syncDelta: [%s]", v)
+	}
+
+	//syncdelta MUST be adjusted to aligned on group number for a better efficient
+	if syncDelta%conf.maxGroupingAtEachLevel != 0 {
+		//take the ceiling
+		syncDelta = (syncDelta/conf.maxGroupingAtEachLevel + 1) * conf.maxGroupingAtEachLevel
+	} else if syncDelta == 0 {
+		//panic it!
+		panic("syncdelta in 0 is specified")
+	}
+
+	logger.Debugf("buckettree: syncDelta is [%d]", syncDelta)
+
+	bucketCacheMaxSize := defaultBucketCacheMaxSize
+	if v, ok := configs[ConfigBucketCacheMaxSize]; ok {
+		bucketCacheMaxSize = cast.ToInt(v)
+		logger.Debugf("buckettree: bucketCacheMaxSize: [%d]", bucketCacheMaxSize)
+	}
+
+	hashFunction, ok := configs[ConfigHashFunction].(hashFunc)
+	if !ok {
+		hashFunction = fnvHash
+	}
+
+	conf.syncDelta = syncDelta
+	conf.hashFunc = hashFunction
+	conf.bucketCacheMaxSize = bucketCacheMaxSize
+	conf.newBucketKeyEncoding = !useLegacyBucketKeyEncoding
+	logger.Infof("setting configurations to %+v", conf)
+
 }
 
 var configDataKey = []byte{17, 1}
 
-func loadconfig(bts []byte) (*config, error) {
-	dec := gob.NewDecoder(bytes.NewReader(bts))
-	conf := &config{
-		levelToNumBucketsMap: make(map[int]int),
-		hashFunc:             fnvHash,
-	}
+type configPersisting struct {
+	Grouping   int
+	Levels     int
+	BucketsNum map[int]int
+}
 
-	if err := dec.Decode(conf); err != nil {
+func loadconfig(bts []byte, configs map[string]interface{}) (*config, error) {
+	dec := gob.NewDecoder(bytes.NewReader(bts))
+	confload := &configPersisting{BucketsNum: make(map[int]int)}
+
+	if err := dec.Decode(confload); err != nil {
 		return nil, err
 	}
 
-	logger.Infof("Load bucket tree state implemetation with configurations %+v", conf)
-	logger.Infof("bucket tree lowestLevel: %+v", conf.lowestLevel)
-	logger.Infof("bucket tree levelToNumBucketsMap: %+v", conf.levelToNumBucketsMap)
+	conf := &config{
+		maxGroupingAtEachLevel: confload.Grouping,
+		lowestLevel:            confload.Levels,
+		levelToNumBucketsMap:   confload.BucketsNum,
+	}
 
+	logger.Infof("load bucket tree lowestLevel: %+v", conf.lowestLevel)
+	logger.Infof("load bucket tree levelToNumBucketsMap: %+v", conf.levelToNumBucketsMap)
+
+	conf.setting(configs)
 	return conf, nil
 }
 
 func (config *config) persist() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	if err := gob.NewEncoder(buf).Encode(config); err != nil {
+	confsave := &configPersisting{
+		Grouping:   config.maxGroupingAtEachLevel,
+		Levels:     config.lowestLevel,
+		BucketsNum: config.levelToNumBucketsMap,
+	}
+	if err := gob.NewEncoder(buf).Encode(confsave); err != nil {
 		return nil, err
 	}
 

@@ -53,7 +53,7 @@ func (stateImpl *StateImpl) Initialize(configs map[string]interface{}) error {
 	if cfgSaved, err := stateImpl.GetValue(db.StateCF, configDataKey); err != nil {
 		return err
 	} else if len(cfgSaved) != 0 {
-		stateImpl.currentConfig, err = loadconfig(cfgSaved)
+		stateImpl.currentConfig, err = loadconfig(cfgSaved, configs)
 		if err != nil {
 			return fmt.Errorf("loading config fail: %s", err)
 		}

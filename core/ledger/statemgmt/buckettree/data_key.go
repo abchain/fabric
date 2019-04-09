@@ -70,7 +70,6 @@ func decodeBucketNumber(encodedBytes []byte) (int, int) {
 	if len(encodedBytes) == 0 {
 		return 0, 0
 	} else {
-		//so we can still read old key ...
 		bucketNum, bytesConsumed := util.DecodeOrderPreservingVarUint64(encodedBytes)
 		return int(bucketNum), bytesConsumed
 	}

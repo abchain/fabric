@@ -41,6 +41,11 @@ func (snapshotItr *StateSnapshotIterator) Next() bool {
 	snapshotItr.dbItr.Next()
 
 	//now we need to check the iterator is in valid range for datanode (1-15)
+	return snapshotItr.Valid()
+}
+
+func (snapshotItr *StateSnapshotIterator) Valid() bool {
+	//now we need to check the iterator is in valid range for datanode (1-15)
 	return snapshotItr.dbItr.Valid() && snapshotItr.dbItr.Key().Data()[0] < invalidDataPrefix
 }
 

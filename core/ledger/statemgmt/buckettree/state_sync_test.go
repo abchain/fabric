@@ -10,9 +10,8 @@ import (
 )
 
 func TestSyncStepCalc(t *testing.T) {
-	testDBWrapper.CleanDB(t)
-
 	testCfg := func(num, group int, delta int, header string) (int, []int) {
+		testDBWrapper.CleanDB(t)
 		s := newStateImplTestWrapperWithCustomConfig(t, num, group)
 		cfg := s.stateImpl.currentConfig
 		cfg.syncDelta = delta
@@ -194,7 +193,7 @@ func TestSyncBasic2(t *testing.T) {
 	testutil.AssertNoError(t, sim.PullOut(), "pullout")
 }
 
-func TestSyncLarge(t *testing.T) {
+func testSyncLarge_basic(t *testing.T) {
 	//large set with iteration must iterate on bucketnode larger than 128
 	testDBWrapper.CleanDB(t)
 
@@ -221,6 +220,21 @@ func TestSyncLarge(t *testing.T) {
 	logMetaOutput(t, sim)
 	logCacheOutput(t, src, 6, 6)
 	testutil.AssertNoError(t, retE, "pullout")
+}
+
+func TestSyncLarge(t *testing.T) {
+	defencoding := useLegacyBucketKeyEncoding
+	useLegacyBucketKeyEncoding = true
+	testSyncLarge_basic(t)
+	useLegacyBucketKeyEncoding = defencoding
+}
+
+func TestSyncLarge_Legacy(t *testing.T) {
+	defencoding := useLegacyBucketKeyEncoding
+	useLegacyBucketKeyEncoding = false
+	testSyncLarge_basic(t)
+
+	useLegacyBucketKeyEncoding = defencoding
 }
 
 func TestSyncFlaw1(t *testing.T) {

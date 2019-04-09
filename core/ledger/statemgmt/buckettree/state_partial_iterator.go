@@ -39,7 +39,7 @@ func newPartialSnapshotIterator(snapshot *db.DBSnapshot, cfg *config) (*PartialS
 func (partialItr *PartialSnapshotIterator) innerNext() bool {
 	if partialItr.justSeeked {
 		partialItr.justSeeked = false
-		return true
+		return partialItr.StateSnapshotIterator.Valid()
 	} else {
 		return partialItr.StateSnapshotIterator.Next()
 	}
@@ -61,6 +61,14 @@ func (partialItr *PartialSnapshotIterator) Next() bool {
 
 	keyBytes := statemgmt.Copy(partialItr.dbItr.Key().Data())
 	valueBytes := statemgmt.Copy(partialItr.dbItr.Value().Data())
+
+	// for debug ...
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		panic(fmt.Sprintf("seeking data at bucket %d, parse key [%X] and panic <%s>", partialItr.currentBucketNum, keyBytes, r))
+	// 	}
+	// }()
+
 	dataNode := unmarshalDataNodeFromBytes(keyBytes, valueBytes)
 
 	//logger.Debugf("seeking data at bucket %d, get %v [key %X]", partialItr.currentBucketNum, dataNode, keyBytes)
