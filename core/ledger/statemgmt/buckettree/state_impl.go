@@ -80,9 +80,17 @@ func (stateImpl *StateImpl) Initialize(configs map[string]interface{}) error {
 
 	stateImpl.bucketCache = newBucketCache(stateImpl.currentConfig.bucketCacheMaxSize, stateImpl.OpenchainDB)
 	stateImpl.bucketCache.loadAllBucketNodesFromDB(stateImpl.currentConfig)
-	stateImpl.underSync = checkSyncProcess(stateImpl)
 
-	if stateImpl.underSync != nil {
+	if syncSaved, err := stateImpl.GetValue(db.StateCF, partialStatusKey); err != nil {
+		return fmt.Errorf("reading syncing state fail: %s", err)
+	} else if len(syncSaved) != 0 {
+
+		stateImpl.underSync, err = loadSyncProcess(stateImpl, syncSaved)
+		if err != nil {
+			return fmt.Errorf("loading syncing state fail: %s", err)
+		}
+		stateImpl.lastComputedCryptoHash = stateImpl.underSync.targetStateHash
+		stateImpl.recomputeCryptoHash = false
 		return stateImpl.underSync
 	} else {
 		return nil
@@ -299,10 +307,11 @@ func (stateImpl *StateImpl) AddChangesForPersistence(writeBatch *db.DBWriteBatch
 
 	stateImpl.addBucketNodeChangesForPersistence(writeBatch)
 	if stateImpl.underSync != nil {
-		err := stateImpl.underSync.PersistProgress(writeBatch)
+		bt, err := stateImpl.underSync.PersistProgress()
 		if err != nil {
 			return err
 		}
+		writeBatch.PutCF(writeBatch.GetDBHandle().StateCF, partialStatusKey, bt)
 	}
 
 	return nil
@@ -401,6 +410,11 @@ func (stateImpl *StateImpl) GetPartialRangeIterator(snapshot *db.DBSnapshot) (st
 }
 
 func (stateImpl *StateImpl) InitPartialSync(statehash []byte) {
+
+	if !stateImpl.IsCompleted() {
+		logger.Warningf("processing syncing [to target %X] is pruned", stateImpl.underSync.targetStateHash)
+	}
+
 	stateImpl.underSync = newSyncProcess(stateImpl, statehash)
 	//clear bucket cache
 	stateImpl.lastComputedCryptoHash = statehash
@@ -415,6 +429,14 @@ func (stateImpl *StateImpl) InitPartialSync(statehash []byte) {
 
 func (stateImpl *StateImpl) IsCompleted() bool {
 	return stateImpl.underSync == nil
+}
+
+func (stateImpl *StateImpl) SyncTarget() []byte {
+	if stateImpl.underSync == nil {
+		return nil
+	}
+
+	return stateImpl.underSync.targetStateHash
 }
 
 func (stateImpl *StateImpl) RequiredParts() ([]*pb.SyncOffset, error) {

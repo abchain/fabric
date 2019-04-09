@@ -169,6 +169,7 @@ type configPersisting struct {
 	Grouping   int
 	Levels     int
 	BucketsNum map[int]int
+	SyncDelta  int
 }
 
 func loadconfig(bts []byte, configs map[string]interface{}) (*config, error) {

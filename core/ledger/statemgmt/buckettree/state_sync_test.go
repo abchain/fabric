@@ -96,19 +96,34 @@ func start(t *testing.T, fillnum, delta int, src, target *stateImplTestWrapper) 
 	return simulator
 }
 
+func attach(t *testing.T, src, target *stateImplTestWrapper) *statemgmt.SyncSimulator {
+
+	simulator := statemgmt.NewSyncSimulator(target.stateImpl.OpenchainDB)
+
+	sn := src.stateImpl.GetSnapshot()
+	srci, err := src.stateImpl.GetPartialRangeIterator(sn)
+	testutil.AssertNoError(t, err, "partial iterator")
+
+	simulator.AttachSource(&iteratorWithSN{srci, sn})
+	simulator.AttachTarget(target.stateImpl)
+
+	testutil.AssertEquals(t, target.stateImpl.IsCompleted(), false)
+	return simulator
+}
+
 func finalize(s *stateImplTestWrapper) {
 	db.StopDB(s.stateImpl.OpenchainDB)
 }
 
 func logMetaOutput(t *testing.T, sim *statemgmt.SyncSimulator) {
-	t.Logf("Now log meta chunk: [%v]", sim.SyncingOffset.GetBuckettree())
+	t.Logf("Now log meta chunk: [%v]", sim.SyncingData.GetOffset().GetBuckettree())
 	for _, node := range sim.SyncingData.GetMetaData().GetBuckettree().GetNodes() {
 		t.Logf("   [%d-%d] %X", node.Level, node.BucketNum, node.CryptoHash)
 	}
 }
 
 func logDataOutput(t *testing.T, sim *statemgmt.SyncSimulator) {
-	t.Logf("Now log delta chunk: [%v]", sim.SyncingOffset.GetBuckettree())
+	t.Logf("Now log delta chunk: [%v]", sim.SyncingData.GetOffset().GetBuckettree())
 	for k, v := range sim.SyncingData.GetChaincodeStateDeltas() {
 		t.Logf("   %s: %d kvpairs", k, len(v.GetUpdatedKVs()))
 	}
@@ -235,6 +250,85 @@ func TestSyncLarge_Legacy(t *testing.T) {
 	testSyncLarge_basic(t)
 
 	useLegacyBucketKeyEncoding = defencoding
+}
+
+func TestSyncBucketNodeEncodeCompatible(t *testing.T) {
+	//large set with iteration must iterate on bucketnode larger than 128
+	testDBWrapper.CleanDB(t)
+
+	defencoding := useLegacyBucketKeyEncoding
+	useLegacyBucketKeyEncoding = false
+	src := prepare(t, 1000, 3)
+	useLegacyBucketKeyEncoding = true
+	target := prepare(t, 1000, 3)
+	useLegacyBucketKeyEncoding = defencoding
+	defer finalize(src)
+	defer finalize(target)
+
+	testutil.AssertEquals(t, src.stateImpl.currentConfig.newBucketKeyEncoding, true)
+	testutil.AssertEquals(t, target.stateImpl.currentConfig.newBucketKeyEncoding, false)
+
+	sim := start(t, 350, 2, src, target)
+	defer sim.Release()
+
+	testutil.AssertNoError(t, sim.PullOut(), "pullout")
+}
+
+func TestSyncResuming(t *testing.T) {
+	//large set with iteration must iterate on bucketnode larger than 128
+	testDBWrapper.CleanDB(t)
+
+	src, target := prepare(t, 1000, 3), prepare(t, 1000, 3)
+	defer finalize(src)
+	defer finalize(target)
+
+	sim1 := start(t, 350, 2, src, target)
+	defer sim1.Release()
+
+	//phase 1, part of metadata (we need 45 transfering to level 6)
+	for i := 0; i < 25; i++ {
+		testutil.AssertNoError(t, sim1.TestSyncEachStep(), "sync phase 1")
+	}
+
+	dummyWrapper := &stateImplTestWrapper{map[string]interface{}{}, nil, t}
+	dummyWrapper.stateImpl = NewStateImpl(target.stateImpl.OpenchainDB)
+	err := dummyWrapper.stateImpl.Initialize(dummyWrapper.configMap)
+	testutil.AssertError(t, err, "should be inprocess error")
+	if _, ok := err.(statemgmt.SyncInProgress); !ok {
+		t.Fatalf("unexpect type of error [%#v]", err)
+	}
+	testutil.AssertEquals(t, dummyWrapper.stateImpl.IsCompleted(), false)
+	testutil.AssertEquals(t, dummyWrapper.stateImpl.SyncTarget(), src.computeCryptoHash())
+
+	//don't call release, or it will double kill ...
+	sim2 := attach(t, src, dummyWrapper)
+	defer sim2.Release()
+
+	verifyLevel := func(s *StateImpl, expectedlvl int) {
+		raw, err := s.RequiredParts()
+		testutil.AssertNoError(t, err, "peek task")
+
+		first := raw[0].GetBuckettree()
+		testutil.AssertNotNil(t, first)
+
+		testutil.AssertEquals(t, int(first.GetLevel()), expectedlvl)
+	}
+
+	verifyLevel(dummyWrapper.stateImpl, 5)
+	//phase 2, finish metadata and start data transfer (require ~130 transfers)
+	for i := 0; i < 130; i++ {
+		testutil.AssertNoError(t, sim2.TestSyncEachStep(), "sync phase 2")
+	}
+
+	dummyWrapper.stateImpl = NewStateImpl(target.stateImpl.OpenchainDB)
+	err = dummyWrapper.stateImpl.Initialize(dummyWrapper.configMap)
+	testutil.AssertError(t, err, "should be inprocess error")
+
+	sim3 := attach(t, src, dummyWrapper)
+	defer sim3.Release()
+
+	verifyLevel(dummyWrapper.stateImpl, 7)
+	testutil.AssertNoError(t, sim3.PullOut(), "pullout")
 }
 
 func TestSyncFlaw1(t *testing.T) {

@@ -62,11 +62,8 @@ func TestConfig(t *testing.T) {
 
 func TestConfigPersisting(t *testing.T) {
 	testDBWrapper.CleanDB(t)
-
-	impl1 := prepare(t, 100, 2)
-	defer finalize(impl1)
-
-	impl2 := newStateImplTestWrapperOnDBWithCustomConfig(t, impl1.stateImpl.OpenchainDB, 50, 5)
+	impl1 := newStateImplTestWrapperWithCustomConfig(t, 100, 2)
+	impl2 := newStateImplTestWrapperWithCustomConfig(t, 50, 5)
 
 	testutil.AssertEquals(t, impl1.stateImpl.currentConfig.maxGroupingAtEachLevel, impl2.stateImpl.currentConfig.maxGroupingAtEachLevel)
 	testutil.AssertEquals(t, impl1.stateImpl.currentConfig.getNumBucketsAtLowestLevel(), impl2.stateImpl.currentConfig.getNumBucketsAtLowestLevel())

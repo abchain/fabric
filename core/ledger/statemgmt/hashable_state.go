@@ -87,6 +87,7 @@ type SyncInProgress interface {
 type DividableSyncState interface {
 	HashableState
 	InitPartialSync([]byte)
+	SyncTarget() []byte
 	IsCompleted() bool
 	//get all tasks current available, caller is encouraged to CACHE the result,
 	//complete and apply all of them, then call RequiredParts again for more

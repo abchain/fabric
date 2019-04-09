@@ -5,6 +5,7 @@ import (
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/ledger/testutil"
 	"github.com/abchain/fabric/protos"
+	"github.com/golang/protobuf/proto"
 	"testing"
 )
 
@@ -74,9 +75,17 @@ func (s *SyncSimulator) TestSyncEachStep_Pollphase() *SyncSimulator {
 
 	if s.SyncingError != nil {
 		return s
+	} else if s.SyncingOffset == nil {
+		s.SyncingError = errors.New("No task")
+		return s
 	}
 
-	if data, err := GetRequiredParts(s.src, s.SyncingOffset); err != nil {
+	//simluating the transfer process, the passed data must be marshal/unmarshal
+	v := new(protos.SyncOffset)
+	bt, _ := proto.Marshal(s.SyncingOffset)
+	proto.Unmarshal(bt, v)
+
+	if data, err := GetRequiredParts(s.src, v); err != nil {
 		s.SyncingError = err
 	} else {
 		s.SyncingData = data
@@ -89,11 +98,18 @@ func (s *SyncSimulator) TestSyncEachStep_Applyphase() *SyncSimulator {
 
 	if s.SyncingError != nil {
 		return s
+	} else if s.SyncingData == nil {
+		s.SyncingError = errors.New("No data")
+		return s
 	}
 
-	s.target.PrepareWorkingSet(GenUpdateStateDelta(s.SyncingData.ChaincodeStateDeltas))
+	v := new(protos.SyncStateChunk)
+	bt, _ := proto.Marshal(s.SyncingData)
+	proto.Unmarshal(bt, v)
 
-	if err := s.target.ApplyPartialSync(s.SyncingData); err != nil {
+	s.target.PrepareWorkingSet(GenUpdateStateDelta(v.ChaincodeStateDeltas))
+
+	if err := s.target.ApplyPartialSync(v); err != nil {
 		s.SyncingError = err
 		return s
 	}
