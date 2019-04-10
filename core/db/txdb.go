@@ -163,7 +163,11 @@ func (mo *globalstatusMO) FullMerge(key, existingValue []byte, operands [][]byte
 		opcode := int(op[0])
 		n, h, e := decodeMergeValue(op[1:])
 		if e != nil || (n != 0 && n < gs.Count) {
-			continue //skip this op, except 0, which is left for update_node
+			//skip this op, except 0, which is left for update_node
+			//notice it can't not be "<=" because the "equal" case
+			//is important
+			dbLogger.Warningf("%s have deprecated id %d (current %d)", key, n, gs.Count)
+			continue
 		}
 
 		switch opcode {
@@ -237,7 +241,7 @@ func (mo *globalstatusMO) Name() string {
 
 var globalDataDB = new(GlobalDataDB)
 var openglobalDBLock sync.Mutex
-var stateHashLimit = 32
+var stateHashLimit = 64
 
 func (txdb *GlobalDataDB) open(dbpath string) error {
 
@@ -307,6 +311,18 @@ func (txdb *GlobalDataDB) isVirtualState(k []byte) bool {
 	return k[0] == prefix_virtualNode
 }
 
+func (txdb *GlobalDataDB) innerUpdateState(gs *protos.GlobalState) (*protos.GlobalState, error) {
+	var err error
+	for ud, ok := txdb.updating[stateToEdge(gs).String()]; ok; ud, ok = txdb.updating[stateToEdge(gs).String()] {
+		gs, err = ud.updateGlobalState(gs)
+		if err != nil {
+			return nil, fmt.Errorf("state was ruined (has no valid update: %s)", err)
+		}
+	}
+
+	return gs, nil
+}
+
 //read state from snapshot, then update it from updating map
 //CAUTION: must be executed under the protection of globalStateLock
 func (txdb *GlobalDataDB) readState(sn *gorocksdb.Snapshot, key []byte) (*protos.GlobalState, error) {
@@ -320,14 +336,7 @@ func (txdb *GlobalDataDB) readState(sn *gorocksdb.Snapshot, key []byte) (*protos
 			return nil, fmt.Errorf("state was ruined (could not decode: %s)", err)
 		} else {
 
-			for ud, ok := txdb.updating[stateToEdge(gs).String()]; ok; ud, ok = txdb.updating[stateToEdge(gs).String()] {
-				gs, err = ud.updateGlobalState(gs)
-				if err != nil {
-					return nil, fmt.Errorf("state was ruined (has no valid update: %s)", err)
-				}
-			}
-
-			return gs, nil
+			return txdb.innerUpdateState(gs)
 		}
 
 	}
@@ -351,13 +360,13 @@ func (txdb *GlobalDataDB) registryTasks(tsk *pathUnderUpdating) error {
 	//notice: onPath CANNOT be one entry of updating map for we can not obtain reference
 	//state within the path of that (it will be updated to one of the paths in that entry)
 	if _, ok := txdb.updating[tsk.index]; ok {
-		return fmt.Errorf("Duplicated updatine path <%s> ", tsk.index)
+		return fmt.Errorf("Duplicated updatine path <%s> when try to registry %v", tsk.index, tsk)
 	}
 
 	//clean current activing the task affect ...
 	if tactivings, ok := txdb.activing[tsk.index]; ok {
 		for _, activingTask := range tactivings {
-			dbLogger.Debugf("replace existed active pathupdae task [%s]", tsk.index)
+			dbLogger.Debugf("replace existed active pathupdate task [%s]", tsk.index)
 			if activingTask.cancel != nil {
 				activingTask.cancel()
 			}
@@ -391,6 +400,7 @@ func (txdb *GlobalDataDB) registryTasks(tsk *pathUnderUpdating) error {
 		ind := newtsk.index()
 		txdb.activing[ind] = append(txdb.activing[ind], newtsk)
 	}
+	dbLogger.Debugf("registry pathupdate task [%s]/%v", tsk.index, tsk)
 
 	return nil
 }
@@ -439,6 +449,8 @@ func (txdb *GlobalDataDB) newPathUpdatedByBranchNode(key []byte, refGS *protos.G
 		path.activingPath[tsk] = true
 	}
 
+	dbLogger.Debugf("build pathupdate task (branch mode) [before %v, after %v]", beforeTsk, afterTsk)
+
 	return path
 }
 
@@ -464,6 +476,8 @@ func (txdb *GlobalDataDB) newPathUpdatedByConnected(startGS, refGS *protos.Globa
 		path.before = tsk
 		path.activingPath[tsk] = true
 
+		dbLogger.Debugf("build pathupdate task (connect mode) [before %v]", tsk)
+
 	} else if len(startGS.ParentNodeStateHash) == 0 {
 		path.branchedId = startGS.Count
 		targetId := max(startGS.Count, refGS.Count+1) + 1
@@ -481,6 +495,9 @@ func (txdb *GlobalDataDB) newPathUpdatedByConnected(startGS, refGS *protos.Globa
 		tsk.idoffset = targetId - startGS.Count
 		path.after = tsk
 		path.activingPath[tsk] = true
+
+		dbLogger.Debugf("build pathupdate task (connect mode) [after %v]", tsk)
+
 	} else {
 		dbLogger.Errorf("required to build update task for malformed state [%v]", startGS)
 		return nil
@@ -489,18 +506,74 @@ func (txdb *GlobalDataDB) newPathUpdatedByConnected(startGS, refGS *protos.Globa
 	return path
 }
 
-func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.WriteBatch, parentStateHash []byte, statehash []byte) ([]*pathUpdateTask, error) {
+func (txdb *GlobalDataDB) addGSCritical(parentStateHash []byte, statehash []byte) (sn *gorocksdb.Snapshot, cmt []*pathUpdateTask, retErr error) {
 
+	//critical part must be serialized
+	txdb.globalStateLock.Lock()
+	defer txdb.globalStateLock.Unlock()
+
+	sn = txdb.NewSnapshot()
 	parentgs, newgs := txdb.mustReadState(sn, parentStateHash), txdb.mustReadState(sn, statehash)
-	nbhBackup, lbhBackup := parentgs.GetNextBranchNodeStateHash(), newgs.GetLastBranchNodeStateHash()
+	dbLogger.Debugf("add global state core [%x]@[%x]", statehash, parentStateHash)
+
 	connected := parentgs != nil && newgs != nil
+	if connected {
+		//detect the cyclic case, in this case, parent and newgs will change the same path
+		//and lead to a duplicated path error, we must resolve it by change the next/last
+		//node into each other, this must ok even one of the node is not really a branched
+		//one
+		if bytes.Compare(parentgs.NextBranchNodeStateHash, newgs.NextBranchNodeStateHash) == 0 {
+
+			dbLogger.Infof("found cyclic when [%x] is connected to [%x], resolve it", parentStateHash, statehash)
+			if len(parentgs.NextNodeStateHash) == 0 && len(newgs.ParentNodeStateHash) == 0 {
+				//"pure" cylic, a single path connect its tail from head, we resolve
+				//this case by add a dummy node on the tail
+				dbLogger.Debugf("resolving pure cyclic")
+				newgs.ParentNodeStateHash = append(newgs.ParentNodeStateHash, txdb.genTerminalStateKey())
+			}
+
+			if len(parentgs.NextNodeStateHash) > 0 {
+				if parentgs.Count > newgs.Count {
+					newgs.NextBranchNodeStateHash = parentStateHash
+				} else {
+					newgs.LastBranchNodeStateHash = parentStateHash
+				}
+				//we in fact update newgs in advance
+				newgs.Count++
+				dbLogger.Debugf("update newgs to [%v] using branched parent as base", newgs)
+			} else if len(newgs.ParentNodeStateHash) > 0 {
+				parentgs.LastBranchNodeStateHash = statehash
+				//sanity check, should not happen
+				if parentgs.Count <= newgs.Count {
+					panic(fmt.Sprintf("unexpected status with parent [%v] and new [%v]", parentgs, newgs))
+					//???
+					//parentgs.NextBranchNodeStateHash = statehash
+				}
+				parentgs.Count++
+				dbLogger.Debugf("update parent to [%v] using branched ngw as base", parentgs)
+			}
+			//create new snapshot here so we obtain a state which is the two target
+			//node has been updated, which is important in updating a cyclic case
+			defer func() {
+				if retErr == nil {
+					dbLogger.Debug("update snapshot for cyclic case")
+					txdb.ReleaseSnapshot(sn)
+					sn = txdb.NewSnapshot()
+				}
+			}()
+
+		}
+	}
+
+	//branch node information must be keep here ...
+	nbhBackup, lbhBackup := parentgs.GetNextBranchNodeStateHash(), newgs.GetLastBranchNodeStateHash()
 
 	//first update possible change on branch inf., so the following reference will be correct
 	if parentgs != nil {
 		for _, childHash := range parentgs.NextNodeStateHash {
 			if bytes.Compare(statehash, childHash) == 0 {
 				//we have a duplicated addition (both current and parent is existed and connected)
-				return nil, nil
+				return
 			}
 		}
 
@@ -553,7 +626,10 @@ func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.Wr
 		}
 	}
 
-	cmt := []*pathUpdateTask{}
+	//start writing phase ...
+	wb := txdb.NewWriteBatch()
+	defer wb.Destroy()
+
 	//update task for unbranched state
 	//in handling task, we must "restore" the corresponding state into
 	//its original status (without connected with another)
@@ -566,7 +642,8 @@ func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.Wr
 			//we must trigger path updating task for critical point
 			upath := txdb.newPathUpdatedByBranchNode(parentStateHash, parentgs)
 			if err := txdb.registryTasks(upath); err != nil {
-				return nil, err
+				retErr = err
+				return
 			}
 			cmt = append(cmt, upath.before, upath.after)
 			//also update branch information, we have no merge op for this state any more
@@ -576,7 +653,8 @@ func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.Wr
 			//that is, nextnode is 0, we have a "connected" case
 			upath := txdb.newPathUpdatedByConnected(parentgs, newgs, parentStateHash)
 			if err := txdb.registryTasks(upath); err != nil {
-				return nil, err
+				retErr = err
+				return
 			}
 			cmt = append(cmt, upath.before)
 		}
@@ -589,7 +667,8 @@ func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.Wr
 			newgs.LastBranchNodeStateHash = lbhBackup
 			upath := txdb.newPathUpdatedByBranchNode(statehash, newgs)
 			if err := txdb.registryTasks(upath); err != nil {
-				return nil, err
+				retErr = err
+				return
 			}
 			cmt = append(cmt, upath.before, upath.after)
 			newgs.LastBranchNodeStateHash = statehash
@@ -597,7 +676,8 @@ func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.Wr
 		} else if connected {
 			upath := txdb.newPathUpdatedByConnected(newgs, parentgs, statehash)
 			if err := txdb.registryTasks(upath); err != nil {
-				return nil, err
+				retErr = err
+				return
 			}
 			cmt = append(cmt, upath.after)
 		}
@@ -606,17 +686,18 @@ func (txdb *GlobalDataDB) addGSCritical(sn *gorocksdb.Snapshot, wb *gorocksdb.Wr
 
 	//because mustread always obtain the up-to-date state, write-after-read is possible
 	if vbytes, err := parentgs.Bytes(); err != nil {
-		return nil, fmt.Errorf("could not encode state [%x]: %s", parentStateHash, err)
+		retErr = fmt.Errorf("could not encode state [%x]: %s", parentStateHash, err)
 	} else {
 		wb.PutCF(txdb.globalCF, parentStateHash, vbytes)
 	}
 	if vbytes, err := newgs.Bytes(); err != nil {
-		return nil, fmt.Errorf("could not encode state [%x]: %s", statehash, err)
+		retErr = fmt.Errorf("could not encode state [%x]: %s", statehash, err)
 	} else {
 		wb.PutCF(txdb.globalCF, statehash, vbytes)
 	}
 
-	return cmt, nil
+	retErr = txdb.BatchCommit(wb)
+	return
 
 }
 
@@ -624,6 +705,7 @@ func (txdb *GlobalDataDB) AddGlobalState(parentStateHash []byte, statehash []byt
 
 	if bytes.Compare(parentStateHash, statehash) == 0 {
 		//never concat same state
+		dbLogger.Warningf("self link at [%X] is omitted", statehash)
 		return nil
 	} else if len(statehash) > txdb.globalHashLimit {
 		return fmt.Errorf("add a state whose hash (%x) is longer than limited (%d)", statehash, txdb.globalHashLimit)
@@ -631,32 +713,17 @@ func (txdb *GlobalDataDB) AddGlobalState(parentStateHash []byte, statehash []byt
 		return fmt.Errorf("add a parent state whose hash (%x) is longer than limited (%d)", parentStateHash, txdb.globalHashLimit)
 	}
 
-	wb := txdb.NewWriteBatch()
-	defer wb.Destroy()
-
-	//this read and write is critical and must be serialized
-	txdb.globalStateLock.Lock()
-
-	sn := txdb.NewSnapshot()
-	defer txdb.ReleaseSnapshot(sn)
-
-	tsks, err := txdb.addGSCritical(sn, wb, parentStateHash, statehash)
-	if err == nil {
-		//TODO: we may also need to persist updating tasks?
-		err = txdb.BatchCommit(wb)
-		if err != nil {
-			dbLogger.Errorf("Commiting add global state fail: %s", err)
-		}
+	sn, tsks, err := txdb.addGSCritical(parentStateHash, statehash)
+	if sn != nil {
+		defer txdb.ReleaseSnapshot(sn)
 	}
 
-	txdb.globalStateLock.Unlock()
-
-	if len(tsks) == 0 {
+	if err != nil || len(tsks) == 0 {
 		return err
 	}
 
-	//notice writebatch must be clear first!
-	wb.Clear()
+	wb := txdb.NewWriteBatch()
+	defer wb.Destroy()
 
 	//execute all tasks ...
 	for _, task := range tsks {
@@ -667,6 +734,7 @@ func (txdb *GlobalDataDB) AddGlobalState(parentStateHash []byte, statehash []byt
 				dbLogger.Errorf("Commiting updatepath task fail: %s", err)
 				return err
 			}
+			//notice writebatch must be clear after commit!
 			wb.Clear()
 		}
 	}

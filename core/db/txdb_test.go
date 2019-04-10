@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/abchain/fabric/core/util"
 	pb "github.com/abchain/fabric/protos"
+	"github.com/tecbot/gorocksdb"
 	"math/rand"
 	"testing"
 	"time"
@@ -165,6 +166,14 @@ func assertIntEqual(t *testing.T, v int, exp int) {
 	t.Fatalf("Value is not equal: get %d, expected %d", v, exp)
 }
 
+func assertUint64Equal(t *testing.T, v uint64, exp uint64) {
+	if v == exp {
+		return
+	}
+
+	t.Fatalf("Value is not equal: get %d, expected %d", v, exp)
+}
+
 func assertByteEqual(t *testing.T, v []byte, expected string) {
 	if expected == "" && v == nil {
 		return
@@ -209,6 +218,11 @@ func testTerminalKeyGen() []byte {
 
 func adjustTKGen(f func() []byte) (ret func() []byte) {
 	terminalKeyGen, ret = f, terminalKeyGen
+	return
+}
+
+func adjustIDStart(s uint64) (old uint64) {
+	old, detachedIdStart = detachedIdStart, s
 	return
 }
 
@@ -487,6 +501,7 @@ func TestTxDBGlobalState_Basic(t *testing.T) {
 
 	//test for the base state rw: a linear state, include detaching and connecting
 	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
 	Start()
 	globalDataDB.globalHashLimit = 8
 	defer deleteTestDBPath()
@@ -539,6 +554,7 @@ func TestTxDBGlobalState_Basic(t *testing.T) {
 func TestTxDBGlobalState_BranchRW(t *testing.T) {
 
 	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
 	Start()
 	globalDataDB.globalHashLimit = 8
 	defer deleteTestDBPath()
@@ -688,6 +704,7 @@ func TestTxDBGlobalState_ComplexBranch(t *testing.T) {
 	//test many different type of connectionstate: T-shape, H-shape etc
 
 	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
 	Start()
 	globalDataDB.globalHashLimit = 8
 	defer deleteTestDBPath()
@@ -772,19 +789,303 @@ func TestTxDBGlobalState_ComplexBranch(t *testing.T) {
 	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
 }
 
-func TestTxDBGlobalState_Purecylic(t *testing.T) {
+func handleTask(sn *gorocksdb.Snapshot, tsks []*pathUpdateTask) {
+
+	wb := globalDataDB.NewWriteBatch()
+	defer wb.Destroy()
+
+	//execute all tasks ...
+	for _, task := range tsks {
+		defer task.finalize(globalDataDB)
+		for task.updatePath(sn, wb, globalDataDB) == shouldCommit {
+		}
+	}
+
+	globalDataDB.BatchCommit(wb)
+}
+
+func TestTxDBGlobalState_ComplexCyclic1(t *testing.T) {
 
 	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
 	Start()
 	globalDataDB.globalHashLimit = 8
 	defer deleteTestDBPath()
 	defer Stop()
+
+	testPopulatePath(t, "sroot", []string{"s1", "s2", "s3", "s4", "s5", "s6"})
+	dumpCF(t)
+
+	wb := globalDataDB.NewWriteBatch()
+	defer wb.Destroy()
+
+	//we must also verify reading nodes under updating is correct
+	var s3Count uint64
+
+	if sn, tsks, err := globalDataDB.addGSCritical([]byte("s5"), []byte("s2")); err != nil {
+		t.Fatal("Add state fail", err)
+	} else {
+
+		if err := globalDataDB.BatchCommit(wb); err != nil {
+			t.Fatal("Commiting final add global state fail:", err)
+		}
+
+		gs := globalDataDB.getGlobalStateRaw([]byte("s3"))
+		gs, _ = globalDataDB.innerUpdateState(gs)
+
+		s3Count = gs.Count
+		t.Log(gs)
+
+		assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+		assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+		handleTask(sn, tsks)
+		defer globalDataDB.ReleaseSnapshot(sn)
+	}
+
+	dumpCF(t)
+
+	gs := globalDataDB.GetGlobalState([]byte("s2"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+	gs = globalDataDB.GetGlobalState([]byte("s5"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+	gs = globalDataDB.GetGlobalState([]byte("s3"))
+	assertTrue(t, !gs.Branched())
+	assertUint64Equal(t, gs.Count, s3Count)
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+	gs = globalDataDB.GetGlobalState([]byte("s6"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s5")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	assertIntEqual(t, len(globalDataDB.activing), 0)
+}
+
+func TestTxDBGlobalState_ComplexCyclic2(t *testing.T) {
+
+	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
+	Start()
+	globalDataDB.globalHashLimit = 8
+	defer deleteTestDBPath()
+	defer Stop()
+
+	testPopulatePath(t, "sroot", []string{"s1", "s2", "s3", "s4", "s5"})
+
+	wb := globalDataDB.NewWriteBatch()
+	defer wb.Destroy()
+
+	var s3Count uint64
+
+	if sn, tsks, err := globalDataDB.addGSCritical([]byte("s2"), []byte("s5")); err != nil {
+		t.Fatal("Add state fail", err)
+	} else {
+
+		if err := globalDataDB.BatchCommit(wb); err != nil {
+			t.Fatal("Commiting final add global state fail:", err)
+		}
+
+		gs := globalDataDB.getGlobalStateRaw([]byte("s3"))
+		gs, _ = globalDataDB.innerUpdateState(gs)
+
+		s3Count = gs.Count
+		t.Log(gs)
+
+		assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+		assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+		handleTask(sn, tsks)
+		defer globalDataDB.ReleaseSnapshot(sn)
+	}
+	dumpCF(t)
+
+	gs := globalDataDB.GetGlobalState([]byte("s2"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	//notice s5 is a branched node (has two parents) but has no nextbranch
+	gs = globalDataDB.GetGlobalState([]byte("s5"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s5")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	gs = globalDataDB.GetGlobalState([]byte("s3"))
+	assertTrue(t, !gs.Branched())
+	assertUint64Equal(t, gs.Count, s3Count)
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s5")
+
+	gs = globalDataDB.GetGlobalState([]byte("sroot"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	assertIntEqual(t, len(globalDataDB.activing), 0)
+}
+
+func TestTxDBGlobalState_ComplexCyclic3(t *testing.T) {
+
+	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
+	Start()
+	globalDataDB.globalHashLimit = 8
+	defer deleteTestDBPath()
+	defer Stop()
+
+	testPopulatePath(t, "sroot", []string{"s1", "s2", "s3", "s4", "s5"})
+
+	wb := globalDataDB.NewWriteBatch()
+	defer wb.Destroy()
+
+	var s3Count uint64
+
+	if sn, tsks, err := globalDataDB.addGSCritical([]byte("s5"), []byte("s2")); err != nil {
+		t.Fatal("Add state fail", err)
+	} else {
+
+		if err := globalDataDB.BatchCommit(wb); err != nil {
+			t.Fatal("Commiting final add global state fail:", err)
+		}
+
+		gs := globalDataDB.getGlobalStateRaw([]byte("s3"))
+		gs, _ = globalDataDB.innerUpdateState(gs)
+
+		s3Count = gs.Count
+		t.Log(gs)
+
+		assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+		assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+		handleTask(sn, tsks)
+		defer globalDataDB.ReleaseSnapshot(sn)
+	}
+	dumpCF(t)
+
+	gs := globalDataDB.GetGlobalState([]byte("s2"))
+	assertTrue(t, gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	gs = globalDataDB.GetGlobalState([]byte("s5"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	gs = globalDataDB.GetGlobalState([]byte("s3"))
+	assertTrue(t, !gs.Branched())
+	assertUint64Equal(t, gs.Count, s3Count)
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s2")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	gs = globalDataDB.GetGlobalState([]byte("sroot"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s2")
+
+	assertIntEqual(t, len(globalDataDB.updating), 0)
+	assertIntEqual(t, len(globalDataDB.activing), 0)
+}
+
+func TestTxDBGlobalState_ComplexCyclic4(t *testing.T) {
+
+	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
+	Start()
+	globalDataDB.globalHashLimit = 8
+	defer deleteTestDBPath()
+	defer Stop()
+
+	testPopulatePath(t, "sroot", []string{"s1", "s2", "s3", "s4", "s5"})
+
+	wb := globalDataDB.NewWriteBatch()
+	defer wb.Destroy()
+
+	var s3Count uint64
+
+	if sn, tsks, err := globalDataDB.addGSCritical([]byte("s4"), []byte("sroot")); err != nil {
+		t.Fatal("Add state fail", err)
+	} else {
+
+		if err := globalDataDB.BatchCommit(wb); err != nil {
+			t.Fatal("Commiting final add global state fail:", err)
+		}
+
+		gs := globalDataDB.getGlobalStateRaw([]byte("s3"))
+		gs, _ = globalDataDB.innerUpdateState(gs)
+
+		s3Count = gs.Count
+		t.Log(gs)
+
+		assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s4")
+		assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s4")
+
+		handleTask(sn, tsks)
+		defer globalDataDB.ReleaseSnapshot(sn)
+	}
+	dumpCF(t)
+
+	gs := globalDataDB.GetGlobalState([]byte("s5"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s4")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "")
+
+	gs = globalDataDB.GetGlobalState([]byte("s3"))
+	assertTrue(t, !gs.Branched())
+	assertUint64Equal(t, gs.Count, s3Count)
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s4")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s4")
+
+	gs = globalDataDB.GetGlobalState([]byte("sroot"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s4")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "s4")
+
+	assertIntEqual(t, len(globalDataDB.updating), 0)
+	assertIntEqual(t, len(globalDataDB.activing), 0)
+}
+
+func TestTxDBGlobalState_PureCyclic(t *testing.T) {
+
+	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
+	Start()
+	globalDataDB.globalHashLimit = 8
+	defer deleteTestDBPath()
+	defer Stop()
+
+	testPopulatePath(t, "sroot", []string{"s1", "s2", "s3", "s4", "s5"})
+
+	if err := globalDataDB.AddGlobalState([]byte("s5"), []byte("sroot")); err != nil {
+		t.Fatal("Add state fail", err)
+	}
+
+	dumpCF(t)
+
+	if err := globalDataDB.AddGlobalState([]byte("s6"), []byte("s3")); err != nil {
+		t.Fatal("Add state fail", err)
+	}
+
+	dumpCF(t)
+	gs := globalDataDB.GetGlobalState([]byte("s4"))
+	assertTrue(t, !gs.Branched())
+	assertByteEqual(t, gs.GetLastBranchNodeStateHash(), "s3")
+	assertByteEqual(t, gs.GetNextBranchNodeStateHash(), "sroot")
 
 }
 
 func TestTxDBGlobalState_RandomRW(t *testing.T) {
 
 	defer adjustTKGen(adjustTKGen(testTerminalKeyGen))
+	defer adjustIDStart(adjustIDStart(100))
 	Start()
 	globalDataDB.globalHashLimit = 8
 	defer deleteTestDBPath()

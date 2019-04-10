@@ -3,6 +3,10 @@
 #    Peer section
 #
 ###############################################################################
+logging:
+   test: info:db/pathUpdating,db=debug
+
+
 peer:
     # Path on the file system where peer will store data
     fileSystemPath: /var/hyperledger/test/ledger_test
