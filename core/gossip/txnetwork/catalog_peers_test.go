@@ -54,7 +54,7 @@ func TestTxGlobal(t *testing.T) {
 	}
 	uin1.Txs[testpeername].Endorsement = nil
 
-	u1, err := globalcat.DecodeUpdate(nil, uin1)
+	u1, err := globalcat.TransPbToUpdate(nil, &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_State{State: uin1}})
 	if err != nil {
 		t.Fatal("decode update 1 fail", err)
 	}
@@ -72,7 +72,7 @@ func TestTxGlobal(t *testing.T) {
 		Txs: map[string]*pb.PeerTxState{testpeername: createState([]byte{1}, 3)},
 	}
 
-	u2, err := globalcat.DecodeUpdate(nil, uin2)
+	u2, err := globalcat.TransPbToUpdate(nil, &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_State{State: uin2}})
 	if err != nil {
 		t.Fatal("decode update 1 fail", err)
 	}
@@ -89,7 +89,7 @@ func TestTxGlobal(t *testing.T) {
 
 	uout1 := m.RecvPullDigest(globalcat.TransPbToDigest(&pb.GossipMsg_Digest{D: &pb.GossipMsg_Digest_Peer{Peer: pbin}}))
 
-	msgout1 := globalcat.EncodeUpdate(nil, uout1, globalcat.UpdateMessage()).(*pb.Gossip_TxState)
+	msgout1 := globalcat.TransUpdateToPb(nil, uout1).GetState()
 
 	if s, ok := msgout1.Txs[testpeername]; ok {
 
@@ -137,7 +137,7 @@ func TestTxGlobal(t *testing.T) {
 
 	uout2 := m.RecvPullDigest(globalcat.TransPbToDigest(&pb.GossipMsg_Digest{D: &pb.GossipMsg_Digest_Peer{Peer: pbin}}))
 
-	msgout2 := globalcat.EncodeUpdate(nil, uout2, globalcat.UpdateMessage()).(*pb.Gossip_TxState)
+	msgout2 := globalcat.TransUpdateToPb(nil, uout2).GetState()
 
 	if s, ok := msgout2.Txs[testpeername]; ok {
 
@@ -182,7 +182,7 @@ func TestTxGlobal(t *testing.T) {
 
 	uout3 := m.RecvPullDigest(globalcat.TransPbToDigest(&pb.GossipMsg_Digest{D: &pb.GossipMsg_Digest_Peer{Peer: pbin}}))
 
-	msgout3 := globalcat.EncodeUpdate(nil, uout3, globalcat.UpdateMessage()).(*pb.Gossip_TxState)
+	msgout3 := globalcat.TransUpdateToPb(nil, uout3).GetState()
 
 	if _, ok := msgout3.Txs[testpeername]; ok {
 		t.Fatal("pick ghost test peer")

@@ -7,7 +7,6 @@ import (
 	model "github.com/abchain/fabric/core/gossip/model"
 	"github.com/abchain/fabric/core/gossip/stub"
 	pb "github.com/abchain/fabric/protos"
-	proto "github.com/golang/protobuf/proto"
 )
 
 type txMemPoolItem struct {
@@ -508,7 +507,7 @@ func (p *peerTxMemPool) handlePeerUpdate(u txPeerUpdate, id string, g *txPoolGlo
 	//sanity check
 	err = p.concat(inTxs)
 	if err != nil {
-		panic(fmt.Errorf("toTxs method should has verified everything, wrong code:", err))
+		panic(fmt.Errorf("toTxs method should has verified everything, wrong code: %s", err))
 	}
 
 	var mergeCnt int
@@ -692,9 +691,7 @@ func (c *hotTxCat) TransPbToDigest(msg *pb.GossipMsg_Digest) model.Digest {
 
 }
 
-func (c *hotTxCat) UpdateMessage() proto.Message { return new(pb.Gossip_Tx) }
-
-func (c *hotTxCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Update, msg_in proto.Message) proto.Message {
+func (c *hotTxCat) TransUpdateToPb(cpo gossip.CatalogPeerPolicies, u_in model.Update) *pb.GossipMsg_Update {
 
 	u, ok := u_in.(model.ScuttlebuttUpdate)
 
@@ -709,11 +706,7 @@ func (c *hotTxCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Updat
 		panic("Type error, not txPoolGlobalUpdateOut")
 	}
 
-	msg, ok := msg_in.(*pb.Gossip_Tx)
-	if !ok {
-		panic("Type error, not Gossip_Tx")
-	}
-
+	msg := new(pb.Gossip_Tx)
 	msg.Txs = make(map[string]*pb.HotTransactionBlock)
 
 	//encode txs
@@ -741,14 +734,14 @@ func (c *hotTxCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Updat
 		msg.Txs[pu_in.Id] = pu.HotTransactionBlock
 	}
 
-	return msg
+	return &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_Txs{Txs: msg}}
 }
 
-func (c *hotTxCat) DecodeUpdate(cpo gossip.CatalogPeerPolicies, msg_in proto.Message) (model.Update, error) {
+func (c *hotTxCat) TransPbToUpdate(cpo gossip.CatalogPeerPolicies, msg_in *pb.GossipMsg_Update) (model.Update, error) {
 
-	msg, ok := msg_in.(*pb.Gossip_Tx)
-	if !ok {
-		panic("Type error, not Gossip_Tx")
+	msg := msg_in.GetTxs()
+	if msg == nil {
+		return nil, fmt.Errorf("Msg error, not gossip_tx")
 	}
 
 	//can return null data

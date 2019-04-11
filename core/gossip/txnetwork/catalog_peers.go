@@ -6,7 +6,6 @@ import (
 	model "github.com/abchain/fabric/core/gossip/model"
 	"github.com/abchain/fabric/core/gossip/stub"
 	pb "github.com/abchain/fabric/protos"
-	proto "github.com/golang/protobuf/proto"
 	"time"
 )
 
@@ -209,10 +208,7 @@ func (c *globalCat) TransPbToDigest(msg *pb.GossipMsg_Digest) model.Digest {
 	return parsePbDigestStd(msg, nil)
 }
 
-func (c *globalCat) UpdateMessage() proto.Message { return new(pb.Gossip_TxState) }
-
-func (c *globalCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Update, msg_in proto.Message) proto.Message {
-
+func (c *globalCat) TransUpdateToPb(cpo gossip.CatalogPeerPolicies, u_in model.Update) *pb.GossipMsg_Update {
 	u, ok := u_in.(model.ScuttlebuttUpdate)
 
 	if !ok {
@@ -230,13 +226,13 @@ func (c *globalCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Upda
 	}
 
 	//	logger.Debugf("peer's update msg: %v", msg)
-	return msg
+	return &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_State{State: msg}}
 }
 
-func (c *globalCat) DecodeUpdate(cpo gossip.CatalogPeerPolicies, msg_in proto.Message) (model.Update, error) {
-	msg, ok := msg_in.(*pb.Gossip_TxState)
-	if !ok {
-		panic("Type error, not Gossip_TxState")
+func (c *globalCat) TransPbToUpdate(cpo gossip.CatalogPeerPolicies, msg_in *pb.GossipMsg_Update) (model.Update, error) {
+	msg := msg_in.GetState()
+	if msg == nil {
+		return nil, fmt.Errorf("message error, not Gossip_TxState")
 	}
 
 	u := model.NewscuttlebuttUpdate(nil)

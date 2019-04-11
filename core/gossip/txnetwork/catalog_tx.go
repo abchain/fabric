@@ -141,7 +141,7 @@ func (c *txsyncCat) TransPbToDigest(msg *pb.GossipMsg_Digest) model.Digest {
 
 func (c *txsyncCat) UpdateMessage() proto.Message { return new(pb.HotTransactionBlock) }
 
-func (c *txsyncCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Update, msg_in proto.Message) proto.Message {
+func (c *txsyncCat) TransUpdateToPb(cpo gossip.CatalogPeerPolicies, u_in model.Update) *pb.GossipMsg_Update {
 
 	u, ok := u_in.(txUpdate)
 
@@ -149,20 +149,14 @@ func (c *txsyncCat) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u_in model.Upda
 		panic("Type error, not txUpdate")
 	}
 
-	msg, ok := msg_in.(*pb.HotTransactionBlock)
-	if !ok {
-		panic("Type error, not HotTransactionBlock")
-	}
-
-	msg.Transactions = u.Transactions
-	return msg
+	return &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_TxBlock{TxBlock: u.HotTransactionBlock}}
 }
 
-func (c *txsyncCat) DecodeUpdate(cpo gossip.CatalogPeerPolicies, msg_in proto.Message) (model.Update, error) {
+func (c *txsyncCat) TransPbToUpdate(cpo gossip.CatalogPeerPolicies, msg_in *pb.GossipMsg_Update) (model.Update, error) {
 
-	m, ok := msg_in.(*pb.HotTransactionBlock)
-	if !ok {
-		panic("Type error, not HotTransactionBlock")
+	m := msg_in.GetTxBlock()
+	if m == nil {
+		return nil, fmt.Errorf("Msg error, not HotTransactionBlock")
 	}
 
 	for _, tx := range m.Transactions {

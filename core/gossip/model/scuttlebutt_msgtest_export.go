@@ -36,7 +36,7 @@ func TestDigestToPb(d_in Digest) *pb.GossipMsg_Digest {
 
 }
 
-func TestUpdateEncode(u_in Update, msg *Test_Scuttlebutt) proto.Message {
+func TestUpdateEncode(u_in Update) *pb.GossipMsg_Update {
 
 	u, ok := u_in.(ScuttlebuttUpdate)
 
@@ -44,6 +44,7 @@ func TestUpdateEncode(u_in Update, msg *Test_Scuttlebutt) proto.Message {
 		panic("type error, not ScuttlebuttUpdate")
 	}
 
+	msg := new(Test_Scuttlebutt)
 	msg.Peers = make(map[string]*Test_Scuttlebutt_Peer)
 
 	for _, udata := range u.PeerUpdate() {
@@ -58,15 +59,17 @@ func TestUpdateEncode(u_in Update, msg *Test_Scuttlebutt) proto.Message {
 
 	}
 
-	return msg
+	bt, _ := proto.Marshal(msg)
+
+	return &pb.GossipMsg_Update{Payload: bt}
 }
 
-func TestUpdateDecode(msg_in proto.Message) Update {
+func TestUpdateDecode(msg_in *pb.GossipMsg_Update) Update {
 
-	msg, ok := msg_in.(*Test_Scuttlebutt)
+	msg := new(Test_Scuttlebutt)
 
-	if !ok {
-		panic("type error, not Test_Scuttlebutt")
+	if err := proto.Unmarshal(msg_in.GetPayload(), msg); err != nil {
+		panic("unmarshal error, not Test_Scuttlebutt")
 	}
 
 	out := NewscuttlebuttUpdate(nil)

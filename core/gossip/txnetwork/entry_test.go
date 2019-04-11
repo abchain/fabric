@@ -53,7 +53,7 @@ func TestTxEntrance(t *testing.T) {
 	}
 
 	if h.callTimes > 1 {
-		t.Errorf("Call mutiple times", h.callTimes)
+		t.Errorf("Call mutiple times (%d)", h.callTimes)
 	}
 
 	for i := 0; i < 5; i++ {
@@ -77,7 +77,7 @@ func TestTxEntrance(t *testing.T) {
 	}
 
 	if h.callTimes > 6 {
-		t.Errorf("Too many calling times", h.callTimes)
+		t.Errorf("Too many calling times (%d)", h.callTimes)
 	}
 
 	endf()

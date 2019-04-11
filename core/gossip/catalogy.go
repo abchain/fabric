@@ -41,9 +41,10 @@ type CatalogHelper interface {
 	TransDigestToPb(model.Digest) *pb.GossipMsg_Digest
 	TransPbToDigest(*pb.GossipMsg_Digest) model.Digest
 
-	UpdateMessage() proto.Message
-	EncodeUpdate(CatalogPeerPolicies, model.Update, proto.Message) proto.Message
-	DecodeUpdate(CatalogPeerPolicies, proto.Message) (model.Update, error)
+	TransUpdateToPb(CatalogPeerPolicies, model.Update) *pb.GossipMsg_Update
+	TransPbToUpdate(CatalogPeerPolicies, *pb.GossipMsg_Update) (model.Update, error)
+	//	EncodeUpdate(CatalogPeerPolicies, model.Update, proto.Message) proto.Message
+	//	DecodeUpdate(CatalogPeerPolicies, proto.Message) (model.Update, error)
 }
 
 type pullWorks struct {
@@ -247,26 +248,27 @@ func (h *sessionHandler) EncodeDigest(d model.Digest) proto.Message {
 	return msg
 }
 
+var uSizeWarning = 0
+
 func (h *sessionHandler) EncodeUpdate(u model.Update) proto.Message {
 
-	udsent := &pb.GossipMsg_Update{}
+	var udsent *pb.GossipMsg_Update
 
 	if u != nil {
-		payloadByte, err := proto.Marshal(
-			h.CatalogHelper.EncodeUpdate(h.cpo, u,
-				h.CatalogHelper.UpdateMessage()))
-		if err == nil {
-			udsent.Payload = payloadByte
-			h.cpo.PushUpdate(len(payloadByte))
-		} else {
-			logger.Error("Encode update failure:", err)
+
+		udsent = h.catalogHandler.TransUpdateToPb(h.cpo, u)
+		updateSize := proto.Size(udsent)
+		if updateSize == 0 && uSizeWarning < 5 {
+			logger.Warningf("can not estimate the size of update message [%v]", udsent)
 		}
+
+		h.cpo.PushUpdate(updateSize)
 	}
 
 	return &pb.GossipMsg{
 		Seq:     getGlobalSeq(),
 		Catalog: h.Name(),
-		M:       &pb.GossipMsg_Ud{udsent},
+		M:       &pb.GossipMsg_Ud{Ud: udsent},
 	}
 }
 
@@ -368,17 +370,7 @@ func (h *catalogHandler) HandleUpdate(msg *pb.GossipMsg_Update, cpo CatalogPeerP
 		return
 	}
 
-	umsg := h.CatalogHelper.UpdateMessage()
-
-	if len(msg.Payload) > 0 {
-		err := proto.Unmarshal(msg.Payload, umsg)
-		if err != nil {
-			cpo.RecordViolation(fmt.Errorf("Unmarshal message for update in catalog %s fail: %s", h.Name(), err))
-			return
-		}
-	}
-
-	ud, err := h.DecodeUpdate(cpo, umsg)
+	ud, err := h.TransPbToUpdate(cpo, msg)
 	if err != nil {
 		cpo.RecordViolation(fmt.Errorf("Decode update for catalog %s fail: %s", h.Name(), err))
 	}

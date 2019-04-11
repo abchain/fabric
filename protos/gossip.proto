@@ -38,6 +38,12 @@ message GossipMsg {
     }
 
     message Update{
+        oneof u {
+            Gossip_Tx txs = 2;
+            Gossip_TxState state = 3;
+            HotTransactionBlock txBlock = 4;
+        }
+        //we still keep payload field for some extended using (i.e. testing)
         bytes  payload = 1;
     }
 

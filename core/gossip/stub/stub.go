@@ -6,7 +6,6 @@ import (
 	pb "github.com/abchain/fabric/protos"
 	"github.com/golang/protobuf/proto"
 	"github.com/op/go-logging"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
@@ -92,8 +91,7 @@ func (t GossipFactory) NewStreamHandlerImpl(id *pb.PeerID, sstub *pb.StreamStub,
 
 func (t GossipFactory) NewClientStream(conn *grpc.ClientConn) (grpc.ClientStream, error) {
 	serverClient := pb.NewGossipClient(conn)
-	ctx := context.Background()
-	stream, err := serverClient.In(ctx)
+	stream, err := serverClient.In(t.GetStubContext())
 
 	if err != nil {
 		return nil, err

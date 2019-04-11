@@ -7,7 +7,6 @@ import (
 	_ "github.com/abchain/fabric/core/gossip/stub"
 	"github.com/abchain/fabric/core/peer"
 	pb "github.com/abchain/fabric/protos"
-	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
 	"log"
 	"testing"
@@ -35,15 +34,10 @@ func (tc *testCatalogy) TransPbToDigest(dig *pb.GossipMsg_Digest) model.Digest {
 	return model.TestPbToDigest(dig)
 }
 
-func (tc *testCatalogy) UpdateMessage() proto.Message {
-	return new(model.Test_Scuttlebutt)
+func (tc *testCatalogy) TransUpdateToPb(cpo gossip.CatalogPeerPolicies, u model.Update) *pb.GossipMsg_Update {
+	return model.TestUpdateEncode(u)
 }
-
-func (tc *testCatalogy) EncodeUpdate(cpo gossip.CatalogPeerPolicies, u model.Update, msg_in proto.Message) proto.Message {
-	return model.TestUpdateEncode(u, msg_in.(*model.Test_Scuttlebutt))
-}
-
-func (tc *testCatalogy) DecodeUpdate(cpo gossip.CatalogPeerPolicies, msg proto.Message) (model.Update, error) {
+func (tc *testCatalogy) TransPbToUpdate(cpo gossip.CatalogPeerPolicies, msg *pb.GossipMsg_Update) (model.Update, error) {
 	return model.TestUpdateDecode(msg), nil
 }
 

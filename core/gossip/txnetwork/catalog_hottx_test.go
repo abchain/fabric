@@ -82,7 +82,7 @@ func TestPeerTxs(t *testing.T) {
 	err := txs.concat(txs2)
 
 	if err != nil {
-		t.Fatalf("concat chain fail", err)
+		t.Fatalf("concat chain fail: %s", err)
 	}
 
 	if txs.lastSeries() != 7 {
@@ -227,7 +227,7 @@ func TestPeerUpdate(t *testing.T) {
 	udt.fromTxs(retTxs.fetch(1, nil))
 
 	if udt.BeginSeries != 1 {
-		t.Fatalf("wrong begin series in udt2", udt.BeginSeries)
+		t.Fatalf("wrong begin series in udt2: %d", udt.BeginSeries)
 	}
 
 	if len(udt.GetTransactions()) != 10 {
@@ -454,7 +454,7 @@ func TestPeerTxPool(t *testing.T) {
 	pool.purge("test", 50, txGlobal)
 
 	if pool.head.digestSeries != 50 {
-		t.Fatalf("wrong head series after purge", pool.head.digestSeries)
+		t.Fatalf("wrong head series after purge: %d", pool.head.digestSeries)
 	}
 
 	if c := txGlobal.AcquireCaches(defaultPeer).commitData; c[5] != nil {
@@ -543,7 +543,7 @@ func TestCatalogyHandler(t *testing.T) {
 
 	u_in := &pb.Gossip_Tx{map[string]*pb.HotTransactionBlock{testname: udt.HotTransactionBlock}}
 
-	u, err := hotTx.DecodeUpdate(nil, u_in)
+	u, err := hotTx.TransPbToUpdate(nil, &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_Txs{Txs: u_in}})
 	if err != nil {
 		t.Fatal("decode update fail", err)
 	}
@@ -569,10 +569,7 @@ func TestCatalogyHandler(t *testing.T) {
 
 	dig = hotTx.TransPbToDigest(&pb.GossipMsg_Digest{D: &pb.GossipMsg_Digest_Peer{Peer: dig_in}})
 
-	u_out, ok := hotTx.EncodeUpdate(nil, m.RecvPullDigest(dig), new(pb.Gossip_Tx)).(*pb.Gossip_Tx)
-	if !ok {
-		panic("type error, not gossip_tx")
-	}
+	u_out := hotTx.TransUpdateToPb(nil, m.RecvPullDigest(dig)).GetTxs()
 
 	if txs, ok := u_out.Txs[testname]; !ok {
 		t.Fatal("update not include expected peer")

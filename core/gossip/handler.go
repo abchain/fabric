@@ -1,6 +1,7 @@
 package gossip
 
 import (
+	"errors"
 	pb "github.com/abchain/fabric/protos"
 )
 
@@ -48,8 +49,10 @@ func (g *handlerImpl) HandleMessage(msg *pb.GossipMsg) error {
 
 	if dig := msg.GetDig(); dig != nil {
 		global.HandleDigest(dig, g.ppo)
-	} else {
+	} else if ud := msg.GetUd(); ud != nil {
 		global.HandleUpdate(msg.GetUd(), g.ppo)
+	} else {
+		g.ppo.RecordViolation(errors.New("Sent empty gossip message"))
 	}
 
 	return g.ppo.IsPolicyViolated()
