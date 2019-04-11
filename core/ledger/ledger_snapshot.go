@@ -96,6 +96,21 @@ func (sledger *LedgerSnapshot) GetStateSnapshot() (*state.StateSnapshot, error) 
 	return sledger.l.state.GetSnapshot(blockHeight-1, sledger.DBSnapshot)
 }
 
+// for state syncing, proving the state hash and block number which can be requested
+// for syncing in a async process. That is, a syncing request for this state will
+// be raised sometime later and ledger ensure that it will be still available in
+// high possibility (i.e. not flushed by the updating of current state or other reasons)
+func (ledger *Ledger) GetStableSyncingState() (shash []byte, height uint64) {
+	sn, height := ledger.snapshots.GetStableSnapshot()
+	//0 indicate that ledger still has not any stable state for syncing
+	//(may because it just startted up )
+	if sn == nil {
+		return nil, 0
+	}
+
+	return sn.stateHash, height
+}
+
 // ----- will be deprecated -----
 // GetStateSnapshot returns a point-in-time view of the global state for the current block. This
 // should be used when transferring the state from one peer to another peer. You must call
@@ -114,6 +129,21 @@ func (ledger *Ledger) GetStateSnapshot() (*state.StateSnapshot, error) {
 	return ledger.state.GetSnapshot(blockHeight-1, snapshotL.DBSnapshot)
 }
 
+type indexedSnapshot struct {
+	*db.DBSnapshot
+	stateHash []byte
+}
+
+func (s *indexedSnapshot) index() string {
+	if l := len(s.stateHash); l == 0 {
+		return "NIL"
+	} else if l < 8 {
+		return fmt.Sprintf("%X", s.stateHash)
+	} else {
+		return fmt.Sprintf("%X", s.stateHash[:8])
+	}
+}
+
 //maintain a series of snapshot for state querying
 type ledgerHistory struct {
 	sync.RWMutex
@@ -121,23 +151,26 @@ type ledgerHistory struct {
 	snapshotInterval int
 	beginIntervalNum uint64
 	currentHeight    uint64
-	current          *db.DBSnapshot
-	sns              []*db.DBSnapshot
+	stableHeight     uint64 //the latest number added in sns
+	current          *indexedSnapshot
+	sns              []*indexedSnapshot
+	stateIndex       map[string]*indexedSnapshot
 }
 
 const defaultSnapshotTotal = 8
 const defaultSnapshotInterval = 16
 
-func initNewLedgerSnapshotManager(odb *db.OpenchainDB, blkheight uint64, config *ledgerConfig) *ledgerHistory {
+func initNewLedgerSnapshotManager(odb *db.OpenchainDB, shash []byte, blkheight uint64, config *ledgerConfig) *ledgerHistory {
 	lsm := new(ledgerHistory)
 	//TODO: read config
 	lsm.snapshotInterval = defaultSnapshotInterval
-	lsm.sns = make([]*db.DBSnapshot, defaultSnapshotTotal)
+	lsm.sns = make([]*indexedSnapshot, defaultSnapshotTotal)
+	lsm.stateIndex = make(map[string]*indexedSnapshot)
 
 	if blkheight > 0 {
 		lsm.beginIntervalNum = (blkheight - 1) / uint64(lsm.snapshotInterval)
 		lsm.currentHeight = blkheight
-		lsm.current = odb.GetSnapshot()
+		lsm.current = &indexedSnapshot{odb.GetSnapshot(), shash}
 	}
 
 	lsm.db = odb
@@ -151,14 +184,29 @@ func (lh *ledgerHistory) Release() {
 	}
 }
 
-func (lh *ledgerHistory) GetCurrentSnapshot() *db.DBSnapshot {
+func (lh *ledgerHistory) GetCurrentSnapshot() *indexedSnapshot {
 	lh.RLock()
 	defer lh.RUnlock()
 
 	return lh.current
 }
 
-func (lh *ledgerHistory) GetSnapshot(blknum uint64) (*db.DBSnapshot, uint64) {
+func (lh *ledgerHistory) GetStableSnapshot() (*indexedSnapshot, uint64) {
+	lh.RLock()
+	defer lh.RUnlock()
+	if lh.stableHeight == 0 {
+		return nil, 0
+	}
+	sni, blkn := lh.historyIndex(lh.stableHeight)
+	if sni == -1 || blkn != lh.stableHeight {
+		ledgerLogger.Errorf("Can not found corresponding stable snapshot, indicate %d but get [%d, %d]", lh.stableHeight, sni, blkn)
+		return nil, 0
+	} else {
+		return lh.sns[sni], lh.stableHeight
+	}
+}
+
+func (lh *ledgerHistory) GetSnapshot(blknum uint64) (*indexedSnapshot, uint64) {
 	lh.RLock()
 	defer lh.RUnlock()
 
@@ -196,10 +244,10 @@ func (lh *ledgerHistory) ForceUpdate() {
 	defer lh.Unlock()
 
 	lh.current.Release()
-	lh.current = lh.db.GetSnapshot()
+	lh.current.DBSnapshot = lh.db.GetSnapshot()
 }
 
-func (lh *ledgerHistory) Update(blknum uint64) {
+func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {
 	lh.Lock()
 	defer lh.Unlock()
 
@@ -210,19 +258,32 @@ func (lh *ledgerHistory) Update(blknum uint64) {
 
 	if currentNum := lh.currentHeight - 1; currentNum%uint64(lh.snapshotInterval) == 0 {
 		//can keep this snapshot
-		sec := currentNum / uint64(lh.snapshotInterval)
-		indx := int(sec % uint64(len(lh.sns)))
-		lh.sns[indx].Release()
-		lh.sns[indx] = lh.current
-		ledgerLogger.Debugf("Cache snapshot of %d at %d", lh.currentHeight-1, indx)
-		if lh.beginIntervalNum+uint64(len(lh.sns)) <= sec && lh.currentHeight > 0 {
-			lh.beginIntervalNum = sec - uint64(len(lh.sns)-1)
-			ledgerLogger.Debugf("Move update begin to %d", lh.beginIntervalNum)
+		//but check index not occupied first, thought rare ...
+		if _, ok := lh.stateIndex[lh.current.index()]; !ok {
+			sec := currentNum / uint64(lh.snapshotInterval)
+			indx := int(sec % uint64(len(lh.sns)))
+
+			if s := lh.sns[indx]; s != nil {
+				delete(lh.stateIndex, s.index())
+				s.Release()
+			}
+			lh.sns[indx] = lh.current
+			lh.stateIndex[lh.current.index()] = lh.current
+			lh.stableHeight = currentNum
+
+			ledgerLogger.Debugf("Cache snapshot of %d at %d", lh.currentHeight-1, indx)
+			if lh.beginIntervalNum+uint64(len(lh.sns)) <= sec && lh.currentHeight > 0 {
+				lh.beginIntervalNum = sec - uint64(len(lh.sns)-1)
+				ledgerLogger.Debugf("Move update begin to %d", lh.beginIntervalNum)
+			}
+		} else {
+			lh.current.Release()
+			ledgerLogger.Warningf("gave up caching snapshot on blk %d because of (extremely rare) index conflicting", currentNum)
 		}
 
 	} else {
 		lh.current.Release()
 	}
 	lh.currentHeight = blknum + 1
-	lh.current = lh.db.GetSnapshot()
+	lh.current = &indexedSnapshot{lh.db.GetSnapshot(), shash}
 }

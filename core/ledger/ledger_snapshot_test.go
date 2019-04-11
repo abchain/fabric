@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/ledger/testutil"
 	"github.com/abchain/fabric/protos"
 	"testing"
@@ -30,7 +29,7 @@ func populateLedgerForSnapshotTesting(w *ledgerTestWrapper, t *testing.T, testSt
 
 	sn := ledger.snapshots
 	sn.snapshotInterval = 3
-	sn.sns = make([]*db.DBSnapshot, 3)
+	sn.sns = make([]*indexedSnapshot, 3)
 
 	for i, ss := range testStates {
 

@@ -130,6 +130,11 @@ func GetNewLedger(db *db.OpenchainDB, config *ledgerConfig) (*Ledger, error) {
 		st = state.NewState(db, state.DefaultConfig())
 	}
 
+	hash, err := st.GetHash()
+	if err != nil {
+		return nil, err
+	}
+
 	ver := db.GetDBVersion()
 	if ver >= 1 {
 		err = sanityCheck(db)
@@ -138,7 +143,7 @@ func GetNewLedger(db *db.OpenchainDB, config *ledgerConfig) (*Ledger, error) {
 		}
 	}
 
-	sns := initNewLedgerSnapshotManager(db, blockchain.getSize(), config)
+	sns := initNewLedgerSnapshotManager(db, hash, blockchain.getSize(), config)
 
 	return &Ledger{gledger, blockchain, st, sns, nil, nil, ver}, nil
 }
@@ -386,7 +391,7 @@ func (ledger *Ledger) CommitTxBatch(id interface{}, transactions []*protos.Trans
 	ledger.resetForNextTxGroup(true)
 	//this step also index all txs
 	ledger.blockchain.blockPersistenceStatus(true)
-	ledger.snapshots.Update(newBlockNumber)
+	ledger.snapshots.Update(stateHash, newBlockNumber)
 
 	sendProducerBlockEvent(block)
 
@@ -483,7 +488,7 @@ func (ledger *Ledger) GetState(chaincodeID string, key string, committed bool) (
 		if sn == nil {
 			return nil, ErrResourceNotFound
 		}
-		return ledger.state.Get(chaincodeID, key, sn, 0)
+		return ledger.state.Get(chaincodeID, key, sn.DBSnapshot, 0)
 
 	} else {
 		return ledger.state.GetTransient(chaincodeID, key, nil)
@@ -501,7 +506,7 @@ func (ledger *Ledger) GetSnapshotState(chaincodeID string, key string, blknum ui
 		panic("Unexpect history offset")
 	}
 
-	v, err := ledger.state.Get(chaincodeID, key, sn, int(actualblk-blknum))
+	v, err := ledger.state.Get(chaincodeID, key, sn.DBSnapshot, int(actualblk-blknum))
 	return v, actualblk, err
 }
 
@@ -624,10 +629,16 @@ func (ledger *Ledger) CommitStateDelta(id interface{}) error {
 // CommitStateDelta will commit the state delta passed to ledger.ApplyStateDelta
 // to the DB and persist it will the specified index (blockNumber)
 func (ledger *Ledger) CommitAndIndexStateDelta(id interface{}, blockNumber uint64) error {
+
 	err := ledger.checkValidIDCommitORRollback(id)
 	if err != nil {
 		return err
 	}
+	stateHash, err := ledger.state.GetHash()
+	if err != nil {
+		return err
+	}
+
 	defer ledger.resetForNextTxGroup(true)
 
 	writeBatch := ledger.state.NewWriteBatch()
@@ -639,7 +650,7 @@ func (ledger *Ledger) CommitAndIndexStateDelta(id interface{}, blockNumber uint6
 		return err
 	}
 
-	ledger.snapshots.Update(blockNumber)
+	ledger.snapshots.Update(stateHash, blockNumber)
 	return nil
 }
 

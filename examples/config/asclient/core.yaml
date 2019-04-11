@@ -1,0 +1,13 @@
+logging:
+    # When run as client, log module init with role as its command (i.e.: 
+    # chaincode, peer, node, etc)
+    peer:      debug
+    network:   debug
+    chaincode: debug
+    version:   warning
+
+service:
+
+    # The Address which peer will use when run as client, it try to connect
+    # to fabric node listening this address
+    cliaddress: 127.0.0.1:7051
