@@ -231,7 +231,14 @@ type extHandler struct {
 //protect the close function declared in ocDB to avoiding a wrong calling
 func (extHandler) Close(extHandler) {}
 
+type refCount struct {
+	sync.Mutex
+	count uint
+}
+
 type DBSnapshot struct {
+	ref refCount
+
 	extHandler
 	snapshot *gorocksdb.Snapshot
 }
@@ -289,7 +296,7 @@ func (openchainDB *OpenchainDB) GetSnapshot() *DBSnapshot {
 
 	db := openchainDB.getExtended()
 
-	return &DBSnapshot{extHandler{db}, db.NewSnapshot()}
+	return &DBSnapshot{refCount{count: 1}, extHandler{db}, db.NewSnapshot()}
 }
 
 func (openchainDB *OpenchainDB) GetIterator(cfName string) *DBIterator {
@@ -333,9 +340,29 @@ func (e *DBIterator) Close() {
 	e.h.release()
 }
 
+func (e *DBSnapshot) Clone() *DBSnapshot {
+
+	e.ref.Lock()
+	defer e.ref.Unlock()
+	e.ref.count++
+
+	return e
+}
+
 func (e *DBSnapshot) Release() {
 
 	if e == nil {
+		return
+	}
+
+	e.ref.Lock()
+	defer e.ref.Unlock()
+
+	if e.ref.count == 0 {
+		panic("wrong reference count in object")
+	}
+	e.ref.count--
+	if e.ref.count > 0 {
 		return
 	}
 

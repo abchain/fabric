@@ -488,7 +488,7 @@ func (ledger *Ledger) GetState(chaincodeID string, key string, committed bool) (
 		if sn == nil {
 			return nil, ErrResourceNotFound
 		}
-		return ledger.state.Get(chaincodeID, key, sn.DBSnapshot, 0)
+		return ledger.state.Get(chaincodeID, key, sn, 0)
 
 	} else {
 		return ledger.state.GetTransient(chaincodeID, key, nil)
@@ -506,7 +506,7 @@ func (ledger *Ledger) GetSnapshotState(chaincodeID string, key string, blknum ui
 		panic("Unexpect history offset")
 	}
 
-	v, err := ledger.state.Get(chaincodeID, key, sn.DBSnapshot, int(actualblk-blknum))
+	v, err := ledger.state.Get(chaincodeID, key, sn, int(actualblk-blknum))
 	return v, actualblk, err
 }
 
@@ -559,11 +559,6 @@ func (ledger *Ledger) CopyState(sourceChaincodeID string, destChaincodeID string
 // This method is mainly to amortize the cost of grpc communication between chaincode shim peer
 func (ledger *Ledger) SetStateMultipleKeys(chaincodeID string, kvs map[string][]byte) error {
 	return ledger.state.SetMultipleKeys(chaincodeID, kvs)
-}
-
-// create a snapshot wrapper for current db
-func (ledger *Ledger) CreateSnapshot() *LedgerSnapshot {
-	return &LedgerSnapshot{ledger, ledger.blockchain.GetSnapshot()}
 }
 
 // GetStateDelta will return the state delta for the specified block if

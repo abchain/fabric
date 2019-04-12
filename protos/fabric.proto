@@ -36,6 +36,19 @@ message GlobalStateUpdateTask{
     bool isBackward = 6;
 }
 
+// a simple bloom filter information for representing a 
+// group of state
+// the filter is expressed by a bytes string less than 
+// 8k (65535bit) and has 8*<bytes> buckets
+// a target hash is separated into WORDs (16bit) and the
+// first n (n=hashCounts) WORD is used in the filter
+// if the length of target has no enough WORDs, the hashes 
+// of rest are considered as 0
+message StateFilter{
+    bytes filter = 1;
+    uint32 hashCounts = 2;
+}
+
 // Transaction defines a function call to a contract.
 // `args` is an array of type string so that the chaincode writer can choose
 // whatever format they wish for the arguments for their chaincode.

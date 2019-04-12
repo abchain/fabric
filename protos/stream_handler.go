@@ -83,6 +83,7 @@ func (h *StreamHandler) GetName() string {
 	return h.name
 }
 
+//sending a message to far-end, this method is thread-safe
 func (h *StreamHandler) SendMessage(m proto.Message) error {
 
 	if h == nil {

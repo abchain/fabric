@@ -96,19 +96,39 @@ func (sledger *LedgerSnapshot) GetStateSnapshot() (*state.StateSnapshot, error) 
 	return sledger.l.state.GetSnapshot(blockHeight-1, sledger.DBSnapshot)
 }
 
+func (ledger *Ledger) CreateSyncingSnapshot(shash []byte) (*LedgerSnapshot, error) {
+
+	if blkn, err := ledger.GetBlockNumberByState(shash); err != nil {
+		return nil, err
+	} else {
+		sn, snblkn := ledger.snapshots.GetSnapshot(blkn)
+		if snblkn != blkn {
+			return nil, fmt.Errorf("request state [%X] is not stable (found blocknumber is %d but not cached)", shash, blkn)
+		}
+
+		return &LedgerSnapshot{ledger, sn}, nil
+	}
+}
+
 // for state syncing, proving the state hash and block number which can be requested
 // for syncing in a async process. That is, a syncing request for this state will
 // be raised sometime later and ledger ensure that it will be still available in
 // high possibility (i.e. not flushed by the updating of current state or other reasons)
-func (ledger *Ledger) GetStableSyncingState() (shash []byte, height uint64) {
-	sn, height := ledger.snapshots.GetStableSnapshot()
-	//0 indicate that ledger still has not any stable state for syncing
-	//(may because it just startted up )
-	if sn == nil {
-		return nil, 0
-	}
 
-	return sn.stateHash, height
+// TODO: use snapshot manager for syncing is not complete correct beacuse syncer
+// may lost their available state because all nodes have trunced the target state,
+// (consider a node is syncing some state A from another node B and B is off-line
+// in the process, and time has passed so no other nodes will keep the state which A
+// wish to sync) later we should use checkpoint for state syncing and a long hold node
+// should be provided for alleviating this problem
+func (ledger *Ledger) GetStableSyncingState() *protos.StateFilter {
+	return ledger.snapshots.GetStableIndex()
+}
+
+// create a snapshot wrapper for current db
+func (ledger *Ledger) CreateSnapshot() *LedgerSnapshot {
+
+	return &LedgerSnapshot{ledger, ledger.snapshots.GetCurrentSnapshot()}
 }
 
 // ----- will be deprecated -----
@@ -134,7 +154,8 @@ type indexedSnapshot struct {
 	stateHash []byte
 }
 
-func (s *indexedSnapshot) index() string {
+func (s indexedSnapshot) index() string {
+
 	if l := len(s.stateHash); l == 0 {
 		return "NIL"
 	} else if l < 8 {
@@ -151,12 +172,13 @@ type ledgerHistory struct {
 	snapshotInterval int
 	beginIntervalNum uint64
 	currentHeight    uint64
-	stableHeight     uint64 //the latest number added in sns
-	current          *indexedSnapshot
+	current          indexedSnapshot
 	sns              []*indexedSnapshot
-	stateIndex       map[string]*indexedSnapshot
+	stableStatus     *protos.StateFilter
 }
 
+//we should not keep too many snapshot or scaliablity problem will raise in rocksdb,
+//see the doc for detail: https://github.com/facebook/rocksdb/wiki/Snapshot
 const defaultSnapshotTotal = 8
 const defaultSnapshotInterval = 16
 
@@ -165,12 +187,17 @@ func initNewLedgerSnapshotManager(odb *db.OpenchainDB, shash []byte, blkheight u
 	//TODO: read config
 	lsm.snapshotInterval = defaultSnapshotInterval
 	lsm.sns = make([]*indexedSnapshot, defaultSnapshotTotal)
-	lsm.stateIndex = make(map[string]*indexedSnapshot)
+	lsm.stableStatus = new(protos.StateFilter)
+
+	filterEff := lsm.stableStatus.InitAuto(uint(len(lsm.sns)))
+	if fr := filterEff * float64(100); fr > float64(1.0) {
+		ledgerLogger.Warningf("The false positive ratio of filter is larger than 1% (%f)", fr)
+	}
 
 	if blkheight > 0 {
 		lsm.beginIntervalNum = (blkheight - 1) / uint64(lsm.snapshotInterval)
 		lsm.currentHeight = blkheight
-		lsm.current = &indexedSnapshot{odb.GetSnapshot(), shash}
+		lsm.current = indexedSnapshot{odb.GetSnapshot(), shash}
 	}
 
 	lsm.db = odb
@@ -184,37 +211,33 @@ func (lh *ledgerHistory) Release() {
 	}
 }
 
-func (lh *ledgerHistory) GetCurrentSnapshot() *indexedSnapshot {
+func (lh *ledgerHistory) GetCurrentSnapshot() *db.DBSnapshot {
 	lh.RLock()
 	defer lh.RUnlock()
 
-	return lh.current
+	return lh.current.DBSnapshot.Clone()
 }
 
-func (lh *ledgerHistory) GetStableSnapshot() (*indexedSnapshot, uint64) {
+func (lh *ledgerHistory) GetStableIndex() *protos.StateFilter {
 	lh.RLock()
 	defer lh.RUnlock()
-	if lh.stableHeight == 0 {
-		return nil, 0
-	}
-	sni, blkn := lh.historyIndex(lh.stableHeight)
-	if sni == -1 || blkn != lh.stableHeight {
-		ledgerLogger.Errorf("Can not found corresponding stable snapshot, indicate %d but get [%d, %d]", lh.stableHeight, sni, blkn)
-		return nil, 0
-	} else {
-		return lh.sns[sni], lh.stableHeight
-	}
+
+	ret := new(protos.StateFilter)
+	ret.Filter = lh.stableStatus.Filter
+	ret.HashCounts = lh.stableStatus.HashCounts
+
+	return ret
 }
 
-func (lh *ledgerHistory) GetSnapshot(blknum uint64) (*indexedSnapshot, uint64) {
+func (lh *ledgerHistory) GetSnapshot(blknum uint64) (*db.DBSnapshot, uint64) {
 	lh.RLock()
 	defer lh.RUnlock()
 
 	sni, blkn := lh.historyIndex(blknum)
 	if sni == -1 {
-		return lh.current, blkn
+		return lh.current.DBSnapshot.Clone(), blkn
 	} else {
-		return lh.sns[sni], blkn
+		return lh.sns[sni].DBSnapshot.Clone(), blkn
 	}
 }
 
@@ -256,34 +279,34 @@ func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {
 		return
 	}
 
-	if currentNum := lh.currentHeight - 1; currentNum%uint64(lh.snapshotInterval) == 0 {
+	if currentNum := lh.currentHeight - 1; lh.currentHeight > 0 && currentNum%uint64(lh.snapshotInterval) == 0 {
 		//can keep this snapshot
-		//but check index not occupied first, thought rare ...
-		if _, ok := lh.stateIndex[lh.current.index()]; !ok {
-			sec := currentNum / uint64(lh.snapshotInterval)
-			indx := int(sec % uint64(len(lh.sns)))
+		sec := currentNum / uint64(lh.snapshotInterval)
+		indx := int(sec % uint64(len(lh.sns)))
 
-			if s := lh.sns[indx]; s != nil {
-				delete(lh.stateIndex, s.index())
-				s.Release()
-			}
-			lh.sns[indx] = lh.current
-			lh.stateIndex[lh.current.index()] = lh.current
-			lh.stableHeight = currentNum
+		if s := lh.sns[indx]; s != nil {
+			s.Release()
+		}
+		newsnapshot := &indexedSnapshot{lh.current.DBSnapshot, lh.current.stateHash}
+		lh.sns[indx] = newsnapshot
 
-			ledgerLogger.Debugf("Cache snapshot of %d at %d", lh.currentHeight-1, indx)
-			if lh.beginIntervalNum+uint64(len(lh.sns)) <= sec && lh.currentHeight > 0 {
-				lh.beginIntervalNum = sec - uint64(len(lh.sns)-1)
-				ledgerLogger.Debugf("Move update begin to %d", lh.beginIntervalNum)
+		ledgerLogger.Debugf("Cache snapshot of %d at %d", lh.currentHeight-1, indx)
+		if lh.beginIntervalNum+uint64(len(lh.sns)) <= sec && lh.currentHeight > 0 {
+			lh.beginIntervalNum = sec - uint64(len(lh.sns)-1)
+			ledgerLogger.Debugf("Move update begin to %d", lh.beginIntervalNum)
+		}
+
+		//reset bloom filter
+		lh.stableStatus.ResetFilter()
+		for _, sn := range lh.sns {
+			if sn != nil && len(sn.stateHash) != 0 {
+				lh.stableStatus.Add(sn.stateHash)
 			}
-		} else {
-			lh.current.Release()
-			ledgerLogger.Warningf("gave up caching snapshot on blk %d because of (extremely rare) index conflicting", currentNum)
 		}
 
 	} else {
 		lh.current.Release()
 	}
 	lh.currentHeight = blknum + 1
-	lh.current = &indexedSnapshot{lh.db.GetSnapshot(), shash}
+	lh.current = indexedSnapshot{lh.db.GetSnapshot(), shash}
 }

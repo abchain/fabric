@@ -85,6 +85,7 @@ func TestSnapshot_caching(t *testing.T) {
 
 	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, testStates[1:3])
 	testutil.AssertNotNil(t, sn.sns[0])
+	testutil.AssertNil(t, sn.sns[1])
 	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, testStates[3:11])
 	testutil.AssertNotNil(t, sn.sns[2])
 	testutil.AssertEquals(t, sn.beginIntervalNum, uint64(1))

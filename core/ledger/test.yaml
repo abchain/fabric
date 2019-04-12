@@ -4,7 +4,7 @@
 #
 ###############################################################################
 logging:
-   test: info:db/pathUpdating,db=debug
+   test: info:ledger=debug
 
 
 peer:

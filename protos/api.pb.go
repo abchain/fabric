@@ -46,6 +46,7 @@ It has these top-level messages:
 	Event
 	GlobalState
 	GlobalStateUpdateTask
+	StateFilter
 	Transaction
 	TransactionBlock
 	TransactionResult
