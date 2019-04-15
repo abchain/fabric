@@ -50,7 +50,7 @@ func InitGossipStub(bindPeer peer.Peer, srv *grpc.Server) *gossip.GossipStub {
 func init() {
 
 	gossip.ObtainHandler = func(h *pb.StreamHandler) gossip.GossipHandler {
-		hh, ok := h.StreamHandlerImpl.(*GossipHandlerImpl)
+		hh, ok := h.Impl().(*GossipHandlerImpl)
 		if !ok {
 			panic("type error, not GossipHandlerImpl")
 		}
@@ -69,8 +69,8 @@ func (h GossipHandlerImpl) EnableLoss() bool { return true }
 
 func (h GossipHandlerImpl) NewMessage() proto.Message { return new(pb.GossipMsg) }
 
-func (h GossipHandlerImpl) HandleMessage(m proto.Message) error {
-	return h.GossipHandler.HandleMessage(m.(*pb.GossipMsg))
+func (h GossipHandlerImpl) HandleMessage(strm *pb.StreamHandler, m proto.Message) error {
+	return h.GossipHandler.HandleMessage(strm, m.(*pb.GossipMsg))
 }
 
 func (h GossipHandlerImpl) BeforeSendMessage(proto.Message) error {

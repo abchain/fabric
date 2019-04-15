@@ -16,7 +16,7 @@ type CatalogHandler interface {
 	//just notify the model is updated
 	SelfUpdate()
 	HandleUpdate(*pb.GossipMsg_Update, CatalogPeerPolicies)
-	HandleDigest(*pb.GossipMsg_Digest, CatalogPeerPolicies)
+	HandleDigest(*pb.StreamHandler, *pb.GossipMsg_Digest, CatalogPeerPolicies)
 }
 
 type CatalogHandlerEx interface {
@@ -25,8 +25,7 @@ type CatalogHandlerEx interface {
 }
 
 type CatalogPeerPolicies interface {
-	GetPeer() *pb.PeerID
-	GetId() string //equal to GetPeer().GetName()
+	GetId() string //equal to peerId.GetName()
 	AllowRecvUpdate() bool
 	PushUpdateQuota() int
 	PushUpdate(int)
@@ -345,13 +344,7 @@ func (h *catalogHandler) SelfUpdate() {
 	go h.executePush(emptyExcluded)
 }
 
-func (h *catalogHandler) HandleDigest(msg *pb.GossipMsg_Digest, cpo CatalogPeerPolicies) {
-
-	strm := h.sstub.PickHandler(cpo.GetPeer())
-	if strm == nil {
-		logger.Errorf("No stream found for %s", cpo.GetId())
-		return
-	}
+func (h *catalogHandler) HandleDigest(strm *pb.StreamHandler, msg *pb.GossipMsg_Digest, cpo CatalogPeerPolicies) {
 
 	sess := genSessionHandler(h, cpo, true)
 	sess.notPull = msg.NoResp
