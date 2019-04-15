@@ -108,6 +108,8 @@ type Impl struct {
 		discovery.Discovery
 		touchPeriod   time.Duration
 		touchMaxNodes int
+		hidden        bool
+		disable       bool
 	}
 	aclHelper acl.AccessControl
 	persistor db.Persistor
@@ -669,6 +671,9 @@ func (p *Impl) initDiscovery(cfg *PeerConfig) []string {
 		}
 	}
 
+	p.discHelper.hidden = cfg.Discovery.Hidden
+	p.discHelper.disable = cfg.Discovery.Disable
+
 	p.discHelper.touchPeriod = cfg.Discovery.TouchPeriod
 	if p.discHelper.touchPeriod.Seconds() < 5.0 {
 		peerLogger.Warningf("obtain too small touch peroid: %v, set to 5s", p.discHelper.touchPeriod)
@@ -681,6 +686,14 @@ func (p *Impl) initDiscovery(cfg *PeerConfig) []string {
 	addresses = append(addresses, cfg.Discovery.Roots...)
 	peerLogger.Debugf("Retrieved total discovery list: %v", addresses)
 	return addresses
+}
+
+func (p *Impl) isDiscoveryDisable() bool {
+	return p.discHelper.disable
+}
+
+func (p *Impl) isHiddenPeer() bool {
+	return p.discHelper.hidden
 }
 
 // =============================================================================

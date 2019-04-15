@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abchain/fabric/core/comm"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/looplab/fsm"
 
@@ -178,11 +176,12 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 		d.Coordinator.GetDiscHelper().RemoveNode(d.ToPeerEndpoint.Address)
 
 		// if I am a hidden node, I will never send GET_PEERS
-		if !comm.DiscoveryHidden() {
+		if !d.Coordinator.isHiddenPeer() {
 			//send GET_PEERS as soon as possible
 			if err := d.SendMessage(&pb.Message{Type: pb.Message_DISC_GET_PEERS}); err != nil {
 				peerLogger.Errorf("Error sending %s during handler discovery tick: %s", pb.Message_DISC_GET_PEERS, err)
 			}
+			//then send get_peer message periodically
 			go d.start()
 		}
 	}
@@ -205,7 +204,7 @@ func (d *Handler) beforeGetPeers(e *fsm.Event) {
 
 	var peersMessage *pb.PeersMessage
 
-	if !comm.DiscoveryDisable() {
+	if !d.Coordinator.isDiscoveryDisable() {
 		msg, err := d.Coordinator.GetPeers()
 		if err != nil {
 			lerr := fmt.Errorf("Error Getting Peers: %s", err)
@@ -234,8 +233,8 @@ func (d *Handler) beforeGetPeers(e *fsm.Event) {
 
 func (d *Handler) beforePeers(e *fsm.Event) {
 	peerLogger.Debugf("Received %s, grabbing peers message", e.Event)
-	if comm.DiscoveryHidden() {
-		peerLogger.Debug("Ingore to process disc peers in hidden mode")
+	if d.Coordinator.isHiddenPeer() {
+		peerLogger.Warning("Still receive resp of GET_PEERS from node %s", d.ToPeerEndpoint)
 		return
 	}
 
