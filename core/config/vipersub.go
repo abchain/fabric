@@ -34,17 +34,21 @@ func viperSearch(path []string, m map[string]interface{}) map[string]interface{}
 
 func SubViper(path string, thevp ...*viper.Viper) *viper.Viper {
 
+	//we just consider the first vp (or noting)
+	var parent *viper.Viper
+	if len(thevp) == 0 {
+		parent = viper.GetViper()
+	} else {
+		parent = thevp[0]
+	}
+
 	vp := viper.New()
+	InitViperForEnv(MergeViperPrefix(path, parent), vp)
+
 	var sets map[string]interface{}
 	var ok bool
-	if len(thevp) == 0 {
-		if sets, ok = settingCache[viper.GetViper()]; !ok {
-			sets = viper.AllSettings()
-		}
-	} else {
-		if sets, ok = settingCache[thevp[0]]; !ok {
-			sets = thevp[0].AllSettings()
-		}
+	if sets, ok = settingCache[parent]; !ok {
+		sets = parent.AllSettings()
 	}
 
 	path = strings.ToLower(path)
