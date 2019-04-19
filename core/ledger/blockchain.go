@@ -236,6 +236,7 @@ func (blockchain *blockchain) buildBlock(block *protos.Block, stateHash []byte) 
 	} else {
 		block.NonHashData.LocalLedgerCommitTimestamp = util.CreateUtcTimestamp()
 	}
+	block.Timestamp = util.CreateUtcTimestamp()
 	return block
 }
 

@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
@@ -17,10 +16,7 @@ var consolelogger = logging.MustGetLogger("fabricconsole")
 
 func initViper(envprefix string, filename string, configPath ...string) error {
 
-	viper.SetEnvPrefix(envprefix)
-	viper.AutomaticEnv()
-	replacer := strings.NewReplacer(".", "_")
-	viper.SetEnvKeyReplacer(replacer)
+	config.InitViperForEnv(envprefix)
 
 	for _, c := range configPath {
 		viper.AddConfigPath(c)

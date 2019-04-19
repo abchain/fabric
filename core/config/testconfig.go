@@ -20,7 +20,6 @@ import (
 	"flag"
 	"fmt"
 	"runtime"
-	"strings"
 
 	"github.com/abchain/fabric/flogging"
 	"github.com/op/go-logging"
@@ -59,10 +58,7 @@ func (c SetupTestConf) Setup() {
 	flag.Parse()
 
 	// Now set the configuration file
-	viper.SetEnvPrefix(c.Prefix)
-	viper.AutomaticEnv()
-	replacer := strings.NewReplacer(".", "_")
-	viper.SetEnvKeyReplacer(replacer)
+	InitViperForEnv(c.Prefix)
 	viper.SetConfigName(c.ConfigName) // name of config file (without extension)
 	viper.AddConfigPath(".")
 	viper.AddConfigPath(c.YamlPath) // path to look for the config file in
