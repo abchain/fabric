@@ -26,7 +26,7 @@ type ISyncHandler interface {
 	leaveIdle(e *fsm.Event)
 	enterIdle(e *fsm.Event)
 	remotePeerIdName() string
-	HandleMessage(m proto.Message) error
+	HandleMessage(s *pb.StreamHandler, m proto.Message) error
 	getServer() *stateServer
 	getClient() *syncer
 }
@@ -318,7 +318,7 @@ func (h *stateSyncHandler) EnableLoss() bool { return false }
 
 func (h *stateSyncHandler) NewMessage() proto.Message { return new(pb.SyncMsg) }
 
-func (h *stateSyncHandler) HandleMessage(m proto.Message) error {
+func (h *stateSyncHandler) HandleMessage(s *pb.StreamHandler, m proto.Message) error {
 
 	wrapmsg := m.(*pb.SyncMsg)
 

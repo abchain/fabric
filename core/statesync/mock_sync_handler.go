@@ -92,7 +92,7 @@ func (handler *mockSyncHandler) handleChat() error {
 
 	for {
 		in, err := handler.dequeue()
-		err = handler.HandleMessage(in)
+		err = handler.HandleMessage(nil, in)
 		if err != nil {
 			return err
 		}

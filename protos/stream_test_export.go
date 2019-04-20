@@ -13,7 +13,7 @@ func HandleDummyWrite(ctx context.Context, h *StreamHandler) error {
 		return ctx.Err()
 	case m := <-h.writeQueue:
 		//"swallow" the message silently
-		h.BeforeSendMessage(m)
+		h.handler.BeforeSendMessage(m)
 	}
 
 	return nil
@@ -25,8 +25,8 @@ func HandleDummyComm(ctx context.Context, hfrom *StreamHandler, hto *StreamHandl
 	case <-ctx.Done():
 		return ctx.Err()
 	case m := <-hfrom.writeQueue:
-		if err := hfrom.BeforeSendMessage(m); err == nil {
-			err = hto.HandleMessage(m)
+		if err := hfrom.handler.BeforeSendMessage(m); err == nil {
+			err = hto.handler.HandleMessage(hto, m)
 			if err != nil {
 				return err
 			}
@@ -47,14 +47,14 @@ func HandleDummyBiComm(ctx context.Context, h1 *StreamHandler, h2 *StreamHandler
 	case <-ctx.Done():
 		return ctx.Err()
 	case m := <-h1.writeQueue:
-		err = h1.BeforeSendMessage(m)
+		err = h1.handler.BeforeSendMessage(m)
 		if err == nil {
-			err = h2.HandleMessage(m)
+			err = h2.handler.HandleMessage(h2, m)
 		}
 	case m := <-h2.writeQueue:
-		err = h2.BeforeSendMessage(m)
+		err = h2.handler.BeforeSendMessage(m)
 		if err == nil {
-			err = h1.HandleMessage(m)
+			err = h1.handler.HandleMessage(h1, m)
 		}
 	}
 

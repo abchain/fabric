@@ -33,7 +33,7 @@ func getGlobalSeq() uint64 {
 
 //the simplified stream handler
 type GossipHandler interface {
-	HandleMessage(*pb.GossipMsg) error
+	HandleMessage(*pb.StreamHandler, *pb.GossipMsg) error
 	Stop()
 }
 

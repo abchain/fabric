@@ -519,7 +519,12 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 
 		chaincodeLogger.Debugf("wait chaincode %s for lauching: [%s]", chaincode, chrte.launchResult)
 		if chrte.launchResult == nil {
-			return nil, chrte
+			if chrte.handler == nil {
+				chaincodeLogger.Errorf("handler is not available but lauching [%s(chain:%s,nodeid:%s)] not notify that", chaincode, chaincodeSupport.name, chaincodeSupport.nodeID)
+				return fmt.Errorf("internal error"), nil
+			} else {
+				return nil, chrte
+			}
 		} else {
 			return chrte.launchResult, nil
 		}

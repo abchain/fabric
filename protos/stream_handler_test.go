@@ -23,7 +23,7 @@ func (h *dummyHandler) EnableLoss() bool { return true }
 
 func (h *dummyHandler) NewMessage() proto.Message { return nil }
 
-func (h *dummyHandler) HandleMessage(m proto.Message) error {
+func (h *dummyHandler) HandleMessage(_ *StreamHandler, m proto.Message) error {
 	return &dummyError{fmt.Errorf("No implement")}
 }
 

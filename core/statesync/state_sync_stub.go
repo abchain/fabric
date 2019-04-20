@@ -76,7 +76,7 @@ func (s *StateSyncStub) NotifyNewPeer(peer *pb.PeerID) {
 
 	handler := s.StreamStub.PickHandler(peer)
 	if handler != nil {
-		peerSyncHandler, ok := handler.StreamHandlerImpl.(*stateSyncHandler)
+		peerSyncHandler, ok := handler.Impl().(*stateSyncHandler)
 		if ok && peerSyncHandler != nil {
 			err := peerSyncHandler.handshake()
 			if err != nil {
@@ -111,7 +111,7 @@ func (s *StateSyncStub) SyncToStateByPeer(targetState []byte, opt *syncOpt,	peer
 		return fmt.Errorf("[%s]: Failed to find sync handler for peer <%v>",flogging.GoRDef, peer)
 	}
 
-	peerSyncHandler, ok := handler.StreamHandlerImpl.(*stateSyncHandler)
+	peerSyncHandler, ok := handler.Impl().(*stateSyncHandler)
 
 	if !ok {
 		return fmt.Errorf("[%s]: Target peer <%v>, "+

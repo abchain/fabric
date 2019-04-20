@@ -48,7 +48,7 @@ type StreamHandlerImpl interface {
 	Tag() string
 	EnableLoss() bool
 	NewMessage() proto.Message
-	HandleMessage(proto.Message) error
+	HandleMessage(*StreamHandler, proto.Message) error
 	BeforeSendMessage(proto.Message) error
 	OnWriteError(error)
 	Stop()
@@ -56,7 +56,7 @@ type StreamHandlerImpl interface {
 
 type StreamHandler struct {
 	sync.RWMutex
-	StreamHandlerImpl
+	handler     StreamHandlerImpl
 	name        string
 	enableLoss  bool
 	writeQueue  chan proto.Message
@@ -69,10 +69,10 @@ const (
 
 func newStreamHandler(impl StreamHandlerImpl) *StreamHandler {
 	return &StreamHandler{
-		StreamHandlerImpl: impl,
-		enableLoss:        impl.EnableLoss(),
-		writeQueue:        make(chan proto.Message, defaultWriteBuffer),
-		writeExited:       make(chan error),
+		handler:     impl,
+		enableLoss:  impl.EnableLoss(),
+		writeQueue:  make(chan proto.Message, defaultWriteBuffer),
+		writeExited: make(chan error),
 	}
 }
 
@@ -81,6 +81,13 @@ func (h *StreamHandler) GetName() string {
 		return ""
 	}
 	return h.name
+}
+
+func (h *StreamHandler) Impl() StreamHandlerImpl {
+	if h == nil {
+		return nil
+	}
+	return h.handler
 }
 
 //sending a message to far-end, this method is thread-safe
@@ -93,7 +100,7 @@ func (h *StreamHandler) SendMessage(m proto.Message) error {
 	h.RLock()
 	defer h.RUnlock()
 	if h.writeQueue == nil {
-		return fmt.Errorf("Streamhandler %s has been killed", h.Tag())
+		return fmt.Errorf("Streamhandler %s has been killed", h.handler.Tag())
 	}
 
 	select {
@@ -101,7 +108,7 @@ func (h *StreamHandler) SendMessage(m proto.Message) error {
 		return nil
 	default:
 		if !h.enableLoss {
-			return fmt.Errorf("Streamhandler %s's write channel full, rejecting", h.Tag())
+			return fmt.Errorf("Streamhandler %s's write channel full, rejecting", h.handler.Tag())
 		}
 	}
 
@@ -113,7 +120,7 @@ func (h *StreamHandler) handleWrite(stream grpc.Stream) {
 	var m proto.Message
 	for m = range h.writeQueue {
 
-		err := h.BeforeSendMessage(m)
+		err := h.handler.BeforeSendMessage(m)
 		if err == nil {
 			err = stream.SendMsg(m)
 			if err != nil {
@@ -140,11 +147,11 @@ func (h *StreamHandler) handleStream(stream grpc.Stream) error {
 	//dispatch write goroutine
 	go h.handleWrite(stream)
 
-	defer h.Stop()
+	defer h.handler.Stop()
 	defer h.endHandler()
 
 	for {
-		in := h.NewMessage()
+		in := h.handler.NewMessage()
 		err := stream.RecvMsg(in)
 		if err == io.EOF {
 			return fmt.Errorf("received EOF")
@@ -152,7 +159,7 @@ func (h *StreamHandler) handleStream(stream grpc.Stream) error {
 			return err
 		}
 
-		err = h.HandleMessage(in)
+		err = h.handler.HandleMessage(h, in)
 		if err != nil {
 			//don't need to call onError again
 			return err
@@ -161,7 +168,7 @@ func (h *StreamHandler) handleStream(stream grpc.Stream) error {
 		select {
 		case err := <-h.writeExited:
 			//if the writting goroutine exit unexpectedly, we resume it ...
-			h.OnWriteError(err)
+			h.handler.OnWriteError(err)
 			go h.handleWrite(stream)
 		default:
 			//or everything is ok
