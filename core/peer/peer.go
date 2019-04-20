@@ -124,7 +124,7 @@ type MessageHandler interface {
 	SendMessage(msg *pb.Message) error
 	To() (pb.PeerEndpoint, error)
 	Stop() error
-	SetUnreg()
+	CloseSend()
 }
 
 var PeerGlobalParentCtx = context.Background()
@@ -315,8 +315,6 @@ func (p *Impl) GetNeighbour() (Neighbour, error) {
 func (p *Impl) overwrite(acitve bool, peerKey *pb.PeerID) bool {
 
 	overwrite := false
-
-	return overwrite
 	if strings.Compare(p.self.ID.Name, peerKey.Name) > 0 {
 		if acitve {
 			overwrite = true
@@ -338,41 +336,18 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	}
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
-	if _, ok := p.handlerMap.m[*key]; ok == true {
-		//Duplicate, return error
-		return newDuplicateHandlerError(messageHandler)
+
+	if existing, ok := p.handlerMap.m[*key]; ok {
+		if p.overwrite(initiated, key) {
+			p.handlerMap.glareMap[*key] = existing
+
+			// close the previous connection
+			go existing.CloseSend()
+		} else {
+			//Duplicate, return error
+			return newDuplicateHandlerError(messageHandler)
+		}
 	}
-
-
-	//if existing, ok := p.handlerMap.m[*key]; ok == true {
-	//
-	//	if p.overwrite(initiated, key) {
-	//
-	//		//peerLogger.Debugf(
-	//		//	"[%s]: <---------- new handler index[%d] overwrites existing registered " +
-	//		//		"handler index[%d] with key[%s], active: %t. Self key: [%s]",
-	//		//	flogging.GoRDef,
-	//		//	messageHandler.Index(),
-	//		//	existing.Index(),
-	//		//	key, initiated, p.self.ID)
-	//
-	//		p.handlerMap.glareMap[*key] = existing
-	//
-	//		go existing.SetUnreg()
-	//	} else {
-	//		// Duplicate, return error
-	//		//peerLogger.Debugf(
-	//		//	"[%s]: <-----newDuplicateHandlerError----- new handler index[%d] will not overwrite existing " +
-	//		//		"registered handler index[%d] with key[%s], active: %t. Self key: [%s]",
-	//		//	flogging.GoRDef,
-	//		//	messageHandler.Index(),
-	//		//	existing.Index(),
-	//		//	key, initiated, p.self.ID)
-	//
-	//		return newDuplicateHandlerError(messageHandler)
-	//	}
-	//}
-
 
 	p.handlerMap.m[*key] = messageHandler
 	p.handlerMap.cachedPeerList = nil
@@ -430,15 +405,13 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
 
-	//if _, ok := p.handlerMap.glareMap[*key]; ok {
-	//	// found in glareMap first
-	//	delete(p.handlerMap.glareMap, *key)
-	//	p.handlerMap.cachedPeerList = nil
-	//	peerLogger.Debugf("[%s] <-------- Deregistered glared handler with key: %s",
-	//		flogging.GoRDef,
-	//		key)
-	//	return nil
-	//}
+	if _, ok := p.handlerMap.glareMap[*key]; ok {
+		// found it in glareMap first
+		delete(p.handlerMap.glareMap, *key)
+		peerLogger.Debugf("Deregistered glared handler with key: %s", key)
+		p.handlerMap.cachedPeerList = nil
+		return nil
+	}
 
 	if _, ok := p.handlerMap.m[*key]; !ok {
 		// Handler NOT found
