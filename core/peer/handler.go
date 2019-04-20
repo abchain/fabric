@@ -18,6 +18,7 @@ package peer
 
 import (
 	"fmt"
+	"github.com/abchain/fabric/flogging"
 	"sync"
 	"time"
 
@@ -80,6 +81,22 @@ func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (Messa
 	}
 
 	return d, nil
+}
+
+
+
+func (d *Handler) SetUnreg() {
+
+	peerLogger.Infof("[%s]: <--------------Handler, registered is set to false",
+		flogging.GoRDef)
+
+	client, ok := d.ChatStream.(pb.Peer_ChatClient)
+
+	if ok {
+		peerLogger.Infof("[%s]: <------CloseSend--------Handler, registered is set to false",
+			flogging.GoRDef)
+		client.CloseSend()
+	}
 }
 
 func (d *Handler) enterState(e *fsm.Event) {
