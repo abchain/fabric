@@ -125,6 +125,7 @@ type MessageHandler interface {
 	To() (pb.PeerEndpoint, error)
 	Stop() error
 	CloseSend()
+	IsActive() bool
 }
 
 var PeerGlobalParentCtx = context.Background()
@@ -312,21 +313,22 @@ func (p *Impl) GetNeighbour() (Neighbour, error) {
 	return p, nil
 }
 
-func (p *Impl) overwrite(acitve bool, peerKey *pb.PeerID) bool {
+func (p *Impl) overwrite(acitve bool, peerKey *pb.PeerID, existing MessageHandler) bool {
 
 	overwrite := false
 	if strings.Compare(p.self.ID.Name, peerKey.Name) > 0 {
-		if acitve {
+		if acitve && !existing.IsActive() {
 			overwrite = true
 		}
 	} else if strings.Compare(p.self.ID.Name, peerKey.Name) < 0 {
-		if !acitve {
+		if !acitve && existing.IsActive(){
 			overwrite = true
 		}
 	}
-
 	return overwrite
 }
+
+
 
 // RegisterHandler register a MessageHandler with this coordinator
 func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandler MessageHandler) error {
@@ -338,7 +340,7 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	defer p.handlerMap.Unlock()
 
 	if existing, ok := p.handlerMap.m[*key]; ok {
-		if p.overwrite(initiated, key) {
+		if p.overwrite(initiated, key, existing) {
 			p.handlerMap.glareMap[*key] = existing
 
 			peerLogger.Debugf("close glared handler with key: %s, active: %t", key, initiated)

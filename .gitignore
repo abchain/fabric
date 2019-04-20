@@ -33,3 +33,4 @@ build/
 
 dbscan
 *_stdout_*
+*appdata*

@@ -83,6 +83,11 @@ func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (Messa
 }
 
 
+
+func (d *Handler) IsActive() bool {
+	return d.initiatedStream
+}
+
 func (d *Handler) CloseSend() {
 	client, ok := d.ChatStream.(pb.Peer_ChatClient)
 	if ok {
