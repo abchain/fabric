@@ -341,6 +341,7 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 		if p.overwrite(initiated, key) {
 			p.handlerMap.glareMap[*key] = existing
 
+			peerLogger.Debugf("close glared handler with key: %s, active: %t", key, initiated)
 			// close the previous connection
 			go existing.CloseSend()
 		} else {
