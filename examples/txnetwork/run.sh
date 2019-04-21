@@ -36,5 +36,5 @@ function main {
 
 main $1
 
-sleep 1
+sleep 2
 lsof -i -n -P|grep txnetwork
