@@ -45,7 +45,7 @@ const DefaultNumBuckets = 10009
 // Grouping is started from left. The last group may have less buckets
 const DefaultMaxGroupingAtEachLevel = 10
 
-var useLegacyBucketKeyEncoding = false
+var useLegacyBucketKeyEncoding = true
 
 type config struct {
 	maxGroupingAtEachLevel int
