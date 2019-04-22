@@ -300,7 +300,6 @@ func TestSyncResuming(t *testing.T) {
 	testutil.AssertEquals(t, dummyWrapper.stateImpl.IsCompleted(), false)
 	testutil.AssertEquals(t, dummyWrapper.stateImpl.SyncTarget(), src.computeCryptoHash())
 
-	//don't call release, or it will double kill ...
 	sim2 := attach(t, src, dummyWrapper)
 	defer sim2.Release()
 

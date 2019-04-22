@@ -155,10 +155,15 @@ func (conf *config) setting(configs map[string]interface{}) {
 		hashFunction = fnvHash
 	}
 
+	newEncoding := !useLegacyBucketKeyEncoding
+	if v, ok := configs["legacyKeyEncode"]; ok {
+		newEncoding = !cast.ToBool(v)
+	}
+
 	conf.syncDelta = syncDelta
 	conf.hashFunc = hashFunction
 	conf.bucketCacheMaxSize = bucketCacheMaxSize
-	conf.newBucketKeyEncoding = !useLegacyBucketKeyEncoding
+	conf.newBucketKeyEncoding = newEncoding
 	logger.Infof("setting configurations to %+v", conf)
 
 }
