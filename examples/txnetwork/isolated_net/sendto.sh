@@ -2,7 +2,7 @@
 
 PEERLOCALADDRBASE=7055
 
-PEER_BINARY=../../peer/peer
+PEER_BINARY=../../../peer/peer
 
 function invokebody {
 

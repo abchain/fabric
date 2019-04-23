@@ -3,7 +3,7 @@ set -e
 PEERADDRBASE=7055
 EVENTADDRBASE=7053
 FILEPATHBASE=/var/hyperledger
-PEER_BINARY=../../peer/peer
+PEER_BINARY=../../../peer/peer
 
 tx_count() {
     ${PEER_BINARY} chaincode query -n txnetwork -c "{\"Function\": \"count\", \"Args\": []}"

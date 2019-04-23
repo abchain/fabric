@@ -4,7 +4,7 @@ set -e
 main() {
 
     for ((index=0; index<$1; index++)) do
-        res=`./5nodes_test.sh |grep "Result: 20"| wc -l`
+        res=`5nodes_test.sh |grep "Result: 20"| wc -l`
 
         if [ $res -lt 5 ] && [ $res -gt 0 ]; then
             echo "unexpected: $res"

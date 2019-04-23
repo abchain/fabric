@@ -3,7 +3,7 @@ set -e
 PEERADDRBASE=7055
 EVENTADDRBASE=7053
 FILEPATHBASE=/var/hyperledger
-PEER_BINARY=../../peer/peer
+PEER_BINARY=../../../peer/peer
 BRIDGE_URL=127.0.0.1:7055
 ROOTNODE_a_URL=127.0.0.1:7155
 ROOTNODE_b_URL=127.0.0.1:7355
@@ -73,7 +73,7 @@ init() {
         go build
     fi
 
-    ./killbyname.sh txnetwork
+    ../killbyname.sh txnetwork
     rm ./txnetwork_*
     rm -rf ${FILEPATHBASE}/txnet*
     rm *_stdout_*_*.json
