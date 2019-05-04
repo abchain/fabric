@@ -86,8 +86,6 @@ func NewPeerClientConnectionWithAddress(peerAddress string) (*grpc.ClientConn, e
 type handlerMap struct {
 	sync.RWMutex
 	m              map[pb.PeerID]MessageHandler
-	glareMap       map[pb.PeerID]MessageHandler
-
 	cachedPeerList []*pb.PeerEndpoint
 }
 
@@ -137,7 +135,6 @@ func NewPeer(self *pb.PeerEndpoint) *Impl {
 	peer.self = self
 	peer.handlerMap = &handlerMap{
 		m: make(map[pb.PeerID]MessageHandler),
-		glareMap: make(map[pb.PeerID]MessageHandler),
 	}
 
 	pctx, endf := context.WithCancel(PeerGlobalParentCtx)
@@ -341,9 +338,9 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 
 	if existing, ok := p.handlerMap.m[*key]; ok {
 		if p.overwrite(initiated, key, existing) {
-			p.handlerMap.glareMap[*key] = existing
-
-			peerLogger.Debugf("close glared handler with key: %s, active: %t", key, initiated)
+			peerLogger.Debugf("Close glared handler with key: %s, active: %t, address: %p. " +
+				"Replaced by handler: active: %t, address: %p.",
+				key, existing.IsActive(), existing, initiated, messageHandler)
 			// close the previous connection
 			go existing.CloseSend()
 		} else {
@@ -408,18 +405,19 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
 
-	if _, ok := p.handlerMap.glareMap[*key]; ok {
-		// found it in glareMap first
-		delete(p.handlerMap.glareMap, *key)
-		peerLogger.Debugf("Deregistered glared handler with key: %s", key)
-		p.handlerMap.cachedPeerList = nil
-		return nil
-	}
-
-	if _, ok := p.handlerMap.m[*key]; !ok {
+	existing, ok := p.handlerMap.m[*key]
+	if !ok {
 		// Handler NOT found
 		return fmt.Errorf("Error deregistering handler, could not find handler with key: %s", key)
 	}
+
+	if existing != messageHandler {
+		peerLogger.Warningf("Ignore deregistering handler with key: %s, " +
+			"expected handler address[%p], existing handler address[%p]",
+			key, messageHandler, existing)
+		return nil
+	}
+
 	delete(p.handlerMap.m, *key)
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("Deregistered handler with key: %s", key)
