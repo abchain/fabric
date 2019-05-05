@@ -82,6 +82,19 @@ func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (Messa
 	return d, nil
 }
 
+
+
+func (d *Handler) IsActive() bool {
+	return d.initiatedStream
+}
+
+func (d *Handler) CloseSend() {
+	client, ok := d.ChatStream.(pb.Peer_ChatClient)
+	if ok {
+		client.CloseSend()
+	}
+}
+
 func (d *Handler) enterState(e *fsm.Event) {
 	peerLogger.Debugf("The Peer's bi-directional stream to %s is %s, from event %s\n", d.ToPeerEndpoint, e.Dst, e.Event)
 }

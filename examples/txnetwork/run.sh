@@ -15,11 +15,12 @@ function startpeer {
     export CORE_PEER_ID=billgates_${index}
     export CORE_PEER_VALIDATOR_EVENTS_ADDRESS=127.0.0.1:${EVENTADDRPORT}
     export CORE_PEER_FILESYSTEMPATH=${FILEPATHBASE}/txnet${index}
+    export CORE_PEER_DISCOVERY_PERSIST=true
+    export CORE_LOGGING_NODE=info:peer=debug
 
     export LOG_STDOUT_FILE=_stdout_${CORE_PEER_ID}.json
     echo Run node ${CORE_PEER_ADDRESS} ...
     ./txnetwork >> ${LOG_STDOUT_FILE} 2>>${LOG_STDOUT_FILE} &
-    #sleep 1
 }
 
 
@@ -34,3 +35,6 @@ function main {
 }
 
 main $1
+
+sleep 2
+lsof -i -n -P|grep txnetwork

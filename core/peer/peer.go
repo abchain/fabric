@@ -19,6 +19,7 @@ package peer
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,6 +122,8 @@ type MessageHandler interface {
 	SendMessage(msg *pb.Message) error
 	To() (pb.PeerEndpoint, error)
 	Stop() error
+	CloseSend()
+	IsActive() bool
 }
 
 var PeerGlobalParentCtx = context.Background()
@@ -130,7 +133,9 @@ func NewPeer(self *pb.PeerEndpoint) *Impl {
 	peer := new(Impl)
 
 	peer.self = self
-	peer.handlerMap = &handlerMap{m: make(map[pb.PeerID]MessageHandler)}
+	peer.handlerMap = &handlerMap{
+		m: make(map[pb.PeerID]MessageHandler),
+	}
 
 	pctx, endf := context.WithCancel(PeerGlobalParentCtx)
 	peer.pctx = pctx
@@ -305,6 +310,23 @@ func (p *Impl) GetNeighbour() (Neighbour, error) {
 	return p, nil
 }
 
+func (p *Impl) overwrite(acitve bool, peerKey *pb.PeerID, existing MessageHandler) bool {
+
+	overwrite := false
+	if strings.Compare(p.self.ID.Name, peerKey.Name) > 0 {
+		if acitve && !existing.IsActive() {
+			overwrite = true
+		}
+	} else if strings.Compare(p.self.ID.Name, peerKey.Name) < 0 {
+		if !acitve && existing.IsActive(){
+			overwrite = true
+		}
+	}
+	return overwrite
+}
+
+
+
 // RegisterHandler register a MessageHandler with this coordinator
 func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandler MessageHandler) error {
 	key, err := getHandlerKey(messageHandler)
@@ -313,10 +335,20 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	}
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
-	if _, ok := p.handlerMap.m[*key]; ok == true {
-		// Duplicate, return error
-		return newDuplicateHandlerError(messageHandler)
+
+	if existing, ok := p.handlerMap.m[*key]; ok {
+		if p.overwrite(initiated, key, existing) {
+			peerLogger.Debugf("Close glared handler with key: %s, active: %t, address: %p. " +
+				"Replaced by handler: active: %t, address: %p.",
+				key, existing.IsActive(), existing, initiated, messageHandler)
+			// close the previous connection
+			go existing.CloseSend()
+		} else {
+			//Duplicate, return error
+			return newDuplicateHandlerError(messageHandler)
+		}
 	}
+
 	p.handlerMap.m[*key] = messageHandler
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("registered handler with key: %s, active: %t", key, initiated)
@@ -372,10 +404,20 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 	}
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
-	if _, ok := p.handlerMap.m[*key]; !ok {
+
+	existing, ok := p.handlerMap.m[*key]
+	if !ok {
 		// Handler NOT found
 		return fmt.Errorf("Error deregistering handler, could not find handler with key: %s", key)
 	}
+
+	if existing != messageHandler {
+		peerLogger.Warningf("Ignore deregistering handler with key: %s, " +
+			"expected handler address[%p], existing handler address[%p]",
+			key, messageHandler, existing)
+		return nil
+	}
+
 	delete(p.handlerMap.m, *key)
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("Deregistered handler with key: %s", key)
