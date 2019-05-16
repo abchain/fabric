@@ -18,9 +18,13 @@ What we have achieved include:
 
 * Compatible to the old fabric 0.6 project: the chaincode, data and configurations will be respected and can continue working on YA-fabric
 
-## Our plans
+## Our plans (after 0.9)
 
+* Immigrating PBFT module into the consensus framework, with dynamic decision of the involving peers
 
+* Concurrent execution of transactions
+
+* API help to evaluate the cost of tx executions
 
 If you wish to take a look at the original readme of fabric 0.6, found [here](https://github.com/hyperledger/fabric/blob/v0.6/README.md)
 
@@ -32,7 +36,9 @@ If you wish to take a look at the original readme of fabric 0.6, found [here](ht
 
 ## Release a preview of 0.9
 
-Now 
+* Syncing module 
+
+* A new ledger package, see the [readme](https://github.com/abchain/fabric/blob/0.9/core/ledger/README.md)
 
 ## Release of 0.8
 

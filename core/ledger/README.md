@@ -2,16 +2,39 @@
 
 This package implements the ledger, which includes the blockchain and global state.
 
-If you're looking for API to work with the blockchain or state, look in `ledger.go`. This is the file where all public functions are exposed and is extensively documented. The sections in the file are:
+YA-fabric has refactored this module and provided a more robust implement, with entries easy to be used
 
-### Transaction-batch functions
+### Mutiple ledgers
 
-These are functions that consensus should call. `BeginTxBatch` followed by `CommitTxBatch` or `RollbackTxBatch`. These functions will add a block to the blockchain with the specified transactions.
+In YA-fabric, developer can run mutiple ledger objects in an instance. All of them have their separated
+blockchain, state and block indexes. And they share a storage pool for graphics of states, and transactions,
+which can be accessed from the globalLedger singleton (Each ledger object also integrated the entry of 
+globalLedger)
 
-### World-state functions
+`GetNewLedger` API can be used to create new ledger, replace of the legacy "GetLedger". The later function
+can still be used for accessing a default ledger object
 
-These functions are used to modify the global state. They would generally be called by the VM based on requests from chaincode.
+### Concurrent supporting
 
-### Blockchain functions
+A ledger object now can be read by mutiple-thread and written by single-thread (Single Write Mutiple Reads,
+or SWMR). User can use a snapshot of database to get data consistent in a query transction, even another
+transaction is just changing the underlying database
 
-These functions can be used to retrieve blocks/transactions from the blockchain or other information such as the blockchain size. Addition of blocks to the blockchain is done though the transaction-batch related functions.
+### Execution and committing entries
+
+`TxExecState`, a new designed object, is provided for executing transactions, replace the old API for world-states.
+The new object allow concurrent execution of txs, and in combination of the committing entries form a new
+environment for chaincode platform.
+
+A series of committing objects, see `ledger_commit.go` and `ledger_commit_sync.go` is used for updating
+ledger now. They have a unified interface on handling each elements in the ledger (blocks, states and indexes) 
+and can be applied by requirement of different scenes like committing a new block after executing a bunch
+of transactions, inserting a block, or syncing the whole world-state, etc.
+
+### Syncing of world-state
+
+A practical syncing implement for the whole world-state, via the new `Dividable` interface, is avaliable now.
+So peers can transfer their world-state data with resumable, verifiable process, which may be able to save
+much traffic and computational cost.
+
+*Currently only buckettree has implied the 'diviable' interface*
