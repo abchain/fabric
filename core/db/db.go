@@ -50,16 +50,22 @@ func (c *openchainCFs) feed(cfmap map[string]*gorocksdb.ColumnFamilyHandle) {
 type ocDB struct {
 	baseHandler
 	openchainCFs
-	extendedLock chan int //use a channel as locking for opening extend interface
-	dbName       string
-	finalDrop    bool
+	extendedLock    chan int //use a channel as locking for opening extend interface
+	dbName          string
+	additionalClean func()
 }
 
 type OpenchainDB struct {
+	//lock to access db field
+	sync.RWMutex
 	db           *ocDB
 	dbTag        string
 	indexesCFOpt *gorocksdb.Options
-	sync.RWMutex
+
+	managedSnapshots struct {
+		sync.Mutex
+		m map[string]*DBSnapshot
+	}
 }
 
 var originalDB = &OpenchainDB{db: &ocDB{}}
@@ -73,6 +79,31 @@ func (oc *ocDB) dropDB() {
 	} else {
 		dbLogger.Errorf("[%s] Drop whole db <%s> FAIL: %s", printGID, oc.dbName, err)
 	}
+}
+
+func (oc *ocDB) finalRelease() bool {
+
+	if oc == nil {
+		return false
+	}
+
+	//we "absorb" a lock, the final release also "absorb" one, so
+	//the one which could not asbord any lock will be the last
+	//and response to do cleaning
+	select {
+	case <-oc.extendedLock:
+		return false
+	default:
+		dbLogger.Infof("[%s] Final release current db <%s>", printGID, oc.dbName)
+
+		oc.close()
+
+		if oc.additionalClean != nil {
+			oc.additionalClean()
+		}
+		return true
+	}
+
 }
 
 func (openchainDB *ocDB) open(dbpath string, cfopts []*gorocksdb.Options) error {
@@ -99,17 +130,70 @@ func (openchainDB *ocDB) open(dbpath string, cfopts []*gorocksdb.Options) error 
 	return nil
 }
 
-func (openchainDB *OpenchainDB) getDBKey(kc string) []byte {
-	if openchainDB.dbTag == "" {
-		return []byte(kc)
-	} else {
-		return []byte(openchainDB.dbTag + "." + kc)
+func (openchainDB *OpenchainDB) GetDBPath() string { return openchainDB.db.dbName }
+
+func (openchainDB *OpenchainDB) getDBKey(kc string) []string {
+	return []string{openchainDB.dbTag, kc}
+}
+
+// func (openchainDB *OpenchainDB) getLegacyDBKey(kc string) []byte {
+// 	if openchainDB.dbTag == "" {
+// 		return []byte(kc)
+// 	} else {
+// 		return []byte(openchainDB.dbTag + "." + kc)
+// 	}
+// }
+
+func (openchainDB *OpenchainDB) CleanManagedSnapshot() {
+	openchainDB.managedSnapshots.Lock()
+	defer openchainDB.managedSnapshots.Unlock()
+
+	for _, sn := range openchainDB.managedSnapshots.m {
+		sn.Release()
 	}
+	openchainDB.managedSnapshots.m = make(map[string]*DBSnapshot)
+}
+
+func (openchainDB *OpenchainDB) GetManagedSnapshot(name string) *DBSnapshot {
+	openchainDB.managedSnapshots.Lock()
+	defer openchainDB.managedSnapshots.Unlock()
+	if ret := openchainDB.managedSnapshots.m[name]; ret != nil {
+		return ret.Clone()
+	} else {
+		return nil
+	}
+}
+
+// unmanage the snapshot
+func (openchainDB *OpenchainDB) UnManageSnapshot(name string) {
+	openchainDB.managedSnapshots.Lock()
+	defer openchainDB.managedSnapshots.Unlock()
+	ret := openchainDB.managedSnapshots.m[name]
+	if ret != nil {
+		delete(openchainDB.managedSnapshots.m, name)
+		ret.Release()
+	}
+}
+
+//manage a snapshot, if name is duplicated, the old one is returned and should be released
+//notice: the managed snapshot CANNOT call Release anymore
+func (openchainDB *OpenchainDB) ManageSnapshot(name string, sn *DBSnapshot) *DBSnapshot {
+	openchainDB.managedSnapshots.Lock()
+	defer openchainDB.managedSnapshots.Unlock()
+	old := openchainDB.managedSnapshots.m[name]
+	//sanity check
+	if sn.hosting != nil {
+		panic("Wrong code: you manage a managed snapshot")
+	}
+	sn.hosting = &snapshotManager{count: 1}
+	openchainDB.managedSnapshots.m[name] = sn
+	return old
 }
 
 func (openchainDB *OpenchainDB) GetDBVersion() int {
 
-	v, _ := globalDataDB.get(globalDataDB.persistCF, openchainDB.getDBKey(currentVersionKey))
+	//v, _ := globalDataDB.get(globalDataDB.persistCF, openchainDB.getDBKey(currentVersionKey))
+	v, _ := odbPersistor.LoadByKeys(openchainDB.getDBKey(currentVersionKey))
 	if len(v) == 0 {
 		return 0
 	}
@@ -117,7 +201,8 @@ func (openchainDB *OpenchainDB) GetDBVersion() int {
 }
 
 func (openchainDB *OpenchainDB) UpdateDBVersion(v int) error {
-	return globalDataDB.put(globalDataDB.persistCF, openchainDB.getDBKey(currentVersionKey), []byte{byte(v)})
+	return odbPersistor.StoreByKeys(openchainDB.getDBKey(currentVersionKey), []byte{byte(v)})
+	//return globalDataDB.put(globalDataDB.persistCF, openchainDB.getDBKey(currentVersionKey), []byte{byte(v)})
 }
 
 // override methods with rwlock
@@ -224,32 +309,45 @@ const (
 	maxOpenedExtend = 128
 )
 
-type extHandler struct {
-	*ocDB
-}
-
-//protect the close function declared in ocDB to avoiding a wrong calling
-func (extHandler) Close(extHandler) {}
-
-type refCount struct {
+type snapshotManager struct {
 	sync.Mutex
 	count uint
 }
 
-type DBSnapshot struct {
-	ref refCount
+func (m *snapshotManager) addRef() {
+	m.Lock()
+	defer m.Unlock()
+	//sanity check
+	if m.count == 0 {
+		panic("Try to ref an object which has been released")
+	}
+	m.count++
+}
 
-	extHandler
+func (m *snapshotManager) releaseRef() bool {
+	m.Lock()
+	defer m.Unlock()
+	//sanity check
+	if m.count == 0 {
+		panic("Try to deref an object which has been released")
+	}
+	m.count--
+	return m.count == 0
+}
+
+type DBSnapshot struct {
+	*ocDB
 	snapshot *gorocksdb.Snapshot
+	hosting  *snapshotManager
 }
 
 type DBIterator struct {
-	h extHandler
+	h *ocDB
 	*gorocksdb.Iterator
 }
 
 type DBWriteBatch struct {
-	h extHandler
+	h *ocDB
 	*gorocksdb.WriteBatch
 }
 
@@ -262,48 +360,20 @@ func (openchainDB *OpenchainDB) getExtended() *ocDB {
 	return openchainDB.db
 }
 
-//extend interface
-// GetIterator returns an iterator for the given column family
-func (e *extHandler) release() {
-
-	//to make test and some wrapper also work
-	if e.ocDB == nil {
-		return
-	}
-
-	//we "absorb" a lock
-	select {
-	case <-e.extendedLock:
-	default:
-		dbLogger.Infof("[%s] Release current db <%s>", printGID, e.dbName)
-		e.close()
-
-		if e.finalDrop {
-			e.dropDB()
-		}
-	}
-
-}
-
 func (openchainDB *OpenchainDB) NewWriteBatch() *DBWriteBatch {
-	db := openchainDB.getExtended()
-
-	return &DBWriteBatch{extHandler{db}, gorocksdb.NewWriteBatch()}
+	return &DBWriteBatch{openchainDB.getExtended(), gorocksdb.NewWriteBatch()}
 }
 
 // GetSnapshot create a point-in-time view of the DB.
 func (openchainDB *OpenchainDB) GetSnapshot() *DBSnapshot {
-
-	db := openchainDB.getExtended()
-
-	return &DBSnapshot{refCount{count: 1}, extHandler{db}, db.NewSnapshot()}
+	theDb := openchainDB.getExtended()
+	return &DBSnapshot{theDb, theDb.NewSnapshot(), nil}
 }
 
 func (openchainDB *OpenchainDB) GetIterator(cfName string) *DBIterator {
+	theDb := openchainDB.getExtended()
 
-	db := openchainDB.getExtended()
-
-	cf := db.cfMap[cfName]
+	cf := theDb.cfMap[cfName]
 
 	if cf == nil {
 		panic(fmt.Sprintf("Wrong CF Name %s", cfName))
@@ -313,67 +383,75 @@ func (openchainDB *OpenchainDB) GetIterator(cfName string) *DBIterator {
 	opt.SetFillCache(true)
 	defer opt.Destroy()
 
-	return &DBIterator{extHandler{db}, db.NewIteratorCF(opt, cf)}
+	return &DBIterator{theDb, theDb.NewIteratorCF(opt, cf)}
 }
 
 func (e *DBWriteBatch) Destroy() {
 
 	if e == nil {
 		return
+	} else if e.h == nil {
+		panic("Object is duplicated destroy")
 	}
 
 	if e.WriteBatch != nil {
 		e.WriteBatch.Destroy()
 	}
-	e.h.release()
+	e.h.finalRelease()
+	e.h = nil
 }
 
 func (e *DBIterator) Close() {
 
 	if e == nil {
 		return
+	} else if e.h == nil {
+		panic("Object is duplicated closed")
 	}
 
 	if e.Iterator != nil {
 		e.Iterator.Close()
 	}
-	e.h.release()
+	e.h.finalRelease()
+	e.h = nil
 }
 
 func (e *DBSnapshot) Clone() *DBSnapshot {
 
-	e.ref.Lock()
-	defer e.ref.Unlock()
-	e.ref.count++
-
-	return e
+	if e == nil {
+		return nil
+	} else if e.hosting == nil {
+		//sanity check
+		panic("Wrong code: called clone for unmanaged snapshot")
+	}
+	e.hosting.addRef()
+	return &DBSnapshot{e.ocDB, e.snapshot, e.hosting}
 }
+
+//protect the close function declared in ocDB to avoiding a wrong calling
+func (*DBSnapshot) Close(*DBSnapshot) {}
 
 func (e *DBSnapshot) Release() {
 
 	if e == nil {
 		return
+	} else if e.ocDB == nil {
+		//sanity check
+		panic("snapshot is duplicated release")
 	}
 
-	e.ref.Lock()
-	defer e.ref.Unlock()
-
-	if e.ref.count == 0 {
-		panic("wrong reference count in object")
-	}
-	e.ref.count--
-	if e.ref.count > 0 {
+	if e.hosting != nil && !e.hosting.releaseRef() {
 		return
 	}
-
 	if e.snapshot != nil {
 		e.ReleaseSnapshot(e.snapshot)
 	}
-	e.release()
+	e.finalRelease()
+	e.ocDB = nil
 }
 
 func (e *DBWriteBatch) GetDBHandle() *ocDB {
-	return e.h.ocDB
+	return e.h
 }
 
 func (e *DBWriteBatch) BatchCommit() error {
@@ -414,6 +492,15 @@ func (e *DBSnapshot) GetFromStateCFSnapshot(key []byte) ([]byte, error) {
 	}
 
 	return e.getFromSnapshot(e.snapshot, e.StateCF, key)
+}
+
+func (e *DBSnapshot) GetFromIndexCFSnapshot(key []byte) ([]byte, error) {
+
+	if e.snapshot == nil {
+		return nil, fmt.Errorf("Snapshot is not inited")
+	}
+
+	return e.getFromSnapshot(e.snapshot, e.IndexesCF, key)
 }
 
 // GetStateCFSnapshotIterator get iterator for column family - stateCF. This iterator

@@ -6,6 +6,7 @@ package protos
 import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
 import math "math"
+import google_protobuf1 "github.com/golang/protobuf/ptypes/empty"
 
 import (
 	context "golang.org/x/net/context"
@@ -17,164 +18,1026 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-type SyncType int32
-
-const (
-	SyncType_UNDEFINED      SyncType = 0
-	SyncType_SYNC_BLOCK     SyncType = 1
-	SyncType_SYNC_BLOCK_ACK SyncType = 2
-	SyncType_SYNC_STATE     SyncType = 3
-	SyncType_SYNC_STATE_ACK SyncType = 4
-)
-
-var SyncType_name = map[int32]string{
-	0: "UNDEFINED",
-	1: "SYNC_BLOCK",
-	2: "SYNC_BLOCK_ACK",
-	3: "SYNC_STATE",
-	4: "SYNC_STATE_ACK",
-}
-var SyncType_value = map[string]int32{
-	"UNDEFINED":      0,
-	"SYNC_BLOCK":     1,
-	"SYNC_BLOCK_ACK": 2,
-	"SYNC_STATE":     3,
-	"SYNC_STATE_ACK": 4,
-}
-
-func (x SyncType) String() string {
-	return proto.EnumName(SyncType_name, int32(x))
-}
-func (SyncType) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
-
 type SyncMsg_Type int32
 
 const (
-	SyncMsg_UNDEFINED                     SyncMsg_Type = 0
-	SyncMsg_SYNC_STATE_NOTIFY             SyncMsg_Type = 1
-	SyncMsg_SYNC_STATE_OPT                SyncMsg_Type = 2
-	SyncMsg_SYNC_SESSION_START            SyncMsg_Type = 3
-	SyncMsg_SYNC_SESSION_START_ACK        SyncMsg_Type = 4
-	SyncMsg_SYNC_SESSION_QUERY            SyncMsg_Type = 5
-	SyncMsg_SYNC_SESSION_QUERY_ACK        SyncMsg_Type = 6
-	SyncMsg_SYNC_SESSION_END              SyncMsg_Type = 8
-	SyncMsg_SYNC_SESSION_DELTAS           SyncMsg_Type = 16
-	SyncMsg_SYNC_SESSION_DELTAS_ACK       SyncMsg_Type = 17
-	SyncMsg_SYNC_SESSION_SYNC_MESSAGE     SyncMsg_Type = 18
-	SyncMsg_SYNC_SESSION_SYNC_MESSAGE_ACK SyncMsg_Type = 19
-	SyncMsg_SYNC_QUERY_LEDGER             SyncMsg_Type = 20
-	SyncMsg_SYNC_QUERY_LEDGER_ACK         SyncMsg_Type = 21
-	SyncMsg_SYNC_QUERY_BLOCK              SyncMsg_Type = 22
-	SyncMsg_SYNC_DATA_BLOCK               SyncMsg_Type = 23
-	SyncMsg_SYNC_QUERY_TRANSACTIONS       SyncMsg_Type = 24
-	SyncMsg_SYNC_DATA_TRANSACTIONS        SyncMsg_Type = 25
+	SyncMsg_UNDEFINED     SyncMsg_Type = 0
+	SyncMsg_CLIENT_SIMPLE SyncMsg_Type = 1
+	// when request, its correlationId incidate the id of
+	// session, which must be unique to any other simple request
+	// or sessions it has requested for (no matter accepted or not)
+	SyncMsg_CLIENT_SESSION_OPEN SyncMsg_Type = 2
+	SyncMsg_CLIENT_SESSION      SyncMsg_Type = 3
+	// client using this message for acking a message from
+	// server's current session, it may piggyback next request
+	// in this message sever should always handle the newest request
+	// and drop the task it received before
+	// the fields of session and ack may both exist
+	// client MUST prepare for receiving unexpected data package from previous
+	// request because they may have been in wired before new request
+	// is delivered
+	SyncMsg_CLIENT_SESSION_ACK   SyncMsg_Type = 4
+	SyncMsg_CLIENT_SESSION_CLOSE SyncMsg_Type = 5
+	// err can be sent at any time, the correlationId incidate
+	// its corresponding request or session
+	SyncMsg_SERVER_ERROR          SyncMsg_Type = 9
+	SyncMsg_SERVER_SIMPLE         SyncMsg_Type = 10
+	SyncMsg_SERVER_SESSION_ACCEPT SyncMsg_Type = 11
+	SyncMsg_SERVER_SESSION        SyncMsg_Type = 12
+	SyncMsg_SERVER_SESSION_ERROR  SyncMsg_Type = 13
 )
 
 var SyncMsg_Type_name = map[int32]string{
 	0:  "UNDEFINED",
-	1:  "SYNC_STATE_NOTIFY",
-	2:  "SYNC_STATE_OPT",
-	3:  "SYNC_SESSION_START",
-	4:  "SYNC_SESSION_START_ACK",
-	5:  "SYNC_SESSION_QUERY",
-	6:  "SYNC_SESSION_QUERY_ACK",
-	8:  "SYNC_SESSION_END",
-	16: "SYNC_SESSION_DELTAS",
-	17: "SYNC_SESSION_DELTAS_ACK",
-	18: "SYNC_SESSION_SYNC_MESSAGE",
-	19: "SYNC_SESSION_SYNC_MESSAGE_ACK",
-	20: "SYNC_QUERY_LEDGER",
-	21: "SYNC_QUERY_LEDGER_ACK",
-	22: "SYNC_QUERY_BLOCK",
-	23: "SYNC_DATA_BLOCK",
-	24: "SYNC_QUERY_TRANSACTIONS",
-	25: "SYNC_DATA_TRANSACTIONS",
+	1:  "CLIENT_SIMPLE",
+	2:  "CLIENT_SESSION_OPEN",
+	3:  "CLIENT_SESSION",
+	4:  "CLIENT_SESSION_ACK",
+	5:  "CLIENT_SESSION_CLOSE",
+	9:  "SERVER_ERROR",
+	10: "SERVER_SIMPLE",
+	11: "SERVER_SESSION_ACCEPT",
+	12: "SERVER_SESSION",
+	13: "SERVER_SESSION_ERROR",
 }
 var SyncMsg_Type_value = map[string]int32{
-	"UNDEFINED":                     0,
-	"SYNC_STATE_NOTIFY":             1,
-	"SYNC_STATE_OPT":                2,
-	"SYNC_SESSION_START":            3,
-	"SYNC_SESSION_START_ACK":        4,
-	"SYNC_SESSION_QUERY":            5,
-	"SYNC_SESSION_QUERY_ACK":        6,
-	"SYNC_SESSION_END":              8,
-	"SYNC_SESSION_DELTAS":           16,
-	"SYNC_SESSION_DELTAS_ACK":       17,
-	"SYNC_SESSION_SYNC_MESSAGE":     18,
-	"SYNC_SESSION_SYNC_MESSAGE_ACK": 19,
-	"SYNC_QUERY_LEDGER":             20,
-	"SYNC_QUERY_LEDGER_ACK":         21,
-	"SYNC_QUERY_BLOCK":              22,
-	"SYNC_DATA_BLOCK":               23,
-	"SYNC_QUERY_TRANSACTIONS":       24,
-	"SYNC_DATA_TRANSACTIONS":        25,
+	"UNDEFINED":             0,
+	"CLIENT_SIMPLE":         1,
+	"CLIENT_SESSION_OPEN":   2,
+	"CLIENT_SESSION":        3,
+	"CLIENT_SESSION_ACK":    4,
+	"CLIENT_SESSION_CLOSE":  5,
+	"SERVER_ERROR":          9,
+	"SERVER_SIMPLE":         10,
+	"SERVER_SESSION_ACCEPT": 11,
+	"SERVER_SESSION":        12,
+	"SERVER_SESSION_ERROR":  13,
 }
 
 func (x SyncMsg_Type) String() string {
 	return proto.EnumName(SyncMsg_Type_name, int32(x))
 }
-func (SyncMsg_Type) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{8, 0} }
+func (SyncMsg_Type) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{23, 0} }
 
-// BlockState is the payload of Message.SYNC_BLOCK_ADDED. When a VP
-// commits a new block to the ledger, it will notify its connected NVPs of the
-// block and the delta state. The NVP may call the ledger APIs to apply the
-// block and the delta state to its ledger if the block's previousBlockHash
-// equals to the NVP's current block hash
-type BlockState struct {
-	Block      *Block `protobuf:"bytes,1,opt,name=block" json:"block,omitempty"`
-	StateDelta []byte `protobuf:"bytes,2,opt,name=stateDelta,proto3" json:"stateDelta,omitempty"`
-	Height     uint64 `protobuf:"varint,3,opt,name=Height" json:"Height,omitempty"`
+// simple syncing req/resp, the resp should have the same correlationId with
+// the incoming
+type SimpleReq struct {
+	// Types that are valid to be assigned to Req:
+	//	*SimpleReq_Tx
+	//	*SimpleReq_State
+	Req isSimpleReq_Req `protobuf_oneof:"req"`
 }
 
-func (m *BlockState) Reset()                    { *m = BlockState{} }
-func (m *BlockState) String() string            { return proto.CompactTextString(m) }
-func (*BlockState) ProtoMessage()               {}
-func (*BlockState) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (m *SimpleReq) Reset()                    { *m = SimpleReq{} }
+func (m *SimpleReq) String() string            { return proto.CompactTextString(m) }
+func (*SimpleReq) ProtoMessage()               {}
+func (*SimpleReq) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
 
-func (m *BlockState) GetBlock() *Block {
+type isSimpleReq_Req interface {
+	isSimpleReq_Req()
+}
+
+type SimpleReq_Tx struct {
+	Tx *TxQuery `protobuf:"bytes,1,opt,name=tx,oneof"`
+}
+type SimpleReq_State struct {
+	State *LedgerState `protobuf:"bytes,2,opt,name=state,oneof"`
+}
+
+func (*SimpleReq_Tx) isSimpleReq_Req()    {}
+func (*SimpleReq_State) isSimpleReq_Req() {}
+
+func (m *SimpleReq) GetReq() isSimpleReq_Req {
 	if m != nil {
-		return m.Block
+		return m.Req
 	}
 	return nil
 }
 
-func (m *BlockState) GetStateDelta() []byte {
-	if m != nil {
-		return m.StateDelta
+func (m *SimpleReq) GetTx() *TxQuery {
+	if x, ok := m.GetReq().(*SimpleReq_Tx); ok {
+		return x.Tx
 	}
 	return nil
 }
 
-func (m *BlockState) GetHeight() uint64 {
+func (m *SimpleReq) GetState() *LedgerState {
+	if x, ok := m.GetReq().(*SimpleReq_State); ok {
+		return x.State
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*SimpleReq) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _SimpleReq_OneofMarshaler, _SimpleReq_OneofUnmarshaler, _SimpleReq_OneofSizer, []interface{}{
+		(*SimpleReq_Tx)(nil),
+		(*SimpleReq_State)(nil),
+	}
+}
+
+func _SimpleReq_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*SimpleReq)
+	// req
+	switch x := m.Req.(type) {
+	case *SimpleReq_Tx:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Tx); err != nil {
+			return err
+		}
+	case *SimpleReq_State:
+		b.EncodeVarint(2<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.State); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("SimpleReq.Req has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _SimpleReq_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*SimpleReq)
+	switch tag {
+	case 1: // req.tx
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(TxQuery)
+		err := b.DecodeMessage(msg)
+		m.Req = &SimpleReq_Tx{msg}
+		return true, err
+	case 2: // req.state
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(LedgerState)
+		err := b.DecodeMessage(msg)
+		m.Req = &SimpleReq_State{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _SimpleReq_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*SimpleReq)
+	// req
+	switch x := m.Req.(type) {
+	case *SimpleReq_Tx:
+		s := proto.Size(x.Tx)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *SimpleReq_State:
+		s := proto.Size(x.State)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+type SimpleResp struct {
+	// Types that are valid to be assigned to Resp:
+	//	*SimpleResp_State
+	//	*SimpleResp_Tx
+	Resp isSimpleResp_Resp `protobuf_oneof:"resp"`
+}
+
+func (m *SimpleResp) Reset()                    { *m = SimpleResp{} }
+func (m *SimpleResp) String() string            { return proto.CompactTextString(m) }
+func (*SimpleResp) ProtoMessage()               {}
+func (*SimpleResp) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+
+type isSimpleResp_Resp interface {
+	isSimpleResp_Resp()
+}
+
+type SimpleResp_State struct {
+	State *LedgerState `protobuf:"bytes,1,opt,name=state,oneof"`
+}
+type SimpleResp_Tx struct {
+	Tx *TransactionBlock `protobuf:"bytes,2,opt,name=tx,oneof"`
+}
+
+func (*SimpleResp_State) isSimpleResp_Resp() {}
+func (*SimpleResp_Tx) isSimpleResp_Resp()    {}
+
+func (m *SimpleResp) GetResp() isSimpleResp_Resp {
+	if m != nil {
+		return m.Resp
+	}
+	return nil
+}
+
+func (m *SimpleResp) GetState() *LedgerState {
+	if x, ok := m.GetResp().(*SimpleResp_State); ok {
+		return x.State
+	}
+	return nil
+}
+
+func (m *SimpleResp) GetTx() *TransactionBlock {
+	if x, ok := m.GetResp().(*SimpleResp_Tx); ok {
+		return x.Tx
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*SimpleResp) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _SimpleResp_OneofMarshaler, _SimpleResp_OneofUnmarshaler, _SimpleResp_OneofSizer, []interface{}{
+		(*SimpleResp_State)(nil),
+		(*SimpleResp_Tx)(nil),
+	}
+}
+
+func _SimpleResp_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*SimpleResp)
+	// resp
+	switch x := m.Resp.(type) {
+	case *SimpleResp_State:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.State); err != nil {
+			return err
+		}
+	case *SimpleResp_Tx:
+		b.EncodeVarint(2<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Tx); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("SimpleResp.Resp has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _SimpleResp_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*SimpleResp)
+	switch tag {
+	case 1: // resp.state
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(LedgerState)
+		err := b.DecodeMessage(msg)
+		m.Resp = &SimpleResp_State{msg}
+		return true, err
+	case 2: // resp.tx
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(TransactionBlock)
+		err := b.DecodeMessage(msg)
+		m.Resp = &SimpleResp_Tx{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _SimpleResp_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*SimpleResp)
+	// resp
+	switch x := m.Resp.(type) {
+	case *SimpleResp_State:
+		s := proto.Size(x.State)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *SimpleResp_Tx:
+		s := proto.Size(x.Tx)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+// simple state sync via msg-pushing
+type LedgerState struct {
+	Height uint64 `protobuf:"varint,1,opt,name=height" json:"height,omitempty"`
+	// hash of headblock, it has limited usage but we still keep it
+	HeadBlock []byte `protobuf:"bytes,2,opt,name=headBlock,proto3" json:"headBlock,omitempty"`
+	// states which can be synced by the peer
+	States *StateFilter `protobuf:"bytes,5,opt,name=states" json:"states,omitempty"`
+}
+
+func (m *LedgerState) Reset()                    { *m = LedgerState{} }
+func (m *LedgerState) String() string            { return proto.CompactTextString(m) }
+func (*LedgerState) ProtoMessage()               {}
+func (*LedgerState) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
+
+func (m *LedgerState) GetHeight() uint64 {
 	if m != nil {
 		return m.Height
 	}
 	return 0
 }
 
-// SyncBlockRange is the payload of Message.SYNC_GET_BLOCKS, where
+func (m *LedgerState) GetHeadBlock() []byte {
+	if m != nil {
+		return m.HeadBlock
+	}
+	return nil
+}
+
+func (m *LedgerState) GetStates() *StateFilter {
+	if m != nil {
+		return m.States
+	}
+	return nil
+}
+
+// query some transactions, and the response should be a TransactionBlock message
+type TxQuery struct {
+	Txid []string `protobuf:"bytes,1,rep,name=txid" json:"txid,omitempty"`
+}
+
+func (m *TxQuery) Reset()                    { *m = TxQuery{} }
+func (m *TxQuery) String() string            { return proto.CompactTextString(m) }
+func (*TxQuery) ProtoMessage()               {}
+func (*TxQuery) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{3} }
+
+func (m *TxQuery) GetTxid() []string {
+	if m != nil {
+		return m.Txid
+	}
+	return nil
+}
+
+// request to open a long hold transferring
+// client must specified a "open for" field
+// so server can prepare for the following transfermation
+// process, or simply reject it
+type OpenSession struct {
+	Transfer *TransferDetail `protobuf:"bytes,1,opt,name=transfer" json:"transfer,omitempty"`
+	// Types that are valid to be assigned to For:
+	//	*OpenSession_Query
+	//	*OpenSession_Index
+	//	*OpenSession_Fullstate
+	//	*OpenSession_BlocksOrDelta
+	For isOpenSession_For `protobuf_oneof:"for"`
+}
+
+func (m *OpenSession) Reset()                    { *m = OpenSession{} }
+func (m *OpenSession) String() string            { return proto.CompactTextString(m) }
+func (*OpenSession) ProtoMessage()               {}
+func (*OpenSession) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{4} }
+
+type isOpenSession_For interface {
+	isOpenSession_For()
+}
+
+type OpenSession_Query struct {
+	Query *google_protobuf1.Empty `protobuf:"bytes,2,opt,name=query,oneof"`
+}
+type OpenSession_Index struct {
+	Index []byte `protobuf:"bytes,3,opt,name=index,proto3,oneof"`
+}
+type OpenSession_Fullstate struct {
+	Fullstate []byte `protobuf:"bytes,4,opt,name=fullstate,proto3,oneof"`
+}
+type OpenSession_BlocksOrDelta struct {
+	BlocksOrDelta uint64 `protobuf:"varint,5,opt,name=blocksOrDelta,oneof"`
+}
+
+func (*OpenSession_Query) isOpenSession_For()         {}
+func (*OpenSession_Index) isOpenSession_For()         {}
+func (*OpenSession_Fullstate) isOpenSession_For()     {}
+func (*OpenSession_BlocksOrDelta) isOpenSession_For() {}
+
+func (m *OpenSession) GetFor() isOpenSession_For {
+	if m != nil {
+		return m.For
+	}
+	return nil
+}
+
+func (m *OpenSession) GetTransfer() *TransferDetail {
+	if m != nil {
+		return m.Transfer
+	}
+	return nil
+}
+
+func (m *OpenSession) GetQuery() *google_protobuf1.Empty {
+	if x, ok := m.GetFor().(*OpenSession_Query); ok {
+		return x.Query
+	}
+	return nil
+}
+
+func (m *OpenSession) GetIndex() []byte {
+	if x, ok := m.GetFor().(*OpenSession_Index); ok {
+		return x.Index
+	}
+	return nil
+}
+
+func (m *OpenSession) GetFullstate() []byte {
+	if x, ok := m.GetFor().(*OpenSession_Fullstate); ok {
+		return x.Fullstate
+	}
+	return nil
+}
+
+func (m *OpenSession) GetBlocksOrDelta() uint64 {
+	if x, ok := m.GetFor().(*OpenSession_BlocksOrDelta); ok {
+		return x.BlocksOrDelta
+	}
+	return 0
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*OpenSession) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _OpenSession_OneofMarshaler, _OpenSession_OneofUnmarshaler, _OpenSession_OneofSizer, []interface{}{
+		(*OpenSession_Query)(nil),
+		(*OpenSession_Index)(nil),
+		(*OpenSession_Fullstate)(nil),
+		(*OpenSession_BlocksOrDelta)(nil),
+	}
+}
+
+func _OpenSession_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*OpenSession)
+	// for
+	switch x := m.For.(type) {
+	case *OpenSession_Query:
+		b.EncodeVarint(2<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Query); err != nil {
+			return err
+		}
+	case *OpenSession_Index:
+		b.EncodeVarint(3<<3 | proto.WireBytes)
+		b.EncodeRawBytes(x.Index)
+	case *OpenSession_Fullstate:
+		b.EncodeVarint(4<<3 | proto.WireBytes)
+		b.EncodeRawBytes(x.Fullstate)
+	case *OpenSession_BlocksOrDelta:
+		b.EncodeVarint(5<<3 | proto.WireVarint)
+		b.EncodeVarint(uint64(x.BlocksOrDelta))
+	case nil:
+	default:
+		return fmt.Errorf("OpenSession.For has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _OpenSession_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*OpenSession)
+	switch tag {
+	case 2: // for.query
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(google_protobuf1.Empty)
+		err := b.DecodeMessage(msg)
+		m.For = &OpenSession_Query{msg}
+		return true, err
+	case 3: // for.index
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.For = &OpenSession_Index{x}
+		return true, err
+	case 4: // for.fullstate
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.For = &OpenSession_Fullstate{x}
+		return true, err
+	case 5: // for.blocksOrDelta
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.For = &OpenSession_BlocksOrDelta{x}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _OpenSession_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*OpenSession)
+	// for
+	switch x := m.For.(type) {
+	case *OpenSession_Query:
+		s := proto.Size(x.Query)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *OpenSession_Index:
+		n += proto.SizeVarint(3<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.Index)))
+		n += len(x.Index)
+	case *OpenSession_Fullstate:
+		n += proto.SizeVarint(4<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.Fullstate)))
+		n += len(x.Fullstate)
+	case *OpenSession_BlocksOrDelta:
+		n += proto.SizeVarint(5<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.BlocksOrDelta))
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+// reponse for the opensession message, more detail may be provided
+// so client can prepare a better plan in transferring
+type AcceptSession struct {
+	States   *LedgerState    `protobuf:"bytes,1,opt,name=states" json:"states,omitempty"`
+	Transfer *TransferDetail `protobuf:"bytes,2,opt,name=transfer" json:"transfer,omitempty"`
+	// Types that are valid to be assigned to Detail:
+	//	*AcceptSession_State
+	Detail isAcceptSession_Detail `protobuf_oneof:"detail"`
+}
+
+func (m *AcceptSession) Reset()                    { *m = AcceptSession{} }
+func (m *AcceptSession) String() string            { return proto.CompactTextString(m) }
+func (*AcceptSession) ProtoMessage()               {}
+func (*AcceptSession) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{5} }
+
+type isAcceptSession_Detail interface {
+	isAcceptSession_Detail()
+}
+
+type AcceptSession_State struct {
+	State *AcceptSession_StateStatus `protobuf:"bytes,4,opt,name=state,oneof"`
+}
+
+func (*AcceptSession_State) isAcceptSession_Detail() {}
+
+func (m *AcceptSession) GetDetail() isAcceptSession_Detail {
+	if m != nil {
+		return m.Detail
+	}
+	return nil
+}
+
+func (m *AcceptSession) GetStates() *LedgerState {
+	if m != nil {
+		return m.States
+	}
+	return nil
+}
+
+func (m *AcceptSession) GetTransfer() *TransferDetail {
+	if m != nil {
+		return m.Transfer
+	}
+	return nil
+}
+
+func (m *AcceptSession) GetState() *AcceptSession_StateStatus {
+	if x, ok := m.GetDetail().(*AcceptSession_State); ok {
+		return x.State
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*AcceptSession) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _AcceptSession_OneofMarshaler, _AcceptSession_OneofUnmarshaler, _AcceptSession_OneofSizer, []interface{}{
+		(*AcceptSession_State)(nil),
+	}
+}
+
+func _AcceptSession_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*AcceptSession)
+	// detail
+	switch x := m.Detail.(type) {
+	case *AcceptSession_State:
+		b.EncodeVarint(4<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.State); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("AcceptSession.Detail has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _AcceptSession_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*AcceptSession)
+	switch tag {
+	case 4: // detail.state
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(AcceptSession_StateStatus)
+		err := b.DecodeMessage(msg)
+		m.Detail = &AcceptSession_State{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _AcceptSession_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*AcceptSession)
+	// detail
+	switch x := m.Detail.(type) {
+	case *AcceptSession_State:
+		s := proto.Size(x.State)
+		n += proto.SizeVarint(4<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+type AcceptSession_StateStatus struct {
+	EstimatedSize uint64 `protobuf:"varint,1,opt,name=estimatedSize" json:"estimatedSize,omitempty"`
+}
+
+func (m *AcceptSession_StateStatus) Reset()                    { *m = AcceptSession_StateStatus{} }
+func (m *AcceptSession_StateStatus) String() string            { return proto.CompactTextString(m) }
+func (*AcceptSession_StateStatus) ProtoMessage()               {}
+func (*AcceptSession_StateStatus) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{5, 0} }
+
+func (m *AcceptSession_StateStatus) GetEstimatedSize() uint64 {
+	if m != nil {
+		return m.EstimatedSize
+	}
+	return 0
+}
+
+type TransferDetail struct {
+	MaxWindowSize uint32 `protobuf:"varint,1,opt,name=maxWindowSize" json:"maxWindowSize,omitempty"`
+}
+
+func (m *TransferDetail) Reset()                    { *m = TransferDetail{} }
+func (m *TransferDetail) String() string            { return proto.CompactTextString(m) }
+func (*TransferDetail) ProtoMessage()               {}
+func (*TransferDetail) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{6} }
+
+func (m *TransferDetail) GetMaxWindowSize() uint32 {
+	if m != nil {
+		return m.MaxWindowSize
+	}
+	return 0
+}
+
+// can be sent by server during any time of a session
+type RequestError struct {
+	ErrorDetail string `protobuf:"bytes,1,opt,name=errorDetail" json:"errorDetail,omitempty"`
+	ErrorCode   uint64 `protobuf:"varint,2,opt,name=errorCode" json:"errorCode,omitempty"`
+}
+
+func (m *RequestError) Reset()                    { *m = RequestError{} }
+func (m *RequestError) String() string            { return proto.CompactTextString(m) }
+func (*RequestError) ProtoMessage()               {}
+func (*RequestError) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{7} }
+
+func (m *RequestError) GetErrorDetail() string {
+	if m != nil {
+		return m.ErrorDetail
+	}
+	return ""
+}
+
+func (m *RequestError) GetErrorCode() uint64 {
+	if m != nil {
+		return m.ErrorCode
+	}
+	return 0
+}
+
+// request wrap one of the request field which has been negotiated in
+// handshake phase
+type TransferRequest struct {
+	// Types that are valid to be assigned to Req:
+	//	*TransferRequest_Index
+	//	*TransferRequest_Query
+	//	*TransferRequest_State
+	//	*TransferRequest_Block
+	//	*TransferRequest_Delta
+	Req isTransferRequest_Req `protobuf_oneof:"req"`
+}
+
+func (m *TransferRequest) Reset()                    { *m = TransferRequest{} }
+func (m *TransferRequest) String() string            { return proto.CompactTextString(m) }
+func (*TransferRequest) ProtoMessage()               {}
+func (*TransferRequest) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{8} }
+
+type isTransferRequest_Req interface {
+	isTransferRequest_Req()
+}
+
+type TransferRequest_Index struct {
+	Index uint64 `protobuf:"varint,1,opt,name=index,oneof"`
+}
+type TransferRequest_Query struct {
+	Query uint64 `protobuf:"varint,2,opt,name=query,oneof"`
+}
+type TransferRequest_State struct {
+	State *SyncOffset `protobuf:"bytes,4,opt,name=state,oneof"`
+}
+type TransferRequest_Block struct {
+	Block *SyncBlockRange `protobuf:"bytes,5,opt,name=block,oneof"`
+}
+type TransferRequest_Delta struct {
+	Delta *SyncBlockRange `protobuf:"bytes,6,opt,name=delta,oneof"`
+}
+
+func (*TransferRequest_Index) isTransferRequest_Req() {}
+func (*TransferRequest_Query) isTransferRequest_Req() {}
+func (*TransferRequest_State) isTransferRequest_Req() {}
+func (*TransferRequest_Block) isTransferRequest_Req() {}
+func (*TransferRequest_Delta) isTransferRequest_Req() {}
+
+func (m *TransferRequest) GetReq() isTransferRequest_Req {
+	if m != nil {
+		return m.Req
+	}
+	return nil
+}
+
+func (m *TransferRequest) GetIndex() uint64 {
+	if x, ok := m.GetReq().(*TransferRequest_Index); ok {
+		return x.Index
+	}
+	return 0
+}
+
+func (m *TransferRequest) GetQuery() uint64 {
+	if x, ok := m.GetReq().(*TransferRequest_Query); ok {
+		return x.Query
+	}
+	return 0
+}
+
+func (m *TransferRequest) GetState() *SyncOffset {
+	if x, ok := m.GetReq().(*TransferRequest_State); ok {
+		return x.State
+	}
+	return nil
+}
+
+func (m *TransferRequest) GetBlock() *SyncBlockRange {
+	if x, ok := m.GetReq().(*TransferRequest_Block); ok {
+		return x.Block
+	}
+	return nil
+}
+
+func (m *TransferRequest) GetDelta() *SyncBlockRange {
+	if x, ok := m.GetReq().(*TransferRequest_Delta); ok {
+		return x.Delta
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*TransferRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _TransferRequest_OneofMarshaler, _TransferRequest_OneofUnmarshaler, _TransferRequest_OneofSizer, []interface{}{
+		(*TransferRequest_Index)(nil),
+		(*TransferRequest_Query)(nil),
+		(*TransferRequest_State)(nil),
+		(*TransferRequest_Block)(nil),
+		(*TransferRequest_Delta)(nil),
+	}
+}
+
+func _TransferRequest_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*TransferRequest)
+	// req
+	switch x := m.Req.(type) {
+	case *TransferRequest_Index:
+		b.EncodeVarint(1<<3 | proto.WireVarint)
+		b.EncodeVarint(uint64(x.Index))
+	case *TransferRequest_Query:
+		b.EncodeVarint(2<<3 | proto.WireVarint)
+		b.EncodeVarint(uint64(x.Query))
+	case *TransferRequest_State:
+		b.EncodeVarint(4<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.State); err != nil {
+			return err
+		}
+	case *TransferRequest_Block:
+		b.EncodeVarint(5<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Block); err != nil {
+			return err
+		}
+	case *TransferRequest_Delta:
+		b.EncodeVarint(6<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Delta); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("TransferRequest.Req has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _TransferRequest_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*TransferRequest)
+	switch tag {
+	case 1: // req.index
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Req = &TransferRequest_Index{x}
+		return true, err
+	case 2: // req.query
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Req = &TransferRequest_Query{x}
+		return true, err
+	case 4: // req.state
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(SyncOffset)
+		err := b.DecodeMessage(msg)
+		m.Req = &TransferRequest_State{msg}
+		return true, err
+	case 5: // req.block
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(SyncBlockRange)
+		err := b.DecodeMessage(msg)
+		m.Req = &TransferRequest_Block{msg}
+		return true, err
+	case 6: // req.delta
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(SyncBlockRange)
+		err := b.DecodeMessage(msg)
+		m.Req = &TransferRequest_Delta{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _TransferRequest_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*TransferRequest)
+	// req
+	switch x := m.Req.(type) {
+	case *TransferRequest_Index:
+		n += proto.SizeVarint(1<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.Index))
+	case *TransferRequest_Query:
+		n += proto.SizeVarint(2<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.Query))
+	case *TransferRequest_State:
+		s := proto.Size(x.State)
+		n += proto.SizeVarint(4<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *TransferRequest_Block:
+		s := proto.Size(x.Block)
+		n += proto.SizeVarint(5<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *TransferRequest_Delta:
+		s := proto.Size(x.Delta)
+		n += proto.SizeVarint(6<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+// the response contain one of the payload and client should know
+// which field it should check, its seq field is which transferAck can ack for,
+// (notice seq is 32bit so there will be an implicit constration that a
+// no more than 4G messages can be transferred in one session)
+// it must be unique for each response message
+// and incremental during a whole session
+type TransferResponse struct {
+	// both index and query should use this field
+	Index *StateIndex      `protobuf:"bytes,1,opt,name=index" json:"index,omitempty"`
+	State *SyncStateChunk  `protobuf:"bytes,4,opt,name=state" json:"state,omitempty"`
+	Block *SyncBlock       `protobuf:"bytes,5,opt,name=block" json:"block,omitempty"`
+	Delta *SyncStateDeltas `protobuf:"bytes,6,opt,name=delta" json:"delta,omitempty"`
+	// please notice seq is used for nothing than congest controlling
+	// for example, server can consider the session is finished after
+	// the last message is sent without waiting for client's acking
+	Seq uint32 `protobuf:"varint,20,opt,name=seq" json:"seq,omitempty"`
+}
+
+func (m *TransferResponse) Reset()                    { *m = TransferResponse{} }
+func (m *TransferResponse) String() string            { return proto.CompactTextString(m) }
+func (*TransferResponse) ProtoMessage()               {}
+func (*TransferResponse) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{9} }
+
+func (m *TransferResponse) GetIndex() *StateIndex {
+	if m != nil {
+		return m.Index
+	}
+	return nil
+}
+
+func (m *TransferResponse) GetState() *SyncStateChunk {
+	if m != nil {
+		return m.State
+	}
+	return nil
+}
+
+func (m *TransferResponse) GetBlock() *SyncBlock {
+	if m != nil {
+		return m.Block
+	}
+	return nil
+}
+
+func (m *TransferResponse) GetDelta() *SyncStateDeltas {
+	if m != nil {
+		return m.Delta
+	}
+	return nil
+}
+
+func (m *TransferResponse) GetSeq() uint32 {
+	if m != nil {
+		return m.Seq
+	}
+	return 0
+}
+
+// StateIndex is the payload in response to the index/query request
+// (but the response in query may not contain corePayload field)
+type StateIndex struct {
+	Height      uint64 `protobuf:"varint,1,opt,name=height" json:"height,omitempty"`
+	Hash        []byte `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	CorePayload []byte `protobuf:"bytes,4,opt,name=corePayload,proto3" json:"corePayload,omitempty"`
+}
+
+func (m *StateIndex) Reset()                    { *m = StateIndex{} }
+func (m *StateIndex) String() string            { return proto.CompactTextString(m) }
+func (*StateIndex) ProtoMessage()               {}
+func (*StateIndex) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{10} }
+
+func (m *StateIndex) GetHeight() uint64 {
+	if m != nil {
+		return m.Height
+	}
+	return 0
+}
+
+func (m *StateIndex) GetHash() []byte {
+	if m != nil {
+		return m.Hash
+	}
+	return nil
+}
+
+func (m *StateIndex) GetCorePayload() []byte {
+	if m != nil {
+		return m.CorePayload
+	}
+	return nil
+}
+
+// SyncBlockRange is the payload of block request, where
 // start and end indicate the starting and ending blocks inclusively. The order
 // in which blocks are returned is defined by the start and end values. For
 // example, if start=3 and end=5, the order of blocks will be 3, 4, 5.
 // If start=5 and end=3, the order will be 5, 4, 3.
 type SyncBlockRange struct {
-	CorrelationId uint64 `protobuf:"varint,1,opt,name=correlationId" json:"correlationId,omitempty"`
-	Start         uint64 `protobuf:"varint,2,opt,name=start" json:"start,omitempty"`
-	End           uint64 `protobuf:"varint,3,opt,name=end" json:"end,omitempty"`
+	//    uint64 correlationId = 1;
+	Start uint64 `protobuf:"varint,2,opt,name=start" json:"start,omitempty"`
+	End   uint64 `protobuf:"varint,3,opt,name=end" json:"end,omitempty"`
+	// the hash of first block (start), if specified, server can check and
+	// stop before transfer starts when the hash is found unmatched
+	FirstHash []byte `protobuf:"bytes,5,opt,name=firstHash,proto3" json:"firstHash,omitempty"`
 }
 
 func (m *SyncBlockRange) Reset()                    { *m = SyncBlockRange{} }
 func (m *SyncBlockRange) String() string            { return proto.CompactTextString(m) }
 func (*SyncBlockRange) ProtoMessage()               {}
-func (*SyncBlockRange) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
-
-func (m *SyncBlockRange) GetCorrelationId() uint64 {
-	if m != nil {
-		return m.CorrelationId
-	}
-	return 0
-}
+func (*SyncBlockRange) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{11} }
 
 func (m *SyncBlockRange) GetStart() uint64 {
 	if m != nil {
@@ -190,389 +1053,64 @@ func (m *SyncBlockRange) GetEnd() uint64 {
 	return 0
 }
 
-// SyncBlocks is the payload of Message.SYNC_BLOCKS, where the range
-// indicates the blocks responded to the request SYNC_GET_BLOCKS
-type SyncBlocks struct {
-	Range  *SyncBlockRange `protobuf:"bytes,1,opt,name=range" json:"range,omitempty"`
-	Blocks []*Block        `protobuf:"bytes,2,rep,name=blocks" json:"blocks,omitempty"`
-}
-
-func (m *SyncBlocks) Reset()                    { *m = SyncBlocks{} }
-func (m *SyncBlocks) String() string            { return proto.CompactTextString(m) }
-func (*SyncBlocks) ProtoMessage()               {}
-func (*SyncBlocks) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
-
-func (m *SyncBlocks) GetRange() *SyncBlockRange {
+func (m *SyncBlockRange) GetFirstHash() []byte {
 	if m != nil {
-		return m.Range
+		return m.FirstHash
 	}
 	return nil
 }
 
-func (m *SyncBlocks) GetBlocks() []*Block {
-	if m != nil {
-		return m.Blocks
-	}
-	return nil
+// SyncStateDeltas is the payload in response to the block request message.
+type SyncBlock struct {
+	Height uint64 `protobuf:"varint,1,opt,name=height" json:"height,omitempty"`
+	Block  *Block `protobuf:"bytes,2,opt,name=block" json:"block,omitempty"`
 }
 
-// SyncSnapshotRequest Payload for the penchainMessage.SYNC_GET_SNAPSHOT message.
-type SyncStateSnapshotRequest struct {
-	CorrelationId uint64 `protobuf:"varint,1,opt,name=correlationId" json:"correlationId,omitempty"`
-}
+func (m *SyncBlock) Reset()                    { *m = SyncBlock{} }
+func (m *SyncBlock) String() string            { return proto.CompactTextString(m) }
+func (*SyncBlock) ProtoMessage()               {}
+func (*SyncBlock) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{12} }
 
-func (m *SyncStateSnapshotRequest) Reset()                    { *m = SyncStateSnapshotRequest{} }
-func (m *SyncStateSnapshotRequest) String() string            { return proto.CompactTextString(m) }
-func (*SyncStateSnapshotRequest) ProtoMessage()               {}
-func (*SyncStateSnapshotRequest) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{3} }
-
-func (m *SyncStateSnapshotRequest) GetCorrelationId() uint64 {
+func (m *SyncBlock) GetHeight() uint64 {
 	if m != nil {
-		return m.CorrelationId
+		return m.Height
 	}
 	return 0
 }
 
-// SyncStateSnapshot is the payload of Message.SYNC_SNAPSHOT, which is a response
-// to penchainMessage.SYNC_GET_SNAPSHOT. It contains the snapshot or a chunk of the
-// snapshot on stream, and in which case, the sequence indicate the order
-// starting at 0.  The terminating message will have len(delta) == 0.
-type SyncStateSnapshot struct {
-	Delta       []byte                    `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
-	Sequence    uint64                    `protobuf:"varint,2,opt,name=sequence" json:"sequence,omitempty"`
-	BlockNumber uint64                    `protobuf:"varint,3,opt,name=blockNumber" json:"blockNumber,omitempty"`
-	Request     *SyncStateSnapshotRequest `protobuf:"bytes,4,opt,name=request" json:"request,omitempty"`
-}
-
-func (m *SyncStateSnapshot) Reset()                    { *m = SyncStateSnapshot{} }
-func (m *SyncStateSnapshot) String() string            { return proto.CompactTextString(m) }
-func (*SyncStateSnapshot) ProtoMessage()               {}
-func (*SyncStateSnapshot) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{4} }
-
-func (m *SyncStateSnapshot) GetDelta() []byte {
+func (m *SyncBlock) GetBlock() *Block {
 	if m != nil {
-		return m.Delta
+		return m.Block
 	}
 	return nil
 }
 
-func (m *SyncStateSnapshot) GetSequence() uint64 {
-	if m != nil {
-		return m.Sequence
-	}
-	return 0
-}
-
-func (m *SyncStateSnapshot) GetBlockNumber() uint64 {
-	if m != nil {
-		return m.BlockNumber
-	}
-	return 0
-}
-
-func (m *SyncStateSnapshot) GetRequest() *SyncStateSnapshotRequest {
-	if m != nil {
-		return m.Request
-	}
-	return nil
-}
-
-// SyncStateDeltasRequest is the payload of Message.SYNC_GET_STATE.
-// blockNumber indicates the block number for the delta which is being
-// requested. If no payload is included with SYNC_GET_STATE, it represents
-// a request for a snapshot of the current state.
-type SyncStateDeltasRequest struct {
-	Range *SyncBlockRange `protobuf:"bytes,1,opt,name=range" json:"range,omitempty"`
-}
-
-func (m *SyncStateDeltasRequest) Reset()                    { *m = SyncStateDeltasRequest{} }
-func (m *SyncStateDeltasRequest) String() string            { return proto.CompactTextString(m) }
-func (*SyncStateDeltasRequest) ProtoMessage()               {}
-func (*SyncStateDeltasRequest) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{5} }
-
-func (m *SyncStateDeltasRequest) GetRange() *SyncBlockRange {
-	if m != nil {
-		return m.Range
-	}
-	return nil
-}
-
-// SyncStateDeltas is the payload of the Message.SYNC_STATE in response to
-// the Message.SYNC_GET_STATE message.
+// SyncStateDeltas is the payload in response to the delta request message.
 type SyncStateDeltas struct {
-	Range  *SyncBlockRange `protobuf:"bytes,1,opt,name=range" json:"range,omitempty"`
-	Deltas [][]byte        `protobuf:"bytes,2,rep,name=deltas,proto3" json:"deltas,omitempty"`
+	Height uint64                          `protobuf:"varint,1,opt,name=height" json:"height,omitempty"`
+	Deltas map[string]*ChaincodeStateDelta `protobuf:"bytes,2,rep,name=deltas" json:"deltas,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 }
 
 func (m *SyncStateDeltas) Reset()                    { *m = SyncStateDeltas{} }
 func (m *SyncStateDeltas) String() string            { return proto.CompactTextString(m) }
 func (*SyncStateDeltas) ProtoMessage()               {}
-func (*SyncStateDeltas) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{6} }
+func (*SyncStateDeltas) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{13} }
 
-func (m *SyncStateDeltas) GetRange() *SyncBlockRange {
+func (m *SyncStateDeltas) GetHeight() uint64 {
 	if m != nil {
-		return m.Range
+		return m.Height
 	}
-	return nil
+	return 0
 }
 
-func (m *SyncStateDeltas) GetDeltas() [][]byte {
+func (m *SyncStateDeltas) GetDeltas() map[string]*ChaincodeStateDelta {
 	if m != nil {
 		return m.Deltas
 	}
 	return nil
 }
 
-type SyncBlockState struct {
-	Range    *SyncBlockRange `protobuf:"bytes,1,opt,name=range" json:"range,omitempty"`
-	Syncdata []*BlockState   `protobuf:"bytes,2,rep,name=syncdata" json:"syncdata,omitempty"`
-}
-
-func (m *SyncBlockState) Reset()                    { *m = SyncBlockState{} }
-func (m *SyncBlockState) String() string            { return proto.CompactTextString(m) }
-func (*SyncBlockState) ProtoMessage()               {}
-func (*SyncBlockState) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{7} }
-
-func (m *SyncBlockState) GetRange() *SyncBlockRange {
-	if m != nil {
-		return m.Range
-	}
-	return nil
-}
-
-func (m *SyncBlockState) GetSyncdata() []*BlockState {
-	if m != nil {
-		return m.Syncdata
-	}
-	return nil
-}
-
-// Like chat, stateSync wrap messages used in a syncing session
-type SyncMsg struct {
-	Type          SyncMsg_Type `protobuf:"varint,1,opt,name=type,enum=protos.SyncMsg_Type" json:"type,omitempty"`
-	CorrelationId uint64       `protobuf:"varint,2,opt,name=correlationId" json:"correlationId,omitempty"`
-	Payload       []byte       `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
-}
-
-func (m *SyncMsg) Reset()                    { *m = SyncMsg{} }
-func (m *SyncMsg) String() string            { return proto.CompactTextString(m) }
-func (*SyncMsg) ProtoMessage()               {}
-func (*SyncMsg) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{8} }
-
-func (m *SyncMsg) GetType() SyncMsg_Type {
-	if m != nil {
-		return m.Type
-	}
-	return SyncMsg_UNDEFINED
-}
-
-func (m *SyncMsg) GetCorrelationId() uint64 {
-	if m != nil {
-		return m.CorrelationId
-	}
-	return 0
-}
-
-func (m *SyncMsg) GetPayload() []byte {
-	if m != nil {
-		return m.Payload
-	}
-	return nil
-}
-
-// //////////////////////////////
-type SyncStateQuery struct {
-	Id          uint32 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	BlockHeight uint64 `protobuf:"varint,2,opt,name=blockHeight" json:"blockHeight,omitempty"`
-}
-
-func (m *SyncStateQuery) Reset()                    { *m = SyncStateQuery{} }
-func (m *SyncStateQuery) String() string            { return proto.CompactTextString(m) }
-func (*SyncStateQuery) ProtoMessage()               {}
-func (*SyncStateQuery) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{9} }
-
-func (m *SyncStateQuery) GetId() uint32 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
-}
-
-func (m *SyncStateQuery) GetBlockHeight() uint64 {
-	if m != nil {
-		return m.BlockHeight
-	}
-	return 0
-}
-
-type SyncStateResp struct {
-	Id          uint32 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	Postive     bool   `protobuf:"varint,3,opt,name=postive" json:"postive,omitempty"`
-	Statehash   []byte `protobuf:"bytes,4,opt,name=statehash,proto3" json:"statehash,omitempty"`
-	BlockHeight uint64 `protobuf:"varint,5,opt,name=blockHeight" json:"blockHeight,omitempty"`
-}
-
-func (m *SyncStateResp) Reset()                    { *m = SyncStateResp{} }
-func (m *SyncStateResp) String() string            { return proto.CompactTextString(m) }
-func (*SyncStateResp) ProtoMessage()               {}
-func (*SyncStateResp) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{10} }
-
-func (m *SyncStateResp) GetId() uint32 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
-}
-
-func (m *SyncStateResp) GetPostive() bool {
-	if m != nil {
-		return m.Postive
-	}
-	return false
-}
-
-func (m *SyncStateResp) GetStatehash() []byte {
-	if m != nil {
-		return m.Statehash
-	}
-	return nil
-}
-
-func (m *SyncStateResp) GetBlockHeight() uint64 {
-	if m != nil {
-		return m.BlockHeight
-	}
-	return 0
-}
-
-type SyncStartRequest struct {
-	Id          uint32   `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	PayloadType SyncType `protobuf:"varint,2,opt,name=payloadType,enum=protos.SyncType" json:"payloadType,omitempty"`
-	Payload     []byte   `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
-}
-
-func (m *SyncStartRequest) Reset()                    { *m = SyncStartRequest{} }
-func (m *SyncStartRequest) String() string            { return proto.CompactTextString(m) }
-func (*SyncStartRequest) ProtoMessage()               {}
-func (*SyncStartRequest) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{11} }
-
-func (m *SyncStartRequest) GetId() uint32 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
-}
-
-func (m *SyncStartRequest) GetPayloadType() SyncType {
-	if m != nil {
-		return m.PayloadType
-	}
-	return SyncType_UNDEFINED
-}
-
-func (m *SyncStartRequest) GetPayload() []byte {
-	if m != nil {
-		return m.Payload
-	}
-	return nil
-}
-
-type SyncStartResponse struct {
-	Id             uint32 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	RejectedReason string `protobuf:"bytes,2,opt,name=rejectedReason" json:"rejectedReason,omitempty"`
-	Statehash      []byte `protobuf:"bytes,4,opt,name=statehash,proto3" json:"statehash,omitempty"`
-	BlockHeight    uint64 `protobuf:"varint,5,opt,name=blockHeight" json:"blockHeight,omitempty"`
-}
-
-func (m *SyncStartResponse) Reset()                    { *m = SyncStartResponse{} }
-func (m *SyncStartResponse) String() string            { return proto.CompactTextString(m) }
-func (*SyncStartResponse) ProtoMessage()               {}
-func (*SyncStartResponse) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{12} }
-
-func (m *SyncStartResponse) GetId() uint32 {
-	if m != nil {
-		return m.Id
-	}
-	return 0
-}
-
-func (m *SyncStartResponse) GetRejectedReason() string {
-	if m != nil {
-		return m.RejectedReason
-	}
-	return ""
-}
-
-func (m *SyncStartResponse) GetStatehash() []byte {
-	if m != nil {
-		return m.Statehash
-	}
-	return nil
-}
-
-func (m *SyncStartResponse) GetBlockHeight() uint64 {
-	if m != nil {
-		return m.BlockHeight
-	}
-	return 0
-}
-
-type UpdatedValue struct {
-	ValueWrap     *UpdatedValue_VSlice `protobuf:"bytes,1,opt,name=valueWrap" json:"valueWrap,omitempty"`
-	PreviousValue []byte               `protobuf:"bytes,2,opt,name=previousValue,proto3" json:"previousValue,omitempty"`
-}
-
-func (m *UpdatedValue) Reset()                    { *m = UpdatedValue{} }
-func (m *UpdatedValue) String() string            { return proto.CompactTextString(m) }
-func (*UpdatedValue) ProtoMessage()               {}
-func (*UpdatedValue) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{13} }
-
-func (m *UpdatedValue) GetValueWrap() *UpdatedValue_VSlice {
-	if m != nil {
-		return m.ValueWrap
-	}
-	return nil
-}
-
-func (m *UpdatedValue) GetPreviousValue() []byte {
-	if m != nil {
-		return m.PreviousValue
-	}
-	return nil
-}
-
-type UpdatedValue_VSlice struct {
-	Value []byte `protobuf:"bytes,1,opt,name=Value,proto3" json:"Value,omitempty"`
-}
-
-func (m *UpdatedValue_VSlice) Reset()                    { *m = UpdatedValue_VSlice{} }
-func (m *UpdatedValue_VSlice) String() string            { return proto.CompactTextString(m) }
-func (*UpdatedValue_VSlice) ProtoMessage()               {}
-func (*UpdatedValue_VSlice) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{13, 0} }
-
-func (m *UpdatedValue_VSlice) GetValue() []byte {
-	if m != nil {
-		return m.Value
-	}
-	return nil
-}
-
-type ChaincodeStateDelta struct {
-	UpdatedKVs map[string]*UpdatedValue `protobuf:"bytes,1,rep,name=UpdatedKVs" json:"UpdatedKVs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-}
-
-func (m *ChaincodeStateDelta) Reset()                    { *m = ChaincodeStateDelta{} }
-func (m *ChaincodeStateDelta) String() string            { return proto.CompactTextString(m) }
-func (*ChaincodeStateDelta) ProtoMessage()               {}
-func (*ChaincodeStateDelta) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{14} }
-
-func (m *ChaincodeStateDelta) GetUpdatedKVs() map[string]*UpdatedValue {
-	if m != nil {
-		return m.UpdatedKVs
-	}
-	return nil
-}
-
+// SyncStateChunk is the payload to the request of state syncing request
 type SyncStateChunk struct {
 	Offset *SyncOffset `protobuf:"bytes,1,opt,name=offset" json:"offset,omitempty"`
 	//    bytes roothash = 2;
@@ -583,7 +1121,7 @@ type SyncStateChunk struct {
 func (m *SyncStateChunk) Reset()                    { *m = SyncStateChunk{} }
 func (m *SyncStateChunk) String() string            { return proto.CompactTextString(m) }
 func (*SyncStateChunk) ProtoMessage()               {}
-func (*SyncStateChunk) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{15} }
+func (*SyncStateChunk) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{14} }
 
 func (m *SyncStateChunk) GetOffset() *SyncOffset {
 	if m != nil {
@@ -606,74 +1144,58 @@ func (m *SyncStateChunk) GetChaincodeStateDeltas() map[string]*ChaincodeStateDel
 	return nil
 }
 
-type SyncMessage struct {
-	PayloadType   SyncType    `protobuf:"varint,1,opt,name=payloadType,enum=protos.SyncType" json:"payloadType,omitempty"`
-	Payload       []byte      `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
-	Offset        *SyncOffset `protobuf:"bytes,3,opt,name=offset" json:"offset,omitempty"`
-	CorrelationId uint64      `protobuf:"varint,4,opt,name=correlationId" json:"correlationId,omitempty"`
-	FailedReason  string      `protobuf:"bytes,5,opt,name=failedReason" json:"failedReason,omitempty"`
+type UpdatedValue struct {
+	ValueWrap     *UpdatedValue_VSlice `protobuf:"bytes,1,opt,name=valueWrap" json:"valueWrap,omitempty"`
+	PreviousValue []byte               `protobuf:"bytes,2,opt,name=previousValue,proto3" json:"previousValue,omitempty"`
 }
 
-func (m *SyncMessage) Reset()                    { *m = SyncMessage{} }
-func (m *SyncMessage) String() string            { return proto.CompactTextString(m) }
-func (*SyncMessage) ProtoMessage()               {}
-func (*SyncMessage) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{16} }
+func (m *UpdatedValue) Reset()                    { *m = UpdatedValue{} }
+func (m *UpdatedValue) String() string            { return proto.CompactTextString(m) }
+func (*UpdatedValue) ProtoMessage()               {}
+func (*UpdatedValue) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{15} }
 
-func (m *SyncMessage) GetPayloadType() SyncType {
+func (m *UpdatedValue) GetValueWrap() *UpdatedValue_VSlice {
 	if m != nil {
-		return m.PayloadType
-	}
-	return SyncType_UNDEFINED
-}
-
-func (m *SyncMessage) GetPayload() []byte {
-	if m != nil {
-		return m.Payload
+		return m.ValueWrap
 	}
 	return nil
 }
 
-func (m *SyncMessage) GetOffset() *SyncOffset {
+func (m *UpdatedValue) GetPreviousValue() []byte {
 	if m != nil {
-		return m.Offset
+		return m.PreviousValue
 	}
 	return nil
 }
 
-func (m *SyncMessage) GetCorrelationId() uint64 {
-	if m != nil {
-		return m.CorrelationId
-	}
-	return 0
+type UpdatedValue_VSlice struct {
+	Value []byte `protobuf:"bytes,1,opt,name=Value,proto3" json:"Value,omitempty"`
 }
 
-func (m *SyncMessage) GetFailedReason() string {
+func (m *UpdatedValue_VSlice) Reset()                    { *m = UpdatedValue_VSlice{} }
+func (m *UpdatedValue_VSlice) String() string            { return proto.CompactTextString(m) }
+func (*UpdatedValue_VSlice) ProtoMessage()               {}
+func (*UpdatedValue_VSlice) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{15, 0} }
+
+func (m *UpdatedValue_VSlice) GetValue() []byte {
 	if m != nil {
-		return m.FailedReason
-	}
-	return ""
-}
-
-type SyncState struct {
-	Statehash []byte      `protobuf:"bytes,1,opt,name=statehash,proto3" json:"statehash,omitempty"`
-	Offset    *SyncOffset `protobuf:"bytes,2,opt,name=offset" json:"offset,omitempty"`
-}
-
-func (m *SyncState) Reset()                    { *m = SyncState{} }
-func (m *SyncState) String() string            { return proto.CompactTextString(m) }
-func (*SyncState) ProtoMessage()               {}
-func (*SyncState) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{17} }
-
-func (m *SyncState) GetStatehash() []byte {
-	if m != nil {
-		return m.Statehash
+		return m.Value
 	}
 	return nil
 }
 
-func (m *SyncState) GetOffset() *SyncOffset {
+type ChaincodeStateDelta struct {
+	UpdatedKVs map[string]*UpdatedValue `protobuf:"bytes,1,rep,name=UpdatedKVs" json:"UpdatedKVs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+}
+
+func (m *ChaincodeStateDelta) Reset()                    { *m = ChaincodeStateDelta{} }
+func (m *ChaincodeStateDelta) String() string            { return proto.CompactTextString(m) }
+func (*ChaincodeStateDelta) ProtoMessage()               {}
+func (*ChaincodeStateDelta) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{16} }
+
+func (m *ChaincodeStateDelta) GetUpdatedKVs() map[string]*UpdatedValue {
 	if m != nil {
-		return m.Offset
+		return m.UpdatedKVs
 	}
 	return nil
 }
@@ -687,7 +1209,7 @@ type BucketTreeOffset struct {
 func (m *BucketTreeOffset) Reset()                    { *m = BucketTreeOffset{} }
 func (m *BucketTreeOffset) String() string            { return proto.CompactTextString(m) }
 func (*BucketTreeOffset) ProtoMessage()               {}
-func (*BucketTreeOffset) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{18} }
+func (*BucketTreeOffset) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{17} }
 
 func (m *BucketTreeOffset) GetLevel() uint64 {
 	if m != nil {
@@ -718,7 +1240,7 @@ type BlockOffset struct {
 func (m *BlockOffset) Reset()                    { *m = BlockOffset{} }
 func (m *BlockOffset) String() string            { return proto.CompactTextString(m) }
 func (*BlockOffset) ProtoMessage()               {}
-func (*BlockOffset) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{19} }
+func (*BlockOffset) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{18} }
 
 func (m *BlockOffset) GetStartNum() uint64 {
 	if m != nil {
@@ -734,9 +1256,9 @@ func (m *BlockOffset) GetEndNum() uint64 {
 	return 0
 }
 
+// we have specified field for each implement of states (buckettree, trie, etc.)
 type SyncOffset struct {
 	// Types that are valid to be assigned to Data:
-	//	*SyncOffset_Block
 	//	*SyncOffset_Buckettree
 	Data isSyncOffset_Data `protobuf_oneof:"data"`
 }
@@ -744,32 +1266,21 @@ type SyncOffset struct {
 func (m *SyncOffset) Reset()                    { *m = SyncOffset{} }
 func (m *SyncOffset) String() string            { return proto.CompactTextString(m) }
 func (*SyncOffset) ProtoMessage()               {}
-func (*SyncOffset) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{20} }
+func (*SyncOffset) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{19} }
 
 type isSyncOffset_Data interface {
 	isSyncOffset_Data()
 }
 
-type SyncOffset_Block struct {
-	Block *BlockOffset `protobuf:"bytes,1,opt,name=block,oneof"`
-}
 type SyncOffset_Buckettree struct {
 	Buckettree *BucketTreeOffset `protobuf:"bytes,2,opt,name=buckettree,oneof"`
 }
 
-func (*SyncOffset_Block) isSyncOffset_Data()      {}
 func (*SyncOffset_Buckettree) isSyncOffset_Data() {}
 
 func (m *SyncOffset) GetData() isSyncOffset_Data {
 	if m != nil {
 		return m.Data
-	}
-	return nil
-}
-
-func (m *SyncOffset) GetBlock() *BlockOffset {
-	if x, ok := m.GetData().(*SyncOffset_Block); ok {
-		return x.Block
 	}
 	return nil
 }
@@ -784,7 +1295,6 @@ func (m *SyncOffset) GetBuckettree() *BucketTreeOffset {
 // XXX_OneofFuncs is for the internal use of the proto package.
 func (*SyncOffset) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
 	return _SyncOffset_OneofMarshaler, _SyncOffset_OneofUnmarshaler, _SyncOffset_OneofSizer, []interface{}{
-		(*SyncOffset_Block)(nil),
 		(*SyncOffset_Buckettree)(nil),
 	}
 }
@@ -793,11 +1303,6 @@ func _SyncOffset_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 	m := msg.(*SyncOffset)
 	// data
 	switch x := m.Data.(type) {
-	case *SyncOffset_Block:
-		b.EncodeVarint(1<<3 | proto.WireBytes)
-		if err := b.EncodeMessage(x.Block); err != nil {
-			return err
-		}
 	case *SyncOffset_Buckettree:
 		b.EncodeVarint(2<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.Buckettree); err != nil {
@@ -813,14 +1318,6 @@ func _SyncOffset_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 func _SyncOffset_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
 	m := msg.(*SyncOffset)
 	switch tag {
-	case 1: // data.block
-		if wire != proto.WireBytes {
-			return true, proto.ErrInternalBadWireType
-		}
-		msg := new(BlockOffset)
-		err := b.DecodeMessage(msg)
-		m.Data = &SyncOffset_Block{msg}
-		return true, err
 	case 2: // data.buckettree
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
@@ -838,11 +1335,6 @@ func _SyncOffset_OneofSizer(msg proto.Message) (n int) {
 	m := msg.(*SyncOffset)
 	// data
 	switch x := m.Data.(type) {
-	case *SyncOffset_Block:
-		s := proto.Size(x.Block)
-		n += proto.SizeVarint(1<<3 | proto.WireBytes)
-		n += proto.SizeVarint(uint64(s))
-		n += s
 	case *SyncOffset_Buckettree:
 		s := proto.Size(x.Buckettree)
 		n += proto.SizeVarint(2<<3 | proto.WireBytes)
@@ -855,54 +1347,6 @@ func _SyncOffset_OneofSizer(msg proto.Message) (n int) {
 	return n
 }
 
-type BucketNode struct {
-	Level      uint64 `protobuf:"varint,1,opt,name=level" json:"level,omitempty"`
-	BucketNum  uint64 `protobuf:"varint,2,opt,name=bucketNum" json:"bucketNum,omitempty"`
-	CryptoHash []byte `protobuf:"bytes,3,opt,name=cryptoHash,proto3" json:"cryptoHash,omitempty"`
-}
-
-func (m *BucketNode) Reset()                    { *m = BucketNode{} }
-func (m *BucketNode) String() string            { return proto.CompactTextString(m) }
-func (*BucketNode) ProtoMessage()               {}
-func (*BucketNode) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{21} }
-
-func (m *BucketNode) GetLevel() uint64 {
-	if m != nil {
-		return m.Level
-	}
-	return 0
-}
-
-func (m *BucketNode) GetBucketNum() uint64 {
-	if m != nil {
-		return m.BucketNum
-	}
-	return 0
-}
-
-func (m *BucketNode) GetCryptoHash() []byte {
-	if m != nil {
-		return m.CryptoHash
-	}
-	return nil
-}
-
-type BucketNodes struct {
-	Nodes []*BucketNode `protobuf:"bytes,1,rep,name=nodes" json:"nodes,omitempty"`
-}
-
-func (m *BucketNodes) Reset()                    { *m = BucketNodes{} }
-func (m *BucketNodes) String() string            { return proto.CompactTextString(m) }
-func (*BucketNodes) ProtoMessage()               {}
-func (*BucketNodes) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{22} }
-
-func (m *BucketNodes) GetNodes() []*BucketNode {
-	if m != nil {
-		return m.Nodes
-	}
-	return nil
-}
-
 type SyncMetadata struct {
 	// Types that are valid to be assigned to Data:
 	//	*SyncMetadata_Buckettree
@@ -912,7 +1356,7 @@ type SyncMetadata struct {
 func (m *SyncMetadata) Reset()                    { *m = SyncMetadata{} }
 func (m *SyncMetadata) String() string            { return proto.CompactTextString(m) }
 func (*SyncMetadata) ProtoMessage()               {}
-func (*SyncMetadata) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{23} }
+func (*SyncMetadata) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{20} }
 
 type isSyncMetadata_Data interface {
 	isSyncMetadata_Data()
@@ -993,33 +1437,206 @@ func _SyncMetadata_OneofSizer(msg proto.Message) (n int) {
 	return n
 }
 
+type BucketNode struct {
+	Level      uint64 `protobuf:"varint,1,opt,name=level" json:"level,omitempty"`
+	BucketNum  uint64 `protobuf:"varint,2,opt,name=bucketNum" json:"bucketNum,omitempty"`
+	CryptoHash []byte `protobuf:"bytes,3,opt,name=cryptoHash,proto3" json:"cryptoHash,omitempty"`
+}
+
+func (m *BucketNode) Reset()                    { *m = BucketNode{} }
+func (m *BucketNode) String() string            { return proto.CompactTextString(m) }
+func (*BucketNode) ProtoMessage()               {}
+func (*BucketNode) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{21} }
+
+func (m *BucketNode) GetLevel() uint64 {
+	if m != nil {
+		return m.Level
+	}
+	return 0
+}
+
+func (m *BucketNode) GetBucketNum() uint64 {
+	if m != nil {
+		return m.BucketNum
+	}
+	return 0
+}
+
+func (m *BucketNode) GetCryptoHash() []byte {
+	if m != nil {
+		return m.CryptoHash
+	}
+	return nil
+}
+
+type BucketNodes struct {
+	Nodes []*BucketNode `protobuf:"bytes,1,rep,name=nodes" json:"nodes,omitempty"`
+}
+
+func (m *BucketNodes) Reset()                    { *m = BucketNodes{} }
+func (m *BucketNodes) String() string            { return proto.CompactTextString(m) }
+func (*BucketNodes) ProtoMessage()               {}
+func (*BucketNodes) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{22} }
+
+func (m *BucketNodes) GetNodes() []*BucketNode {
+	if m != nil {
+		return m.Nodes
+	}
+	return nil
+}
+
+// Like chat, stateSync wrap messages used in a syncing session
+type SyncMsg struct {
+	Type          SyncMsg_Type      `protobuf:"varint,1,opt,name=type,enum=protos.SyncMsg_Type" json:"type,omitempty"`
+	CorrelationId uint64            `protobuf:"varint,2,opt,name=correlationId" json:"correlationId,omitempty"`
+	Request       *SyncMsg_Request  `protobuf:"bytes,4,opt,name=request" json:"request,omitempty"`
+	Response      *SyncMsg_Response `protobuf:"bytes,5,opt,name=response" json:"response,omitempty"`
+}
+
+func (m *SyncMsg) Reset()                    { *m = SyncMsg{} }
+func (m *SyncMsg) String() string            { return proto.CompactTextString(m) }
+func (*SyncMsg) ProtoMessage()               {}
+func (*SyncMsg) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{23} }
+
+func (m *SyncMsg) GetType() SyncMsg_Type {
+	if m != nil {
+		return m.Type
+	}
+	return SyncMsg_UNDEFINED
+}
+
+func (m *SyncMsg) GetCorrelationId() uint64 {
+	if m != nil {
+		return m.CorrelationId
+	}
+	return 0
+}
+
+func (m *SyncMsg) GetRequest() *SyncMsg_Request {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
+func (m *SyncMsg) GetResponse() *SyncMsg_Response {
+	if m != nil {
+		return m.Response
+	}
+	return nil
+}
+
+// we have one of the following fields specified by the type
+// bytes payload = 3;
+type SyncMsg_Request struct {
+	Simple    *SimpleReq       `protobuf:"bytes,1,opt,name=simple" json:"simple,omitempty"`
+	Handshake *OpenSession     `protobuf:"bytes,2,opt,name=handshake" json:"handshake,omitempty"`
+	Session   *TransferRequest `protobuf:"bytes,3,opt,name=session" json:"session,omitempty"`
+	Ack       uint32           `protobuf:"varint,4,opt,name=ack" json:"ack,omitempty"`
+}
+
+func (m *SyncMsg_Request) Reset()                    { *m = SyncMsg_Request{} }
+func (m *SyncMsg_Request) String() string            { return proto.CompactTextString(m) }
+func (*SyncMsg_Request) ProtoMessage()               {}
+func (*SyncMsg_Request) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{23, 0} }
+
+func (m *SyncMsg_Request) GetSimple() *SimpleReq {
+	if m != nil {
+		return m.Simple
+	}
+	return nil
+}
+
+func (m *SyncMsg_Request) GetHandshake() *OpenSession {
+	if m != nil {
+		return m.Handshake
+	}
+	return nil
+}
+
+func (m *SyncMsg_Request) GetSession() *TransferRequest {
+	if m != nil {
+		return m.Session
+	}
+	return nil
+}
+
+func (m *SyncMsg_Request) GetAck() uint32 {
+	if m != nil {
+		return m.Ack
+	}
+	return 0
+}
+
+type SyncMsg_Response struct {
+	Simple    *SimpleResp       `protobuf:"bytes,1,opt,name=simple" json:"simple,omitempty"`
+	Handshake *AcceptSession    `protobuf:"bytes,2,opt,name=handshake" json:"handshake,omitempty"`
+	Session   *TransferResponse `protobuf:"bytes,3,opt,name=session" json:"session,omitempty"`
+	Err       *RequestError     `protobuf:"bytes,4,opt,name=err" json:"err,omitempty"`
+}
+
+func (m *SyncMsg_Response) Reset()                    { *m = SyncMsg_Response{} }
+func (m *SyncMsg_Response) String() string            { return proto.CompactTextString(m) }
+func (*SyncMsg_Response) ProtoMessage()               {}
+func (*SyncMsg_Response) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{23, 1} }
+
+func (m *SyncMsg_Response) GetSimple() *SimpleResp {
+	if m != nil {
+		return m.Simple
+	}
+	return nil
+}
+
+func (m *SyncMsg_Response) GetHandshake() *AcceptSession {
+	if m != nil {
+		return m.Handshake
+	}
+	return nil
+}
+
+func (m *SyncMsg_Response) GetSession() *TransferResponse {
+	if m != nil {
+		return m.Session
+	}
+	return nil
+}
+
+func (m *SyncMsg_Response) GetErr() *RequestError {
+	if m != nil {
+		return m.Err
+	}
+	return nil
+}
+
 func init() {
-	proto.RegisterType((*BlockState)(nil), "protos.BlockState")
+	proto.RegisterType((*SimpleReq)(nil), "protos.SimpleReq")
+	proto.RegisterType((*SimpleResp)(nil), "protos.SimpleResp")
+	proto.RegisterType((*LedgerState)(nil), "protos.LedgerState")
+	proto.RegisterType((*TxQuery)(nil), "protos.TxQuery")
+	proto.RegisterType((*OpenSession)(nil), "protos.OpenSession")
+	proto.RegisterType((*AcceptSession)(nil), "protos.AcceptSession")
+	proto.RegisterType((*AcceptSession_StateStatus)(nil), "protos.AcceptSession.StateStatus")
+	proto.RegisterType((*TransferDetail)(nil), "protos.TransferDetail")
+	proto.RegisterType((*RequestError)(nil), "protos.RequestError")
+	proto.RegisterType((*TransferRequest)(nil), "protos.TransferRequest")
+	proto.RegisterType((*TransferResponse)(nil), "protos.TransferResponse")
+	proto.RegisterType((*StateIndex)(nil), "protos.StateIndex")
 	proto.RegisterType((*SyncBlockRange)(nil), "protos.SyncBlockRange")
-	proto.RegisterType((*SyncBlocks)(nil), "protos.SyncBlocks")
-	proto.RegisterType((*SyncStateSnapshotRequest)(nil), "protos.SyncStateSnapshotRequest")
-	proto.RegisterType((*SyncStateSnapshot)(nil), "protos.SyncStateSnapshot")
-	proto.RegisterType((*SyncStateDeltasRequest)(nil), "protos.SyncStateDeltasRequest")
+	proto.RegisterType((*SyncBlock)(nil), "protos.SyncBlock")
 	proto.RegisterType((*SyncStateDeltas)(nil), "protos.SyncStateDeltas")
-	proto.RegisterType((*SyncBlockState)(nil), "protos.SyncBlockState")
-	proto.RegisterType((*SyncMsg)(nil), "protos.SyncMsg")
-	proto.RegisterType((*SyncStateQuery)(nil), "protos.SyncStateQuery")
-	proto.RegisterType((*SyncStateResp)(nil), "protos.SyncStateResp")
-	proto.RegisterType((*SyncStartRequest)(nil), "protos.SyncStartRequest")
-	proto.RegisterType((*SyncStartResponse)(nil), "protos.SyncStartResponse")
+	proto.RegisterType((*SyncStateChunk)(nil), "protos.SyncStateChunk")
 	proto.RegisterType((*UpdatedValue)(nil), "protos.UpdatedValue")
 	proto.RegisterType((*UpdatedValue_VSlice)(nil), "protos.UpdatedValue.VSlice")
 	proto.RegisterType((*ChaincodeStateDelta)(nil), "protos.ChaincodeStateDelta")
-	proto.RegisterType((*SyncStateChunk)(nil), "protos.SyncStateChunk")
-	proto.RegisterType((*SyncMessage)(nil), "protos.SyncMessage")
-	proto.RegisterType((*SyncState)(nil), "protos.SyncState")
 	proto.RegisterType((*BucketTreeOffset)(nil), "protos.BucketTreeOffset")
 	proto.RegisterType((*BlockOffset)(nil), "protos.BlockOffset")
 	proto.RegisterType((*SyncOffset)(nil), "protos.SyncOffset")
+	proto.RegisterType((*SyncMetadata)(nil), "protos.SyncMetadata")
 	proto.RegisterType((*BucketNode)(nil), "protos.BucketNode")
 	proto.RegisterType((*BucketNodes)(nil), "protos.BucketNodes")
-	proto.RegisterType((*SyncMetadata)(nil), "protos.SyncMetadata")
-	proto.RegisterEnum("protos.SyncType", SyncType_name, SyncType_value)
+	proto.RegisterType((*SyncMsg)(nil), "protos.SyncMsg")
+	proto.RegisterType((*SyncMsg_Request)(nil), "protos.SyncMsg.Request")
+	proto.RegisterType((*SyncMsg_Response)(nil), "protos.SyncMsg.Response")
 	proto.RegisterEnum("protos.SyncMsg_Type", SyncMsg_Type_name, SyncMsg_Type_value)
 }
 
@@ -1130,86 +1747,100 @@ var _Sync_serviceDesc = grpc.ServiceDesc{
 func init() { proto.RegisterFile("sync.proto", fileDescriptor8) }
 
 var fileDescriptor8 = []byte{
-	// 1292 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x57, 0x4b, 0x6f, 0xdb, 0x46,
-	0x10, 0x36, 0x29, 0x4a, 0x91, 0x46, 0xb2, 0xcc, 0xac, 0x1d, 0x45, 0x56, 0x9a, 0x40, 0x65, 0x1f,
-	0x10, 0x92, 0x42, 0x48, 0x5d, 0xf4, 0x95, 0x53, 0x65, 0x89, 0x89, 0x0d, 0xc7, 0x52, 0xb3, 0x94,
-	0x13, 0x04, 0x28, 0xea, 0xd2, 0xe2, 0xda, 0x52, 0x2d, 0x93, 0x2c, 0x97, 0x32, 0xa0, 0x43, 0x7f,
-	0x41, 0x0f, 0xfd, 0x11, 0xfd, 0x11, 0x05, 0x7a, 0xec, 0xb9, 0x97, 0xfe, 0xa3, 0x62, 0x1f, 0xe2,
-	0x53, 0x49, 0xea, 0xf6, 0x24, 0xce, 0xec, 0x37, 0xcf, 0x9d, 0x99, 0x1d, 0x01, 0xd0, 0xa5, 0x3b,
-	0xe9, 0xfa, 0x81, 0x17, 0x7a, 0xa8, 0xc4, 0x7f, 0x68, 0xab, 0x76, 0x6e, 0x9f, 0x05, 0x33, 0xc9,
-	0x35, 0x66, 0x00, 0xfb, 0x73, 0x6f, 0x72, 0x69, 0x85, 0x76, 0x48, 0xd0, 0x07, 0x50, 0x3c, 0x63,
-	0x54, 0x53, 0x69, 0x2b, 0x9d, 0xea, 0xde, 0xa6, 0x00, 0xd1, 0x2e, 0x87, 0x60, 0x71, 0x86, 0x1e,
-	0x00, 0x50, 0x86, 0x1e, 0x90, 0x79, 0x68, 0x37, 0xd5, 0xb6, 0xd2, 0xa9, 0xe1, 0x04, 0x07, 0x35,
-	0xa0, 0x74, 0x40, 0x66, 0x17, 0xd3, 0xb0, 0x59, 0x68, 0x2b, 0x1d, 0x0d, 0x4b, 0xca, 0xf8, 0x1e,
-	0xea, 0xd6, 0xd2, 0x9d, 0x08, 0x5d, 0xb6, 0x7b, 0x41, 0xd0, 0x87, 0xb0, 0x39, 0xf1, 0x82, 0x80,
-	0xcc, 0xed, 0x70, 0xe6, 0xb9, 0x87, 0x0e, 0x37, 0xab, 0xe1, 0x34, 0x13, 0xed, 0x40, 0x91, 0x86,
-	0x76, 0x10, 0x72, 0x53, 0x1a, 0x16, 0x04, 0xd2, 0xa1, 0x40, 0x5c, 0x47, 0x9a, 0x60, 0x9f, 0x86,
-	0x0d, 0x10, 0xe9, 0xa7, 0xe8, 0x13, 0x28, 0x06, 0xcc, 0x88, 0x0c, 0xa5, 0xb1, 0x0a, 0x25, 0xed,
-	0x02, 0x16, 0x20, 0xf4, 0x11, 0x94, 0x78, 0x70, 0xb4, 0xa9, 0xb6, 0x0b, 0xf9, 0xc8, 0xe5, 0xa1,
-	0xf1, 0x0d, 0x34, 0x99, 0x3c, 0x4f, 0x96, 0xe5, 0xda, 0x3e, 0x9d, 0x7a, 0x21, 0x26, 0x3f, 0x2d,
-	0x08, 0x0d, 0xff, 0x5d, 0x30, 0xc6, 0x6f, 0x0a, 0xdc, 0xce, 0xa9, 0x60, 0x21, 0x3a, 0x3c, 0x9b,
-	0x0a, 0xcf, 0xa6, 0x20, 0x50, 0x0b, 0xca, 0x94, 0x29, 0x77, 0x27, 0x44, 0xc6, 0x1e, 0xd1, 0xa8,
-	0x0d, 0x55, 0xee, 0xd3, 0x70, 0x71, 0x75, 0x46, 0x02, 0x99, 0x86, 0x24, 0x0b, 0x3d, 0x81, 0x5b,
-	0x81, 0x70, 0xad, 0xa9, 0xf1, 0x14, 0xb4, 0x93, 0x29, 0x58, 0x17, 0x02, 0x5e, 0x09, 0x18, 0x4f,
-	0xa1, 0x11, 0x81, 0xf8, 0xa5, 0xd2, 0x55, 0x94, 0x37, 0x4a, 0xab, 0xf1, 0x0a, 0xb6, 0x32, 0x7a,
-	0x6e, 0x78, 0x2f, 0x0d, 0x28, 0xf1, 0x5c, 0x88, 0x7b, 0xa9, 0x61, 0x49, 0x19, 0x6e, 0xa2, 0x96,
-	0x44, 0xe9, 0xde, 0x4c, 0x6f, 0x17, 0xca, 0xac, 0x35, 0x1c, 0x9b, 0x57, 0x30, 0xbb, 0x71, 0x94,
-	0xba, 0x71, 0xae, 0x13, 0x47, 0x18, 0xe3, 0x4f, 0x0d, 0x6e, 0x31, 0x4d, 0xc7, 0xf4, 0x02, 0x75,
-	0x40, 0x0b, 0x97, 0xbe, 0x30, 0x54, 0xdf, 0xdb, 0x49, 0x1a, 0x3a, 0xa6, 0x17, 0xdd, 0xf1, 0xd2,
-	0x27, 0x98, 0x23, 0xf2, 0x25, 0xa1, 0xae, 0xab, 0xef, 0x26, 0xdc, 0xf2, 0xed, 0xe5, 0xdc, 0xb3,
-	0x45, 0x35, 0xd7, 0xf0, 0x8a, 0x34, 0xfe, 0x2a, 0x80, 0xc6, 0xd4, 0xa1, 0x4d, 0xa8, 0x9c, 0x0c,
-	0x07, 0xe6, 0xd3, 0xc3, 0xa1, 0x39, 0xd0, 0x37, 0xd0, 0x1d, 0xb8, 0x6d, 0xbd, 0x1e, 0xf6, 0x4f,
-	0xad, 0x71, 0x6f, 0x6c, 0x9e, 0x0e, 0x47, 0xe3, 0xc3, 0xa7, 0xaf, 0x75, 0x05, 0x21, 0xa8, 0x27,
-	0xd8, 0xa3, 0x6f, 0xc7, 0xba, 0x8a, 0x1a, 0x80, 0x04, 0xcf, 0xb4, 0xac, 0xc3, 0xd1, 0x90, 0x9d,
-	0xe1, 0xb1, 0x5e, 0x40, 0x2d, 0x68, 0xe4, 0xf9, 0xa7, 0xbd, 0xfe, 0x91, 0xae, 0xe5, 0x64, 0x5e,
-	0x9c, 0x98, 0xf8, 0xb5, 0x5e, 0xcc, 0xc9, 0x70, 0x3e, 0x97, 0x29, 0xa1, 0x1d, 0xd0, 0x53, 0x67,
-	0xe6, 0x70, 0xa0, 0x97, 0xd1, 0x5d, 0xd8, 0x4e, 0x71, 0x07, 0xe6, 0xf3, 0x71, 0xcf, 0xd2, 0x75,
-	0x74, 0x0f, 0xee, 0xae, 0x39, 0xe0, 0xba, 0x6e, 0xa3, 0xfb, 0xb0, 0x9b, 0xf6, 0x8d, 0x11, 0xc7,
-	0xa6, 0x65, 0xf5, 0x9e, 0x99, 0x3a, 0x42, 0xef, 0xc3, 0xfd, 0x37, 0x1e, 0x73, 0x0d, 0xdb, 0x51,
-	0x82, 0x84, 0x87, 0xcf, 0xcd, 0xc1, 0x33, 0x13, 0xeb, 0x3b, 0x68, 0x17, 0xee, 0xe4, 0xd8, 0x5c,
-	0xe2, 0x4e, 0xe4, 0xbf, 0x38, 0xda, 0x7f, 0x3e, 0xea, 0x1f, 0xe9, 0x0d, 0xb4, 0x0d, 0x5b, 0x9c,
-	0x3b, 0xe8, 0x8d, 0x7b, 0x92, 0x79, 0x37, 0xf2, 0x5d, 0x40, 0xc7, 0xb8, 0x37, 0xb4, 0x7a, 0xfd,
-	0xf1, 0xe1, 0x68, 0x68, 0xe9, 0xcd, 0x28, 0x47, 0x5c, 0x22, 0x75, 0xb6, 0x6b, 0xec, 0x8b, 0xa2,
-	0xe5, 0xb5, 0xf5, 0x62, 0x41, 0x82, 0x25, 0xaa, 0x83, 0x3a, 0x13, 0x83, 0x62, 0x13, 0xab, 0x33,
-	0x27, 0xea, 0x6a, 0x39, 0x3f, 0xd5, 0x44, 0x57, 0xcb, 0x21, 0xba, 0x84, 0xcd, 0x48, 0x07, 0x26,
-	0xd4, 0xcf, 0xa9, 0x60, 0xd5, 0xe4, 0xd1, 0x70, 0x76, 0x4d, 0x78, 0x35, 0x95, 0xf1, 0x8a, 0x44,
-	0xef, 0x41, 0x85, 0x4f, 0xe9, 0xa9, 0x4d, 0xa7, 0x7c, 0x24, 0xd4, 0x70, 0xcc, 0xc8, 0x9a, 0x2e,
-	0xe6, 0x4d, 0xfb, 0xa0, 0x4b, 0xd3, 0x41, 0x34, 0xf4, 0xb2, 0xd6, 0xf7, 0xa0, 0x2a, 0x8b, 0x97,
-	0xd5, 0x2d, 0x0f, 0xa0, 0xbe, 0xa7, 0x27, 0x5b, 0x84, 0xb7, 0x47, 0x12, 0xf4, 0x96, 0xfa, 0xff,
-	0x25, 0x1e, 0x96, 0xcc, 0x24, 0xf5, 0x3d, 0x97, 0x92, 0x9c, 0xcd, 0x8f, 0xa1, 0x1e, 0x90, 0x1f,
-	0xc9, 0x24, 0x24, 0x0e, 0x26, 0x36, 0xf5, 0x5c, 0x6e, 0xb6, 0x82, 0x33, 0xdc, 0xff, 0x1d, 0xff,
-	0xaf, 0x0a, 0xd4, 0x4e, 0x7c, 0xc7, 0x0e, 0x89, 0xf3, 0xd2, 0x9e, 0x2f, 0x08, 0xfa, 0x1a, 0x2a,
-	0xd7, 0xec, 0xe3, 0x55, 0x60, 0xfb, 0x72, 0xec, 0xdc, 0x5b, 0x85, 0x9a, 0x04, 0x76, 0x5f, 0x5a,
-	0xf3, 0xd9, 0x84, 0xe0, 0x18, 0xcd, 0x26, 0x83, 0x1f, 0x90, 0xeb, 0x99, 0xb7, 0xa0, 0x1c, 0x22,
-	0x9f, 0xd1, 0x34, 0xb3, 0xf5, 0x00, 0x4a, 0x42, 0x94, 0x3d, 0x10, 0x02, 0x27, 0x1f, 0x08, 0x4e,
-	0x18, 0xbf, 0x2b, 0xb0, 0xdd, 0x9f, 0xda, 0x33, 0x77, 0xe2, 0x39, 0x24, 0x1e, 0xb2, 0xe8, 0x08,
-	0x40, 0xda, 0x3f, 0x7a, 0x49, 0x9b, 0x0a, 0x9f, 0x6f, 0x8f, 0x56, 0x9e, 0xad, 0x11, 0xe8, 0xc6,
-	0x68, 0xd3, 0x0d, 0x83, 0x25, 0x4e, 0x88, 0xb7, 0x2c, 0xd8, 0xca, 0x1c, 0xb3, 0xb7, 0xf7, 0x92,
-	0x2c, 0xb9, 0x2f, 0x15, 0xcc, 0x3e, 0xd1, 0x43, 0x28, 0x5e, 0x47, 0x71, 0x54, 0xe3, 0xa1, 0x98,
-	0x4c, 0x03, 0x16, 0x90, 0x27, 0xea, 0x57, 0x8a, 0xf1, 0x87, 0x9a, 0xe8, 0x85, 0xfe, 0x74, 0xe1,
-	0x5e, 0xa2, 0x87, 0x50, 0xf2, 0xce, 0xcf, 0x29, 0x09, 0x65, 0x2a, 0x51, 0xb2, 0x6a, 0x46, 0xfc,
-	0x04, 0x4b, 0x04, 0x7a, 0x0c, 0xe5, 0x2b, 0x12, 0xda, 0x03, 0x36, 0xbe, 0x8b, 0x69, 0x8b, 0x7c,
-	0x0c, 0x93, 0xd0, 0x66, 0x63, 0x1b, 0x47, 0x28, 0xe4, 0xc0, 0xce, 0x9a, 0xc0, 0x69, 0xb3, 0xc0,
-	0x93, 0xf3, 0x38, 0xf7, 0x34, 0x72, 0x9f, 0xd6, 0xe5, 0x4a, 0x66, 0x68, 0xad, 0xb6, 0x96, 0x03,
-	0xbb, 0x6f, 0x14, 0x59, 0x93, 0xb5, 0x4f, 0xd3, 0x59, 0xbb, 0xf7, 0x96, 0x2b, 0x4a, 0x26, 0xef,
-	0x6f, 0x05, 0xaa, 0x22, 0x4c, 0x4a, 0xed, 0x0b, 0x92, 0x6d, 0x3a, 0xe5, 0x86, 0x4d, 0xa7, 0xa6,
-	0x9a, 0x2e, 0x71, 0x0f, 0x85, 0x77, 0xde, 0x43, 0xee, 0x81, 0xd3, 0xd6, 0x3d, 0x70, 0x06, 0xd4,
-	0xce, 0xed, 0xd9, 0x3c, 0x6a, 0xcf, 0x22, 0xcf, 0x40, 0x8a, 0x67, 0x9c, 0x40, 0x25, 0xca, 0x7d,
-	0xba, 0x53, 0x95, 0x6c, 0xa7, 0xc6, 0x0e, 0xaa, 0xef, 0x72, 0xd0, 0xf8, 0x0e, 0xf4, 0xfd, 0xc5,
-	0xe4, 0x92, 0x84, 0xe3, 0x80, 0x10, 0x71, 0xc6, 0x7a, 0x69, 0x4e, 0xae, 0xc9, 0x5c, 0x2e, 0x68,
-	0x82, 0x60, 0x36, 0xcf, 0x38, 0x72, 0xb8, 0xb8, 0x92, 0x83, 0x37, 0x66, 0xc4, 0x0b, 0x9a, 0x58,
-	0xb4, 0x04, 0x61, 0xf4, 0xa0, 0xca, 0xb7, 0x05, 0xa9, 0x98, 0xed, 0x6b, 0x6c, 0x52, 0x31, 0x0d,
-	0x8a, 0xdc, 0xd7, 0x24, 0xcd, 0x16, 0x19, 0xe2, 0x3a, 0xb1, 0x6e, 0x49, 0x19, 0x3f, 0x8b, 0xa5,
-	0x55, 0x6a, 0x78, 0x94, 0xde, 0xbf, 0xb7, 0x53, 0x3b, 0x89, 0xc0, 0x1c, 0x6c, 0xac, 0xf6, 0xf0,
-	0x27, 0x00, 0xc2, 0xc1, 0x30, 0x20, 0xab, 0x12, 0x6a, 0x46, 0x12, 0x99, 0xa8, 0x0f, 0x36, 0x70,
-	0x02, 0xbd, 0x5f, 0x02, 0x8d, 0xef, 0x35, 0x3f, 0x00, 0x08, 0xe4, 0xd0, 0x73, 0xc8, 0x7f, 0xca,
-	0xcc, 0x03, 0x80, 0x49, 0xb0, 0xf4, 0x43, 0xef, 0x80, 0x5d, 0x96, 0x18, 0xe0, 0x09, 0x8e, 0xf1,
-	0x25, 0x54, 0x63, 0x0b, 0x14, 0x75, 0xa0, 0xe8, 0xb2, 0x0f, 0x39, 0x95, 0x50, 0xda, 0x5f, 0x86,
-	0xc1, 0x02, 0x60, 0x1c, 0x43, 0x2d, 0xd9, 0xcb, 0xe8, 0xf3, 0x54, 0xb8, 0xd9, 0x04, 0xc5, 0x26,
-	0xd6, 0x47, 0xfa, 0xd0, 0x86, 0xf2, 0xaa, 0x13, 0xb2, 0xeb, 0x54, 0x1d, 0x80, 0xbf, 0xd9, 0xe2,
-	0x81, 0x8f, 0xf7, 0x28, 0x4e, 0xf3, 0xfd, 0x40, 0x8d, 0x30, 0x7c, 0xb7, 0xd2, 0x0b, 0x99, 0x5d,
-	0x8b, 0xef, 0x4d, 0x7b, 0x5f, 0x80, 0xc6, 0x4c, 0xa0, 0x2e, 0x68, 0x7c, 0xe6, 0x6c, 0x65, 0x56,
-	0xc3, 0x56, 0x96, 0x61, 0x6c, 0x74, 0x94, 0xc7, 0xca, 0x99, 0xf8, 0x67, 0xf6, 0xd9, 0x3f, 0x01,
-	0x00, 0x00, 0xff, 0xff, 0x09, 0xf1, 0x6d, 0x55, 0xae, 0x0d, 0x00, 0x00,
+	// 1505 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x57, 0xcf, 0x72, 0x1b, 0xc5,
+	0x13, 0xf6, 0x4a, 0x2b, 0xd9, 0x6a, 0x49, 0xb6, 0x32, 0x71, 0x1c, 0x45, 0xf9, 0xfd, 0x52, 0xce,
+	0x86, 0x0a, 0xc6, 0x01, 0x25, 0x71, 0x20, 0x90, 0x70, 0x8a, 0xed, 0x4d, 0xd9, 0x15, 0x47, 0x36,
+	0x23, 0xc7, 0xa9, 0xa2, 0xa8, 0x0a, 0x6b, 0xed, 0xc8, 0xda, 0xf2, 0x7a, 0x77, 0x3d, 0x33, 0x0a,
+	0x16, 0x2f, 0xc1, 0x8b, 0x70, 0xe3, 0x40, 0x15, 0x07, 0xae, 0xbc, 0x40, 0x0e, 0x3c, 0x03, 0x77,
+	0xee, 0xd4, 0xfc, 0xd9, 0xbf, 0x92, 0x09, 0x45, 0x71, 0xb1, 0x77, 0x7a, 0xbe, 0xe9, 0xf9, 0xfa,
+	0x9b, 0xee, 0x99, 0x16, 0x00, 0x9b, 0x04, 0x83, 0x6e, 0x44, 0x43, 0x1e, 0xa2, 0xaa, 0xfc, 0xc7,
+	0x3a, 0x8d, 0xa1, 0x73, 0x4c, 0x3d, 0x6d, 0xed, 0xdc, 0x3c, 0x09, 0xc3, 0x13, 0x9f, 0xdc, 0x97,
+	0xa3, 0xe3, 0xf1, 0xf0, 0x3e, 0x39, 0x8b, 0xf8, 0x44, 0x4d, 0x5a, 0xc7, 0x50, 0xeb, 0x7b, 0x67,
+	0x91, 0x4f, 0x30, 0x39, 0x47, 0xb7, 0xa1, 0xc4, 0x2f, 0xda, 0xc6, 0xaa, 0xb1, 0x56, 0xdf, 0x58,
+	0x52, 0x00, 0xd6, 0x3d, 0xbc, 0xf8, 0x6a, 0x4c, 0xe8, 0x64, 0x67, 0x0e, 0x97, 0xf8, 0x05, 0xba,
+	0x07, 0x15, 0xc6, 0x1d, 0x4e, 0xda, 0x25, 0x89, 0xba, 0x1a, 0xa3, 0xf6, 0x88, 0x7b, 0x42, 0x68,
+	0x5f, 0x4c, 0xed, 0xcc, 0x61, 0x85, 0xd9, 0xac, 0x40, 0x99, 0x92, 0x73, 0xeb, 0x0c, 0x20, 0xde,
+	0x83, 0x45, 0xa9, 0x07, 0xe3, 0xfd, 0x1e, 0xd0, 0xba, 0x64, 0xa4, 0xf6, 0x6a, 0x27, 0x8c, 0xa8,
+	0x13, 0x30, 0x67, 0xc0, 0xbd, 0x30, 0xd8, 0xf4, 0xc3, 0xc1, 0xa9, 0xa2, 0xb6, 0x59, 0x05, 0x93,
+	0x12, 0x16, 0x59, 0x11, 0xd4, 0x33, 0xbe, 0xd0, 0x0a, 0x54, 0x47, 0xc4, 0x3b, 0x19, 0x71, 0xb9,
+	0xa1, 0x89, 0xf5, 0x08, 0xfd, 0x0f, 0x6a, 0x23, 0xe2, 0xb8, 0xd2, 0x83, 0xdc, 0xa1, 0x81, 0x53,
+	0x03, 0xba, 0x07, 0x55, 0xc9, 0x80, 0xb5, 0x2b, 0x79, 0x9a, 0xd2, 0xe9, 0x73, 0xcf, 0xe7, 0x84,
+	0x62, 0x0d, 0xb1, 0xfe, 0x0f, 0xf3, 0x5a, 0x25, 0x84, 0xc0, 0xe4, 0x17, 0x9e, 0xdb, 0x36, 0x56,
+	0xcb, 0x6b, 0x35, 0x2c, 0xbf, 0xad, 0xdf, 0x0d, 0xa8, 0xef, 0x47, 0x24, 0xe8, 0x13, 0xc6, 0xbc,
+	0x30, 0x40, 0x1b, 0xb0, 0xc0, 0x45, 0x08, 0x43, 0x42, 0xb5, 0x08, 0x2b, 0xb9, 0xd0, 0x86, 0x84,
+	0x6e, 0x13, 0xee, 0x78, 0x3e, 0x4e, 0x70, 0xa8, 0x0b, 0x95, 0x73, 0xb1, 0x81, 0xd6, 0x62, 0xa5,
+	0xab, 0x0e, 0xb5, 0x1b, 0x1f, 0x6a, 0xd7, 0x16, 0x87, 0x2a, 0x84, 0x93, 0x30, 0xb4, 0x02, 0x15,
+	0x2f, 0x70, 0xc9, 0x45, 0xbb, 0x2c, 0x22, 0x13, 0x76, 0x39, 0x44, 0xb7, 0xa0, 0x36, 0x1c, 0xfb,
+	0xbe, 0x3a, 0x01, 0x53, 0xcf, 0xa5, 0x26, 0x74, 0x17, 0x9a, 0xc7, 0x42, 0x00, 0xb6, 0x4f, 0xb7,
+	0x89, 0xcf, 0x1d, 0x19, 0xbe, 0xb9, 0x33, 0x87, 0xf3, 0x66, 0x71, 0xb4, 0xc3, 0x90, 0x5a, 0x7f,
+	0x18, 0xd0, 0x7c, 0x36, 0x18, 0x90, 0x88, 0xc7, 0xc1, 0xa5, 0xc2, 0x5d, 0x7e, 0xbe, 0xb1, 0x70,
+	0x39, 0x25, 0x4a, 0xff, 0x50, 0x89, 0x27, 0x71, 0xfe, 0x98, 0x72, 0xc1, 0xed, 0x78, 0x41, 0x8e,
+	0x86, 0x3a, 0x26, 0xf1, 0x67, 0xcc, 0x92, 0x6c, 0xea, 0x3c, 0x82, 0x7a, 0xc6, 0x8e, 0x3e, 0x80,
+	0x26, 0x61, 0xdc, 0x3b, 0x73, 0x38, 0x71, 0xfb, 0xde, 0xf7, 0x44, 0x27, 0x48, 0xde, 0xb8, 0xb9,
+	0x00, 0x55, 0x57, 0x72, 0xb0, 0x1e, 0xc3, 0x62, 0x9e, 0x95, 0xf0, 0x70, 0xe6, 0x5c, 0xbc, 0xf6,
+	0x02, 0x37, 0xfc, 0x2e, 0xf1, 0xd0, 0xc4, 0x79, 0xa3, 0xd5, 0x83, 0x06, 0x26, 0xe7, 0x63, 0xc2,
+	0xb8, 0x4d, 0x69, 0x48, 0xd1, 0x2a, 0xd4, 0x89, 0xf8, 0x50, 0x4e, 0xe4, 0x9a, 0x1a, 0xce, 0x9a,
+	0x44, 0x6e, 0xca, 0xe1, 0x56, 0xe8, 0xaa, 0x4a, 0x33, 0x71, 0x6a, 0xb0, 0xde, 0x19, 0xb0, 0x14,
+	0x13, 0xd1, 0x8e, 0xd3, 0xf3, 0x36, 0xf4, 0x79, 0xe9, 0xf3, 0x5e, 0xc9, 0xe6, 0x8d, 0x99, 0xe6,
+	0xc7, 0x7a, 0x5e, 0x45, 0x94, 0xa4, 0xf7, 0x24, 0x18, 0xec, 0x0f, 0x87, 0x8c, 0xf0, 0xb4, 0x08,
+	0xbb, 0x50, 0x91, 0x87, 0xaf, 0x4b, 0x61, 0x25, 0x8b, 0x95, 0xd5, 0x82, 0x9d, 0xe0, 0x44, 0x16,
+	0xad, 0x84, 0x09, 0xbc, 0x2b, 0x73, 0xa7, 0xfa, 0x3e, 0xbc, 0x1b, 0xe7, 0x92, 0xb8, 0x26, 0xde,
+	0x19, 0xd0, 0x4a, 0xc3, 0x62, 0x51, 0x18, 0x30, 0x82, 0xd6, 0xb2, 0x71, 0x65, 0x79, 0x0a, 0x66,
+	0xbb, 0x62, 0x26, 0x8e, 0xf4, 0xe3, 0x7c, 0x44, 0xb9, 0x5d, 0x25, 0x7a, 0x6b, 0x34, 0x0e, 0x4e,
+	0xe3, 0x98, 0x3e, 0xcc, 0xc7, 0x74, 0x65, 0x9a, 0xa3, 0x0e, 0xe6, 0x93, 0x7c, 0x30, 0xd7, 0xa7,
+	0xdc, 0xca, 0x7a, 0x60, 0x3a, 0x16, 0xd4, 0x82, 0x32, 0x23, 0xe7, 0xed, 0x65, 0x99, 0x07, 0xe2,
+	0xd3, 0xfa, 0x1a, 0x20, 0x25, 0x7b, 0xe9, 0x6d, 0x84, 0xc0, 0x1c, 0x39, 0x6c, 0xa4, 0x2f, 0x22,
+	0xf9, 0x2d, 0xf2, 0x64, 0x10, 0x52, 0x72, 0xe0, 0x4c, 0xfc, 0xd0, 0x71, 0x55, 0xb5, 0xe2, 0xac,
+	0xc9, 0x3a, 0x82, 0xc5, 0xbc, 0xa8, 0x68, 0x59, 0xaa, 0x40, 0xb9, 0xce, 0x1a, 0x35, 0x10, 0xac,
+	0x48, 0xe0, 0xca, 0xbb, 0xc0, 0xc4, 0xe2, 0x53, 0x64, 0xd8, 0xd0, 0xa3, 0x8c, 0xef, 0x88, 0x4d,
+	0x2b, 0xea, 0xf6, 0x4b, 0x0c, 0xd6, 0x0e, 0xd4, 0x12, 0xbf, 0x97, 0x52, 0xbe, 0x13, 0x4b, 0xa8,
+	0x2a, 0xb7, 0x19, 0x2b, 0x93, 0x95, 0xcf, 0xfa, 0xd5, 0x80, 0xa5, 0x82, 0x54, 0x97, 0x3a, 0xfc,
+	0x52, 0x54, 0x9a, 0x40, 0xb4, 0x4b, 0xab, 0xe5, 0xb5, 0xfa, 0xc6, 0x9d, 0x4b, 0xb4, 0xee, 0xaa,
+	0x7f, 0x76, 0xc0, 0xe9, 0x04, 0xeb, 0x25, 0x9d, 0x23, 0xa8, 0x67, 0xcc, 0x22, 0xe2, 0x53, 0x32,
+	0xd1, 0xb5, 0x25, 0x3e, 0xd1, 0x43, 0xa8, 0xbc, 0x75, 0xfc, 0x71, 0xfc, 0x72, 0xdd, 0x8c, 0x9d,
+	0x6f, 0x8d, 0x1c, 0x2f, 0x18, 0x84, 0x2e, 0x49, 0x77, 0xc0, 0x0a, 0xf9, 0xb4, 0xf4, 0x85, 0x61,
+	0xfd, 0x52, 0x52, 0x1a, 0xa7, 0x29, 0x84, 0xd6, 0xa1, 0x1a, 0xca, 0x12, 0x99, 0x4a, 0xca, 0xa4,
+	0x78, 0xb0, 0x46, 0xa0, 0x07, 0xb0, 0x70, 0x46, 0xb8, 0xb3, 0xed, 0xe8, 0xab, 0xb4, 0xbe, 0xb1,
+	0x9c, 0x45, 0xbf, 0x24, 0xdc, 0x71, 0x1d, 0xee, 0xe0, 0x04, 0x85, 0x5c, 0x58, 0x9e, 0x41, 0x89,
+	0xb5, 0xcb, 0x52, 0x93, 0x07, 0xb3, 0xd3, 0x7a, 0x56, 0x14, 0x5a, 0xa0, 0x99, 0xde, 0x3a, 0x2e,
+	0xdc, 0xb8, 0x74, 0xc9, 0x7f, 0x27, 0xde, 0x0f, 0x06, 0x34, 0x5e, 0x45, 0xae, 0xb8, 0x4b, 0x8f,
+	0x84, 0x11, 0x3d, 0x81, 0x9a, 0x9c, 0x7d, 0x4d, 0x9d, 0x48, 0xab, 0x97, 0xf8, 0xca, 0x02, 0xbb,
+	0x47, 0x7d, 0xdf, 0x1b, 0x10, 0x9c, 0xa2, 0xc5, 0x5d, 0x1b, 0x51, 0xf2, 0xd6, 0x0b, 0xc7, 0xec,
+	0x28, 0xa1, 0xd2, 0xc0, 0x79, 0x63, 0xe7, 0x16, 0x54, 0xd5, 0x52, 0x51, 0x09, 0x0a, 0x67, 0x48,
+	0x9c, 0x1a, 0x58, 0x3f, 0x1b, 0x70, 0x75, 0x06, 0x69, 0xf4, 0x02, 0x40, 0xef, 0xff, 0xe2, 0x88,
+	0xc9, 0xd7, 0xbb, 0xbe, 0x71, 0xef, 0x6f, 0xa2, 0xec, 0xa6, 0x68, 0x25, 0x73, 0x66, 0x79, 0xa7,
+	0x0f, 0x4b, 0x85, 0xe9, 0x19, 0x92, 0xae, 0xe7, 0x25, 0x5d, 0x9e, 0x25, 0x43, 0x56, 0xcb, 0x6f,
+	0xa0, 0xb5, 0x39, 0x1e, 0x9c, 0x12, 0x7e, 0x48, 0x09, 0x51, 0x59, 0x26, 0x62, 0xf4, 0xc9, 0x5b,
+	0xe2, 0xeb, 0x42, 0x52, 0x03, 0x51, 0xdb, 0xc7, 0x12, 0xd9, 0x1b, 0x9f, 0xc5, 0xaf, 0x47, 0x62,
+	0x10, 0x6b, 0xd4, 0x85, 0xa6, 0x6e, 0x03, 0x35, 0xb0, 0x9e, 0x41, 0x5d, 0xd6, 0xad, 0x76, 0xdc,
+	0x81, 0x05, 0x79, 0x73, 0x08, 0x0f, 0xca, 0x77, 0x32, 0x16, 0xe5, 0x4b, 0x02, 0x37, 0xf5, 0xad,
+	0x47, 0xd6, 0x01, 0x40, 0x5a, 0x00, 0xe8, 0x29, 0x80, 0xda, 0x93, 0x53, 0x42, 0x8a, 0x1d, 0x5c,
+	0x31, 0x90, 0x9d, 0x39, 0x9c, 0x41, 0x8b, 0x4e, 0x4e, 0x14, 0x85, 0xf5, 0x12, 0x1a, 0xd9, 0x22,
+	0x41, 0x9f, 0xe5, 0x7c, 0x16, 0xfa, 0x0b, 0xe5, 0xb3, 0x17, 0xba, 0x84, 0x5d, 0xe2, 0xee, 0x5b,
+	0x80, 0x14, 0xf4, 0xaf, 0xb4, 0xbb, 0x05, 0x30, 0xa0, 0x93, 0x88, 0x87, 0xf2, 0xda, 0x94, 0xad,
+	0x15, 0xce, 0x58, 0xac, 0xcf, 0xa1, 0x9e, 0xa1, 0x21, 0x1e, 0xaf, 0x40, 0x7c, 0xe8, 0x7c, 0x42,
+	0xd3, 0x54, 0xb1, 0x02, 0x58, 0x3f, 0x55, 0x61, 0x5e, 0x86, 0xca, 0x4e, 0xd0, 0x1a, 0x98, 0x7c,
+	0x12, 0xa9, 0xf8, 0x16, 0x0b, 0xd7, 0x05, 0x3b, 0xe9, 0x1e, 0x4e, 0x22, 0x82, 0x25, 0x42, 0x94,
+	0xc4, 0x20, 0xa4, 0x94, 0xf8, 0x8e, 0xe8, 0x85, 0x77, 0x5d, 0x4d, 0x38, 0x6f, 0x44, 0x0f, 0x61,
+	0x9e, 0xaa, 0x2e, 0x41, 0x3f, 0x8d, 0xd7, 0x8b, 0x2e, 0x75, 0x13, 0x81, 0x63, 0x1c, 0xfa, 0x14,
+	0x16, 0xa8, 0x7e, 0x81, 0xf5, 0xad, 0xd5, 0x9e, 0x5e, 0xa3, 0xe6, 0x71, 0x82, 0xec, 0xfc, 0x68,
+	0xc0, 0x7c, 0xdc, 0x8f, 0x7c, 0x04, 0x55, 0x26, 0x7b, 0x7e, 0x7d, 0x4c, 0xe9, 0x03, 0x1b, 0xff,
+	0xda, 0xc0, 0x1a, 0x80, 0x1e, 0x42, 0x6d, 0xe4, 0x04, 0x2e, 0x1b, 0x39, 0xa7, 0x53, 0x3f, 0x2b,
+	0x32, 0x6d, 0x33, 0x4e, 0x51, 0x22, 0x24, 0xa6, 0xac, 0xf2, 0x10, 0x32, 0x21, 0x15, 0xfa, 0x22,
+	0x1c, 0xe3, 0x44, 0x01, 0x3a, 0x83, 0x53, 0xa9, 0x40, 0x13, 0x8b, 0xcf, 0xce, 0x6f, 0x06, 0x2c,
+	0x24, 0x7d, 0xc6, 0x7a, 0x81, 0x2f, 0x2a, 0xf2, 0x65, 0x51, 0x42, 0xf8, 0xd1, 0x34, 0xe1, 0x6b,
+	0x33, 0xbb, 0xd0, 0x2c, 0xe5, 0x8d, 0x22, 0xe5, 0xf6, 0x34, 0x65, 0xad, 0x68, 0xc2, 0xf9, 0x2e,
+	0x94, 0x09, 0xa5, 0xfa, 0xd4, 0x92, 0x44, 0xc8, 0xf6, 0x92, 0x58, 0x00, 0xac, 0x3f, 0x0d, 0x30,
+	0x45, 0x5a, 0xa0, 0x26, 0xd4, 0x5e, 0xf5, 0xb6, 0xed, 0xe7, 0xbb, 0x3d, 0x7b, 0xbb, 0x35, 0x87,
+	0xae, 0x40, 0x73, 0x6b, 0x6f, 0xd7, 0xee, 0x1d, 0xbe, 0xe9, 0xef, 0xbe, 0x3c, 0xd8, 0xb3, 0x5b,
+	0x06, 0xba, 0x0e, 0x57, 0x63, 0x93, 0xdd, 0xef, 0xef, 0xee, 0xf7, 0xde, 0xec, 0x1f, 0xd8, 0xbd,
+	0x56, 0x09, 0x21, 0x58, 0xcc, 0x4f, 0xb4, 0xca, 0x68, 0x05, 0x50, 0x01, 0xfc, 0x6c, 0xeb, 0x45,
+	0xcb, 0x44, 0x6d, 0x58, 0x2e, 0xd8, 0xb7, 0xf6, 0xf6, 0xfb, 0x76, 0xab, 0x82, 0x5a, 0xd0, 0xe8,
+	0xdb, 0xf8, 0xc8, 0xc6, 0x6f, 0x6c, 0x8c, 0xf7, 0x71, 0xab, 0x26, 0x38, 0x68, 0x8b, 0xe6, 0x00,
+	0xe8, 0x06, 0x5c, 0x8b, 0x4d, 0x89, 0xdb, 0x2d, 0xfb, 0xe0, 0xb0, 0x55, 0x17, 0x2c, 0xf2, 0x53,
+	0xad, 0x86, 0xd8, 0xad, 0x00, 0x57, 0xbe, 0x9b, 0x1b, 0x8f, 0xc1, 0x14, 0xe9, 0x88, 0xba, 0x60,
+	0xca, 0xa7, 0x73, 0xa9, 0x90, 0xa4, 0x9d, 0xa2, 0xc1, 0x9a, 0x5b, 0x33, 0x1e, 0x18, 0xc7, 0xea,
+	0x77, 0xf2, 0xa3, 0xbf, 0x02, 0x00, 0x00, 0xff, 0xff, 0x19, 0xfb, 0x7b, 0xab, 0x3c, 0x0f, 0x00,
+	0x00,
 }

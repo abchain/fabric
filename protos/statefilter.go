@@ -79,6 +79,10 @@ func (f *StateFilter) Add(h []byte) {
 
 func (f *StateFilter) Match(h []byte) bool {
 
+	if f == nil {
+		return false
+	}
+
 	modv := len(f.Filter) * 8
 	if l := len(h); l > 2*int(f.HashCounts) {
 		h = h[:2*int(f.HashCounts)]

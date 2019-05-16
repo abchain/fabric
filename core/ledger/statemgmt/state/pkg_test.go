@@ -53,7 +53,7 @@ func (testWrapper *stateTestWrapper) get(chaincodeID string, key string, committ
 	if committed {
 		value, err = testWrapper.state.stateImpl.Get(chaincodeID, key)
 	} else {
-		value, err = testWrapper.state.GetTransient(chaincodeID, key, nil)
+		value, err = testWrapper.state.GetTransient(chaincodeID, key)
 	}
 	testutil.AssertNoError(testWrapper.t, err, "Error while getting state")
 	return value

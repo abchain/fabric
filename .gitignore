@@ -33,5 +33,5 @@ build/
 
 dbscan
 *_stdout_*
-*appdata*
+*appData*
 txnetwork_*

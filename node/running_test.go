@@ -80,7 +80,7 @@ func TestTxNetwork(t *testing.T) {
 		t.Fatal("Error on make tx", err)
 	}
 
-	resp := thepeer.ExecuteTransaction(context.Background(), tx1, nil)
+	resp := thepeer.txn.ExecuteTransaction(context.Background(), tx1, nil)
 	if resp.Status == pb.Response_FAILURE {
 		t.Fatal("Error on deliver tx1")
 	}
@@ -123,7 +123,7 @@ func TestTxNetwork(t *testing.T) {
 		t.Fatal("Error on make tx", err)
 	}
 
-	err = thepeer.BroadCastTransaction(tx2, nil)
+	err = thepeer.txn.BroadCastTransaction(tx2, nil)
 	if nil != err {
 		t.Fatal("Error on broadcast tx2", err)
 	}
@@ -133,7 +133,7 @@ func TestTxNetwork(t *testing.T) {
 		t.Fatal("re-run peer fail", err)
 	}
 
-	resp = thepeer.ExecuteTransaction(context.Background(), tx1, nil)
+	resp = thepeer.txn.ExecuteTransaction(context.Background(), tx1, nil)
 	if resp.Status == pb.Response_FAILURE {
 		t.Fatal("Error on deliver tx1 again")
 	}

@@ -22,6 +22,18 @@ import (
 	"github.com/tecbot/gorocksdb"
 )
 
+type snapshotGen struct {
+	cfg *config
+}
+
+func (snapshotGen) GetStateSnapshotIterator(sn *db.DBSnapshot) (statemgmt.StateSnapshotIterator, error) {
+	return newStateSnapshotIterator(sn)
+}
+
+func (s snapshotGen) GetPartialRangeIterator(sn *db.DBSnapshot) (statemgmt.PartialRangeIterator, error) {
+	return newPartialSnapshotIterator(sn, s.cfg)
+}
+
 // StateSnapshotIterator implements the interface 'statemgmt.StateSnapshotIterator'
 type StateSnapshotIterator struct {
 	dbItr *gorocksdb.Iterator
@@ -29,8 +41,7 @@ type StateSnapshotIterator struct {
 
 func newStateSnapshotIterator(snapshot *db.DBSnapshot) (*StateSnapshotIterator, error) {
 	dbItr := snapshot.GetStateCFSnapshotIterator()
-	dbItr.Seek([]byte{0x01})
-	dbItr.Prev()
+	dbItr.SeekForPrev([]byte{0x01})
 	return &StateSnapshotIterator{dbItr}, nil
 }
 
@@ -38,6 +49,9 @@ const invalidDataPrefix = dataKeyPrefixByte + 1
 
 // Next - see interface 'statemgmt.StateSnapshotIterator' for details
 func (snapshotItr *StateSnapshotIterator) Next() bool {
+	if !snapshotItr.dbItr.Valid() {
+		return false
+	}
 	snapshotItr.dbItr.Next()
 
 	//now we need to check the iterator is in valid range for datanode (1-15)

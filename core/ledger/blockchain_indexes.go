@@ -1,488 +1,269 @@
-/*
-Copyright IBM Corp. 2016 All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-		 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package ledger
 
 import (
+	"bytes"
 	"fmt"
-
-	"encoding/binary"
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/protos"
-	"github.com/golang/protobuf/proto"
 	"github.com/op/go-logging"
 )
 
+//the final implement of indexer, abondon the async design and left commiter for controlling
+
 var indexLogger = logging.MustGetLogger("indexes")
-var prefixBlockHashKey = byte(1)
-var prefixTxIDKey = byte(2)
-var prefixAddressBlockNumCompositeKey = byte(3)
-var prefixStateHashKey = byte(4)
-var prefixIndexMarking = byte(8)
-var indexMarkingMagicCode = []byte{42, 42, 42}
-var lastIndexedBlockKey = []byte{byte(0)}
 
-type blockchainIndexer interface {
-	start(blockchain *blockchain) error
-	createIndexes(block *protos.Block, blockNumber uint64, blockHash []byte) error
-	fetchBlockNumberByBlockHash(blockHash []byte) (uint64, error)
-	fetchBlockNumberByStateHash(stateHash []byte) (uint64, error)
-	fetchTransactionIndexByID(txID string) (uint64, uint64, error)
-	stop()
+type blockIndexCache struct {
+	blockHash, stateHash []byte
+	txindex              map[string]int
 }
 
-type indexProgress struct {
-	beginBlockID  uint64
-	pendingBlocks []bool
-}
+func newBlockIndexCache(blockHash []byte, block *protos.Block) *blockIndexCache {
 
-func (i *indexProgress) GetProgress() uint64 { return i.beginBlockID }
-
-func (i *indexProgress) FinishBlock(id uint64) {
-
-	//0 is not a progress
-	if id == 0 {
-		return
+	idx := &blockIndexCache{
+		blockHash: blockHash,
+		stateHash: block.GetStateHash(),
+		txindex:   make(map[string]int),
 	}
 
-	if id <= i.beginBlockID {
-		indexLogger.Errorf("Have rewinded id [%d] (current %d)", id, i.beginBlockID)
-		return
-	}
-
-	//laid a shortcut here
-	if id == i.beginBlockID+1 && i.pendingBlocks == nil {
-		i.beginBlockID = id
-		return
-	}
-
-	offset := int(id - i.beginBlockID)
-	for offset > len(i.pendingBlocks) {
-		i.pendingBlocks = append(i.pendingBlocks, false)
-	}
-	i.pendingBlocks[offset-1] = true
-
-	for ii, done := range i.pendingBlocks {
-		if !done {
-			i.pendingBlocks = i.pendingBlocks[ii:]
-			i.beginBlockID = i.beginBlockID + uint64(ii)
-			return
+	if txids := block.GetTxids(); txids != nil {
+		for i, txid := range txids {
+			idx.txindex[txid] = i
+		}
+	} else if txs := block.GetTransactions(); txs != nil {
+		indexLogger.Debugf("No txid array found in block, we have deprecated code?")
+		for i, tx := range txs {
+			idx.txindex[tx.GetTxid()] = i
 		}
 	}
 
-	//if we come here, means all the pendingBlocks has been clean
-	i.beginBlockID = i.beginBlockID + uint64(len(i.pendingBlocks))
-	i.pendingBlocks = nil
+	return idx
 }
 
-// Implementation for sync indexer
-type blockchainIndexerSync struct {
-	*db.OpenchainDB
-	prog indexProgress
-}
+func (ind *blockIndexCache) persistence(writeBatch *db.DBWriteBatch, blockNumber uint64) {
 
-func newBlockchainIndexerSync() *blockchainIndexerSync {
-	return &blockchainIndexerSync{}
-}
+	cf := writeBatch.GetDBHandle().IndexesCF
 
-func (indexer *blockchainIndexerSync) start(blockchain *blockchain) (err error) {
-	indexer.OpenchainDB = blockchain.OpenchainDB
-	err, indexer.prog.beginBlockID = checkIndex(blockchain)
-	indexLogger.Debugf("staring indexer (sync), lastIndexedBlockNum = [%d] after processing pending blocks",
-		indexer.prog.GetProgress())
-	return
-}
+	indexLogger.Debugf("Indexing block number [%d] by hash = [%x](shash [%12x]", blockNumber, ind.blockHash, ind.stateHash)
+	//add the mark
+	writeBatch.PutCF(cf, encodeIndexMarkKey(blockNumber), indexMarkingMagicCode)
 
-func (indexer *blockchainIndexerSync) createIndexes(block *protos.Block, blockNumber uint64, blockHash []byte) error {
-
-	writeBatch := indexer.NewWriteBatch()
-	defer writeBatch.Destroy()
-
-	addIndexDataForPersistence(writeBatch, block, blockNumber, blockHash)
-	before := indexer.prog.GetProgress()
-	indexer.prog.FinishBlock(blockNumber)
-
-	if after := indexer.prog.GetProgress(); after > before {
-		writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(after))
+	writeBatch.PutCF(cf, encodeBlockHashKey(ind.blockHash), encodeBlockNumber(blockNumber))
+	if len(ind.stateHash) != 0 {
+		writeBatch.PutCF(cf, encodeStateHashKey(ind.stateHash), encodeBlockNumber(blockNumber))
 	}
 
-	if err := writeBatch.BatchCommit(); err != nil {
-		//if failed, prog will become inconsisted with db, but the error of db is fatal enough ....
-		return fmt.Errorf("fail in last commit batch: %s", err)
+	for id, txind := range ind.txindex {
+		writeBatch.PutCF(cf, encodeTxIDKey(id), encodeBlockNumTxIndex(blockNumber, uint64(txind)))
+	}
+
+}
+
+type indexerCache map[uint64]*blockIndexCache
+
+func (c indexerCache) fetchTransactionIndex(txID string) (uint64, uint64) {
+
+	for blkI, idx := range c {
+		if txI, ok := idx.txindex[txID]; ok {
+			return blkI, uint64(txI)
+		}
+	}
+
+	return 0, 0
+}
+
+func (c indexerCache) fetchBlockNumberByBlockHash(hash []byte) uint64 {
+
+	for blkI, idx := range c {
+		if bytes.Compare(hash, idx.blockHash) == 0 {
+			return blkI
+		}
+	}
+
+	return 0
+}
+
+func (c indexerCache) fetchBlockNumberByStateHash(hash []byte) uint64 {
+
+	for blkI, idx := range c {
+		if bytes.Compare(hash, idx.stateHash) == 0 {
+			return blkI
+		}
+	}
+
+	return 0
+}
+
+type blockchainIndexerImpl struct {
+	*db.OpenchainDB
+
+	cache struct {
+		indexedTo indexProgress
+		i         indexerCache
+		pending   *blockIndexCache
+		pendingOn uint64
+	}
+}
+
+func newIndexer(blockchain *blockchain, rollback int) (*blockchainIndexerImpl, error) {
+
+	odb := blockchain.OpenchainDB
+	sizelimit := blockchain.getSize()
+	persistedLimit := blockchain.getContinuousBlockHeight()
+	if uint64(rollback) > sizelimit {
+		persistedLimit = 0
+	} else {
+		persistedLimit = sizelimit - uint64(rollback)
+	}
+
+	ret := &blockchainIndexerImpl{
+		OpenchainDB: odb,
+	}
+
+	ret.cache.i = make(map[uint64]*blockIndexCache)
+	if sizelimit == 0 {
+		return ret, nil
+	}
+
+	//restore indexes (persisted them)
+	if err, doneTo := checkIndexTill(odb, persistedLimit); err != nil {
+		return nil, err
+	} else if doneTo < persistedLimit {
+		return nil, fmt.Errorf("Can not restore index to the specified limit [%d] (get %d)", persistedLimit, doneTo)
+	}
+	ret.cache.indexedTo.beginBlockID = persistedLimit
+
+	indexLogger.Debugf("scaning data for uncontinuous indexes from %d ... ", persistedLimit)
+	scanned := scanAllIndexesForBlock(blockchain.OpenchainDB,
+		persistedLimit+1, sizelimit, ret.cache.indexedTo.FinishBlock)
+
+	indexLogger.Infof("init index db done: has indexing %d blocks, continuous to %d, rollback limit %d",
+		scanned+persistedLimit+1, ret.cache.indexedTo.GetProgress(), ret.cache.indexedTo.GetTop())
+
+	//now we read the rest data into cache ...
+	err, _ := progressIndexs(odb, sizelimit-1,
+		ret.cache.indexedTo.GetProgress()+1,
+		func(blk *protos.Block, num uint64, hash []byte) error {
+			ret.cache.i[num] = newBlockIndexCache(hash, blk)
+			return nil
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	indexLogger.Infof("load index db to cache done: preload %d records", len(ret.cache.i))
+
+	return ret, nil
+}
+
+//there seems no preview available for indexer ...
+func (indexer *blockchainIndexerImpl) prepareIndexes(block *protos.Block, blockNumber uint64, blockHash []byte) error {
+
+	if indexer.cache.indexedTo.beginBlockID > 0 {
+		if blockNumber <= indexer.cache.indexedTo.beginBlockID {
+			indexLogger.Warningf("try index persisted block %d (now %d)", blockNumber, indexer.cache.indexedTo.beginBlockID)
+		}
+	}
+
+	indexer.cache.pending = newBlockIndexCache(blockHash, block)
+	indexer.cache.pendingOn = blockNumber
+	return nil
+}
+
+func (indexer *blockchainIndexerImpl) prepareIndexesFromBlock(block *protos.Block, blockNumber uint64) error {
+	blockhash, err := block.GetHash()
+	if err != nil {
+		return err
+	}
+
+	return indexer.prepareIndexes(block, blockNumber, blockhash)
+}
+
+func (indexer *blockchainIndexerImpl) commitIndex() {
+	indexer.cache.i[indexer.cache.pendingOn] = indexer.cache.pending
+}
+
+func (indexer *blockchainIndexerImpl) persistPrepared(writeBatch *db.DBWriteBatch) (uint64, error) {
+	return indexer.cache.pendingOn, indexer.persistIndexes(writeBatch, indexer.cache.pendingOn)
+}
+
+//like state, indexes can be only persisted in sequences
+func (indexer *blockchainIndexerImpl) persistIndexes(writeBatch *db.DBWriteBatch, blockNumber uint64) error {
+
+	target := indexer.cache.pending
+	if blockNumber != indexer.cache.pendingOn {
+		existed := false
+		target, existed = indexer.cache.i[blockNumber]
+		if !existed {
+			return ErrResourceNotFound
+		}
+	} else if target == nil {
+		return ErrResourceNotFound
+	}
+
+	target.persistence(writeBatch, blockNumber)
+
+	ciid := indexer.cache.indexedTo.PreviewProgress(blockNumber)
+	if ciid > indexer.cache.indexedTo.GetProgress() {
+		writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(ciid))
 	}
 
 	return nil
 }
 
-func (indexer *blockchainIndexerSync) fetchBlockNumberByBlockHash(blockHash []byte) (uint64, error) {
-	return fetchBlockNumberByBlockHashFromDB(indexer.OpenchainDB, blockHash)
+//persistent notify
+func (indexer *blockchainIndexerImpl) persistDone(blockNumber uint64) {
+	delete(indexer.cache.i, blockNumber)
+	if indexer.cache.pendingOn == blockNumber {
+		indexer.cache.pending = nil
+	}
+
+	indexer.cache.indexedTo.FinishBlock(blockNumber)
+
 }
 
-func (indexer *blockchainIndexerSync) fetchBlockNumberByStateHash(stateHash []byte) (uint64, error) {
-	return fetchBlockNumberByStateHashFromDB(indexer.OpenchainDB, stateHash)
+//different from async indexer, we pick db data first
+func (indexer *blockchainIndexerImpl) fetchBlockNumberByBlockHash(blockHash []byte) (uint64, error) {
+
+	bi, err := fetchBlockNumberByBlockHashFromDB(indexer.OpenchainDB, blockHash)
+	if err == nil {
+		return bi, nil
+	}
+
+	bi = indexer.cache.i.fetchBlockNumberByBlockHash(blockHash)
+	if bi != 0 {
+		return bi, nil
+	}
+
+	return 0, newLedgerError(ErrorTypeBlockNotFound, fmt.Sprintf("No block indexed with block hash [%x]", blockHash))
 }
 
-func (indexer *blockchainIndexerSync) fetchTransactionIndexByID(txID string) (uint64, uint64, error) {
-	return fetchTransactionIndexByIDFromDB(indexer.OpenchainDB, txID)
+func (indexer *blockchainIndexerImpl) fetchBlockNumberByStateHash(stateHash []byte) (uint64, error) {
+
+	bi, err := fetchBlockNumberByStateHashFromDB(indexer.OpenchainDB, stateHash)
+	if err == nil {
+		return bi, nil
+	}
+
+	bi = indexer.cache.i.fetchBlockNumberByStateHash(stateHash)
+	if bi != 0 {
+		return bi, nil
+	}
+
+	return 0, newLedgerError(ErrorTypeBlockNotFound, fmt.Sprintf("No block indexed with state hash [%x]", stateHash))
 }
 
-func (indexer *blockchainIndexerSync) stop() {
-	indexer.OpenchainDB = nil
-	return
-}
+func (indexer *blockchainIndexerImpl) fetchTransactionIndexByID(txID string) (bi uint64, ti uint64, err error) {
 
-func checkIndex(blockchain *blockchain) (error, uint64) {
-
-	totalSize := blockchain.getSize()
-	if totalSize == 0 {
-		// chain is empty
-		return nil, 0
-	}
-
-	odb := blockchain.OpenchainDB
-
-	lastIndexedBlockNum := uint64(0)
-	zerothRecord := false
-	if lastIndexedBlockNumberBytes, err := odb.GetValue(db.IndexesCF, lastIndexedBlockKey); err != nil {
-		return err, 0
-	} else if lastIndexedBlockNumberBytes != nil {
-		//so if we have a "last indexed" record, we start from which plus one
-		lastIndexedBlockNum = decodeBlockNumber(lastIndexedBlockNumberBytes)
-	} else {
-		zerothRecord = true
-	}
-
-	if lastIndexedBlockNum+1 == totalSize {
-		// all committed blocks are indexed
-		indexLogger.Debugf("Recorded last indexed num has catched up with block size (%d)", totalSize)
-		return nil, lastIndexedBlockNum
-	} else if totalSize <= lastIndexedBlockNum {
-		//TODO: should be suppose error?
-		indexLogger.Warningf("Encounter a higher index [%d] record than current block size can have (%d)", lastIndexedBlockNum, totalSize-1)
-		//return nil, 0
-	}
-
-	indexLogger.Infof("indexer need to finshish pending block from %d to %d first, please wait ...", lastIndexedBlockNum, totalSize-1)
-
-	writeBatch := odb.NewWriteBatch()
-	defer writeBatch.Destroy()
-
-	calledCounter := 0
-	writef := func(block *protos.Block, blocknum uint64, blockhash []byte) error {
-		addIndexDataForPersistence(writeBatch, block, blocknum, blockhash)
-		calledCounter++
-		//so we commit each 8 blocks
-		if calledCounter > 8 {
-			calledCounter = 0
-			if err := writeBatch.BatchCommit(); err != nil {
-				return fmt.Errorf("fail in commit batch: %s", err)
-			}
-		}
-		return nil
-	}
-
-	startNum := lastIndexedBlockNum + 1
-	if zerothRecord {
-		startNum = 0
-	}
-
-	err, finalBlockNum := progressIndexs(odb, totalSize-1, startNum, writef)
-	if err == progressNoChange && !zerothRecord {
-		indexLogger.Infof("indexer task [%d - %d] finished, no change", lastIndexedBlockNum, totalSize-1)
-		return nil, lastIndexedBlockNum
-	} else if err != nil {
-		return fmt.Errorf("progressIndexs fail: %s", err), 0
-	}
-
-	writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(finalBlockNum))
-	if err := writeBatch.BatchCommit(); err != nil {
-		return fmt.Errorf("fail in last commit batch: %s", err), 0
-	}
-	indexLogger.Infof("indexer task [%d - %d] finished at %d", lastIndexedBlockNum, totalSize-1, finalBlockNum)
-
-	return nil, finalBlockNum
-}
-
-var progressNoChange = fmt.Errorf("No change")
-
-//check our progress, obtain the real "lastIndexed" number and return
-//startBlockNum is the number checked begins and if this block can not
-//be indexed we return "progressNoChange" error
-func progressIndexs(odb *db.OpenchainDB, lastCommitedBlockNum uint64, startBlockNum uint64,
-	persistIndex func(*protos.Block, uint64, []byte) error) (error, uint64) {
-
-	indexLogger.Debugf("lastCommittedBlockNum=[%d], startBlockNum=[%d]",
-		lastCommitedBlockNum, startBlockNum)
-
-	//the cache iterator will greatly help the efficiency
-	indMarkItr := odb.GetIterator(db.IndexesCF)
-	defer indMarkItr.Close()
-	indMarkItr.Seek(encodeIndexMarkKey(startBlockNum))
-
-	for ; startBlockNum <= lastCommitedBlockNum; startBlockNum++ {
-
-		if indMarkItr != nil {
-			if !indMarkItr.Valid() || !indMarkItr.ValidForPrefix([]byte{prefixIndexMarking}) {
-				indexLogger.Infof("We have no cache from [%d], iterator closed", startBlockNum)
-				indMarkItr = nil
-			} else if num, err := decodeAndVerifyIndexMarkKey(indMarkItr.Key().Data(), indMarkItr.Value().Data()); err != nil {
-				indexLogger.Error("Wrong cache mark data:", err)
-				indMarkItr.Next() //TODO: try next? or fail? that's a problem
-			} else if num < startBlockNum {
-				indexLogger.Errorf("Encounter a less number in key than expected [%d vs %d], something wrong, iterator closed", num, startBlockNum)
-				//this should not happen ...
-				indMarkItr = nil
-			} else if num == startBlockNum {
-				//good, we can skip this number and go for next one
-				indMarkItr.Next()
-				indexLogger.Debugf("Match cached at %d, forward next one", num)
-				continue
-			} else {
-				indexLogger.Debugf("block %d is not marked yet, deep inspect this, next one is %d", startBlockNum, num)
-			}
-		}
-
-		blockToIndex, err := fetchRawBlockFromDB(odb, startBlockNum)
-		//interrupt for any db error
-		if err != nil {
-			return fmt.Errorf("db fail in getblock: %s", err), 0
-		}
-
-		//when get hash, we must prepare for a incoming "raw" block (the old version require txs to obtain blockhash)
-		blockToIndex = compatibleLegacyBlock(blockToIndex)
-		blockHash, err := blockToIndex.GetHash()
-		if err != nil {
-			return fmt.Errorf("fail in obtained block %d's hash: %s", startBlockNum, err), 0
-		}
-
-		//if we index genesis block, no check is needed
-		if startBlockNum != 0 {
-			//add checking ...
-			if index, err := fetchBlockNumberByBlockHashFromDB(odb, blockHash); err == nil {
-				if index == startBlockNum {
-					//has been indexed, we can skip
-					indexLogger.Infof("Match has been cached at %d, forward next one", startBlockNum)
-					//but still add the cache mark so we can go faster even the index building
-					//ruined in progress
-					odb.PutValue(db.IndexesCF, encodeIndexMarkKey(index), indexMarkingMagicCode)
-					continue
-				} else if index != 0 {
-					indexLogger.Errorf("block %d is indexed at different position %d", startBlockNum, index)
-				}
-			}
-		}
-
-		err = persistIndex(blockToIndex, startBlockNum, blockHash)
-		if err != nil {
-			return fmt.Errorf("fail in execute persistent index: %s", err), 0
-		}
-	}
-
-	//if we come here, startBlockNum must be 1 passed than lastCommitedBlockNum
-	return nil, startBlockNum - 1
-}
-
-// Functions for persisting and retrieving index data
-func addIndexDataForPersistence(writeBatch *db.DBWriteBatch, block *protos.Block, blockNumber uint64, blockHash []byte) {
-
-	cf := writeBatch.GetDBHandle().IndexesCF
-
-	indexLogger.Debugf("Indexing block number [%d] by hash = [%x]", blockNumber, blockHash)
-	//add the mark
-	writeBatch.PutCF(cf, encodeIndexMarkKey(blockNumber), indexMarkingMagicCode)
-
-	writeBatch.PutCF(cf, encodeBlockHashKey(blockHash), encodeBlockNumber(blockNumber))
-	if block.GetStateHash() != nil {
-		writeBatch.PutCF(cf, encodeStateHashKey(block.StateHash), encodeBlockNumber(blockNumber))
-	}
-	//	addressToTxIndexesMap := make(map[string][]uint64)
-	//	addressToChaincodeIDsMap := make(map[string][]*protos.ChaincodeID)
-
-	// so we compatible with new format of raw block (without contents for transaction)
-	if txids := block.GetTxids(); txids != nil {
-		for txIndex, txid := range txids {
-			// add TxID -> (blockNumber,indexWithinBlock)
-			writeBatch.PutCF(cf, encodeTxIDKey(txid), encodeBlockNumTxIndex(blockNumber, uint64(txIndex)))
-		}
-	} else if transactions := block.GetTransactions(); transactions != nil {
-		for txIndex, tx := range transactions {
-			// add TxID -> (blockNumber,indexWithinBlock)
-			writeBatch.PutCF(cf, encodeTxIDKey(tx.GetTxid()), encodeBlockNumTxIndex(blockNumber, uint64(txIndex)))
-
-			// txExecutingAddress := getTxExecutingAddress(tx)
-			// addressToTxIndexesMap[txExecutingAddress] = append(addressToTxIndexesMap[txExecutingAddress], uint64(txIndex))
-
-			// switch tx.Type {
-			// case protos.Transaction_CHAINCODE_DEPLOY, protos.Transaction_CHAINCODE_INVOKE:
-			// 	authroizedAddresses, chaincodeID := getAuthorisedAddresses(tx)
-			// 	for _, authroizedAddress := range authroizedAddresses {
-			// 		addressToChaincodeIDsMap[authroizedAddress] = append(addressToChaincodeIDsMap[authroizedAddress], chaincodeID)
-			// 	}
-			// }
-		}
-	}
-	// for address, txsIndexes := range addressToTxIndexesMap {
-	// 	writeBatch.PutCF(cf, encodeAddressBlockNumCompositeKey(address, blockNumber),
-	// 		encodeListTxIndexes(txsIndexes))
-	// }
-}
-
-func fetchBlockNumberByBlockHashFromDB(odb *db.OpenchainDB, blockHash []byte) (uint64, error) {
-	indexLogger.Debugf("fetchBlockNumberByBlockHashFromDB() for blockhash [%x]", blockHash)
-	blockNumberBytes, err := odb.GetValue(db.IndexesCF, encodeBlockHashKey(blockHash))
-	if err != nil {
-		return 0, err
-	}
-	indexLogger.Debugf("blockNumberBytes for blockhash [%x] is [%x]", blockHash, blockNumberBytes)
-	if len(blockNumberBytes) == 0 {
-		return 0, newLedgerError(ErrorTypeBlockNotFound, fmt.Sprintf("No block indexed with block hash [%x]", blockHash))
-	}
-	blockNumber := decodeBlockNumber(blockNumberBytes)
-	return blockNumber, nil
-}
-
-func fetchBlockNumberByStateHashFromDB(odb *db.OpenchainDB, stateHash []byte) (uint64, error) {
-	indexLogger.Debugf("fetchBlockNumberByStateHashFromDB() for statehash [%x]", stateHash)
-	blockNumberBytes, err := odb.GetValue(db.IndexesCF, encodeStateHashKey(stateHash))
-	if err != nil {
-		return 0, err
-	}
-	indexLogger.Debugf("blockNumberBytes for statehash [%x] is [%x]", stateHash, blockNumberBytes)
-	if len(blockNumberBytes) == 0 {
-		return 0, newLedgerError(ErrorTypeBlockNotFound, fmt.Sprintf("No block indexed with block hash [%x]", stateHash))
-	}
-	blockNumber := decodeBlockNumber(blockNumberBytes)
-	return blockNumber, nil
-}
-
-func fetchTransactionIndexByIDFromDB(odb *db.OpenchainDB, txID string) (uint64, uint64, error) {
-	blockNumTxIndexBytes, err := odb.GetValue(db.IndexesCF, encodeTxIDKey(txID))
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(blockNumTxIndexBytes) == 0 {
-		return 0, 0, newLedgerError(ErrorTypeBlockNotFound, fmt.Sprintf("No block indexed with transaction id [%s]", txID))
-	}
-	return decodeBlockNumTxIndex(blockNumTxIndexBytes)
-}
-
-func getTxExecutingAddress(tx *protos.Transaction) string {
-	// TODO Fetch address form tx
-	return "address1"
-}
-
-func getAuthorisedAddresses(tx *protos.Transaction) ([]string, *protos.ChaincodeID) {
-	// TODO fetch address from chaincode deployment tx
-	// TODO this method should also return error
-	data := tx.ChaincodeID
-	cID := &protos.ChaincodeID{}
-	err := proto.Unmarshal(data, cID)
-	if err != nil {
-		return nil, nil
-	}
-	return []string{"address1", "address2"}, cID
-}
-
-// functions for encoding/decoding db keys/values for index data
-// encode / decode BlockNumber
-func encodeBlockNumber(blockNumber uint64) []byte {
-	return proto.EncodeVarint(blockNumber)
-}
-
-func decodeBlockNumber(blockNumberBytes []byte) (blockNumber uint64) {
-	blockNumber, _ = proto.DecodeVarint(blockNumberBytes)
-	return
-}
-
-// encode / decode BlockNumTxIndex
-func encodeBlockNumTxIndex(blockNumber uint64, txIndexInBlock uint64) []byte {
-	b := proto.NewBuffer([]byte{})
-	b.EncodeVarint(blockNumber)
-	b.EncodeVarint(txIndexInBlock)
-	return b.Bytes()
-}
-
-func decodeBlockNumTxIndex(bytes []byte) (blockNum uint64, txIndex uint64, err error) {
-	b := proto.NewBuffer(bytes)
-	blockNum, err = b.DecodeVarint()
-	if err != nil {
+	bi, ti, err = fetchTransactionIndexByIDFromDB(indexer.OpenchainDB, txID)
+	if err == nil {
 		return
 	}
-	txIndex, err = b.DecodeVarint()
-	if err != nil {
+
+	bi, ti = indexer.cache.i.fetchTransactionIndex(txID)
+	if bi != 0 {
 		return
 	}
+	err = newLedgerError(ErrorTypeBlockNotFound, fmt.Sprintf("No block indexed with transaction id [%s]", txID))
 	return
-}
-
-// encode BlockHashKey
-func encodeBlockHashKey(blockHash []byte) []byte {
-	return prependKeyPrefix(prefixBlockHashKey, blockHash)
-}
-
-func encodeStateHashKey(stateHash []byte) []byte {
-	return prependKeyPrefix(prefixStateHashKey, stateHash)
-}
-
-// encode TxIDKey
-func encodeTxIDKey(txID string) []byte {
-	return prependKeyPrefix(prefixTxIDKey, []byte(txID))
-}
-
-func decodeAndVerifyIndexMarkKey(key []byte, val []byte) (uint64, error) {
-
-	if len(key) < 9 {
-		return 0, fmt.Errorf("We obtain wrong key content: %x", key)
-	}
-
-	num := binary.BigEndian.Uint64(key[1:])
-
-	//check the magic code ([]byte{42,42,42})
-	if len(val) != 3 || val[0] != 42 || val[1] != 42 || val[2] != 42 {
-		return num, fmt.Errorf("We obtain a cache mark which contain not the magic code: %x", val)
-	}
-
-	return num, nil
-}
-
-func encodeIndexMarkKey(num uint64) []byte {
-
-	buffer := [9]byte{prefixIndexMarking}
-	binary.BigEndian.PutUint64(buffer[1:], num)
-	return buffer[:]
-}
-
-func encodeAddressBlockNumCompositeKey(address string, blockNumber uint64) []byte {
-	b := proto.NewBuffer([]byte{prefixAddressBlockNumCompositeKey})
-	b.EncodeRawBytes([]byte(address))
-	b.EncodeVarint(blockNumber)
-	return b.Bytes()
-}
-
-func encodeListTxIndexes(listTx []uint64) []byte {
-	b := proto.NewBuffer([]byte{})
-	for i := range listTx {
-		b.EncodeVarint(listTx[i])
-	}
-	return b.Bytes()
-}
-
-func prependKeyPrefix(prefix byte, key []byte) []byte {
-	modifiedKey := []byte{}
-	modifiedKey = append(modifiedKey, prefix)
-	modifiedKey = append(modifiedKey, key...)
-	return modifiedKey
 }

@@ -37,8 +37,37 @@ func TxidFromDigest(digest []byte) string {
 	return fmt.Sprintf("%x", digest)
 }
 
+func normalizedTxFuncWithAlg(h hash.Hash) func(*Transaction) string {
+
+	if h == nil {
+		panic("hash alog is nil")
+	}
+
+	return func(tx *Transaction) string {
+		dlg, err := tx.digest(h)
+		if err != nil {
+			return fmt.Sprintf("###wrongtxdigest [%s]###", err)
+		}
+		return TxidFromDigest(dlg)
+	}
+}
+
 func (t *Transaction) IsValid() bool {
-	if d, err := t.digest(util.DefaultCryptoHash()); err != nil {
+	return t.isValid(util.DefaultCryptoHash())
+}
+
+func (t *Transaction) IsValidWithAlg(customIDgenAlg string) bool {
+	h := util.CryptoHashByAlg(customIDgenAlg)
+	if h == nil {
+		logger.Errorf("Wrong hash algorithm was given: %s", customIDgenAlg)
+		return false
+	} else {
+		return t.isValid(h)
+	}
+}
+
+func (t *Transaction) isValid(h hash.Hash) bool {
+	if d, err := t.digest(h); err != nil {
 		return false
 	} else {
 		return t.GetTxid() == TxidFromDigest(d)
@@ -72,10 +101,12 @@ func (t *Transaction) digest(h hash.Hash) ([]byte, error) {
 		return nil, err
 	}
 
-	//so we do not digest the nano part in ts ...
-	err = bin.Write(h, bin.BigEndian, t.Timestamp.Seconds)
-	if err != nil {
-		return nil, err
+	if t.Timestamp != nil {
+		//so we do not digest the nano part in ts ...
+		err = bin.Write(h, bin.BigEndian, t.Timestamp.Seconds)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = bin.Write(h, bin.BigEndian, int32(t.ConfidentialityLevel))
@@ -93,6 +124,15 @@ func (transaction *Transaction) Bytes() ([]byte, error) {
 	if err != nil {
 		logger.Errorf("Error marshalling transaction: %s", err)
 		return nil, fmt.Errorf("Could not marshal transaction: %s", err)
+	}
+	return data, nil
+}
+
+func (txResult *TransactionResult) Bytes() ([]byte, error) {
+	data, err := proto.Marshal(txResult)
+	if err != nil {
+		logger.Errorf("Error marshalling transaction result: %s", err)
+		return nil, fmt.Errorf("Could not marshal transaction result : %s", err)
 	}
 	return data, nil
 }

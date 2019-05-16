@@ -29,7 +29,7 @@ type txNetworkHandlerImpl struct {
 func NewTxNetworkHandler(engine *PeerEngine) *txNetworkHandlerImpl {
 
 	ret := new(txNetworkHandlerImpl)
-	ret.TxNetworkEntry = engine.TxNetworkEntry
+	ret.TxNetworkEntry = engine.txn
 	ret.endorser = engine.defaultEndorser
 	ret.defaultTxEndorse = engine.GenTxEndorser()
 	ret.lastSeries = engine.lastCache.Series

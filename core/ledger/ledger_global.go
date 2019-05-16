@@ -47,6 +47,15 @@ func (ledger *LedgerGlobal) GetGlobalState(statehash []byte) *protos.GlobalState
 	return db.GetGlobalDBHandle().GetGlobalState(statehash)
 }
 
+func (ledger *LedgerGlobal) GetConsensusData(statehash []byte) []byte {
+	val, err := db.GetGlobalDBHandle().GetValue(db.ConsensusCF, statehash)
+	if err != nil {
+		ledgerLogger.Errorf("Get consensus from db fail: %s", err)
+		return nil
+	}
+	return val
+}
+
 type parentNotExistError struct {
 	state []byte
 }
@@ -112,4 +121,27 @@ func (ledger *LedgerGlobal) GetPooledTransaction(txID string) *protos.Transactio
 
 func (ledger *LedgerGlobal) GetPooledTxCount() int {
 	return ledger.txpool.getPooledTxCount()
+}
+
+//we have a mroe sophisticated way to obtain a bunch of transactions
+func (ledger *LedgerGlobal) GetTransactionsByID(txIDs []string) []*protos.Transaction {
+	txs := ledger.txpool.getPooledTxs(txIDs)
+
+	var cnt int
+	var err error
+	for i, ret := range txs {
+		if ret == nil {
+			ret, err = fetchTxFromDB(txIDs[i])
+			if err != nil {
+				ledgerLogger.Errorf("Fail to obtain tx from db: %s, give up", err)
+				break
+			}
+		}
+		if ret != nil {
+			txs[cnt] = ret
+			cnt++
+		}
+	}
+
+	return txs[:cnt]
 }

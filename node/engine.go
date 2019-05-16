@@ -21,7 +21,7 @@ import (
 	"github.com/abchain/fabric/core/gossip/txnetwork"
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/core/peer"
-	"github.com/abchain/fabric/core/statesync"
+	"github.com/abchain/fabric/core/sync/strategy"
 	"github.com/abchain/fabric/events/litekfk"
 	pb "github.com/abchain/fabric/protos"
 	"github.com/op/go-logging"
@@ -39,8 +39,8 @@ type PeerEngine struct {
 		*ccSpecValidator
 	}
 
-	*txnetwork.TxNetworkEntry
-	*statesync.StateSyncStub
+	txn  *txnetwork.TxNetworkEntry
+	sync *syncstrategy.SyncEntry
 	peer.Peer
 
 	defaultEndorser cred.TxEndorserFactory
@@ -55,6 +55,9 @@ type PeerEngine struct {
 	runStatus  error
 	stopFunc   context.CancelFunc
 }
+
+func (pe *PeerEngine) TxNetwork() *txnetwork.TxNetworkEntry { return pe.txn }
+func (pe *PeerEngine) Syncer() *syncstrategy.SyncEntry      { return pe.sync }
 
 /*
 	node engine intregated mutiple PeerEngine, ledgers and credentials, system should access

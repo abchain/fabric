@@ -45,7 +45,7 @@ const DefaultNumBuckets = 10009
 // Grouping is started from left. The last group may have less buckets
 const DefaultMaxGroupingAtEachLevel = 10
 
-var useLegacyBucketKeyEncoding = true
+var useLegacyBucketKeyEncoding = false
 
 type config struct {
 	maxGroupingAtEachLevel int
@@ -79,6 +79,14 @@ func initConfig(configs map[string]interface{}) *config {
 	}
 
 	conf := newConfig(numBuckets, maxGroupingAtEachLevel)
+
+	//other initializations
+	conf.newBucketKeyEncoding = !useLegacyBucketKeyEncoding
+	if v, ok := configs["legacykeyencode"]; ok {
+		conf.newBucketKeyEncoding = !cast.ToBool(v)
+	}
+
+	//configs which is not persisted
 	conf.setting(configs)
 
 	return conf
@@ -155,15 +163,9 @@ func (conf *config) setting(configs map[string]interface{}) {
 		hashFunction = fnvHash
 	}
 
-	newEncoding := !useLegacyBucketKeyEncoding
-	if v, ok := configs["legacyKeyEncode"]; ok {
-		newEncoding = !cast.ToBool(v)
-	}
-
 	conf.syncDelta = syncDelta
 	conf.hashFunc = hashFunction
 	conf.bucketCacheMaxSize = bucketCacheMaxSize
-	conf.newBucketKeyEncoding = newEncoding
 	logger.Infof("setting configurations to %+v", conf)
 
 }
@@ -171,10 +173,11 @@ func (conf *config) setting(configs map[string]interface{}) {
 var configDataKey = []byte{17, 1}
 
 type configPersisting struct {
-	Grouping   int
-	Levels     int
-	BucketsNum map[int]int
-	SyncDelta  int
+	Grouping           int
+	Levels             int
+	BucketsNum         map[int]int
+	SyncDelta          int
+	NewBucketKeyEncode bool
 }
 
 func loadconfig(bts []byte, configs map[string]interface{}) (*config, error) {
@@ -189,6 +192,7 @@ func loadconfig(bts []byte, configs map[string]interface{}) (*config, error) {
 		maxGroupingAtEachLevel: confload.Grouping,
 		lowestLevel:            confload.Levels,
 		levelToNumBucketsMap:   confload.BucketsNum,
+		newBucketKeyEncoding:   confload.NewBucketKeyEncode,
 	}
 
 	logger.Infof("load bucket tree lowestLevel: %+v", conf.lowestLevel)
@@ -201,9 +205,10 @@ func loadconfig(bts []byte, configs map[string]interface{}) (*config, error) {
 func (config *config) persist() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	confsave := &configPersisting{
-		Grouping:   config.maxGroupingAtEachLevel,
-		Levels:     config.lowestLevel,
-		BucketsNum: config.levelToNumBucketsMap,
+		Grouping:           config.maxGroupingAtEachLevel,
+		Levels:             config.lowestLevel,
+		BucketsNum:         config.levelToNumBucketsMap,
+		NewBucketKeyEncode: config.newBucketKeyEncoding,
 	}
 	if err := gob.NewEncoder(buf).Encode(confsave); err != nil {
 		return nil, err

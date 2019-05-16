@@ -818,21 +818,11 @@ func (openchainDB *GlobalDataDB) ListCheckpointsByTag(tag string) (ret [][]byte)
 
 	ret = make([][]byte, 0)
 
-	it := openchainDB.GetIterator(PersistCF)
-	defer it.Close()
+	ckpPersistor := NewPersistor(checkpointNamePersistorIndex)
 
-	var prefix []byte
-	if tag == "" {
-		prefix = []byte(checkpointNamePrefix)
-	} else {
-		prefix = []byte(tag + "." + checkpointNamePrefix)
-	}
-
-	for it.Seek([]byte(prefix)); it.ValidForPrefix(prefix); it.Next() {
-		//Value/Key() in iterator need not to be Free() but its Data()
-		//must be copied
-		//ret = append(ret, it.Value().Data()) --- THIS IS WRONG
-		ret = append(ret, makeCopy(it.Value().Data()))
+	defer ckpPersistor.EndIteration()
+	for ckpPersistor.StartIteration([]string{tag}); ckpPersistor.Valid(); ckpPersistor.Next() {
+		ret = append(ret, ckpPersistor.Value())
 	}
 
 	return
@@ -855,11 +845,20 @@ func (openchainDB *GlobalDataDB) GetDBVersion() int {
 
 func (openchainDB *GlobalDataDB) setDBVersion() error {
 	v, _ := openchainDB.GetValue(PersistCF, []byte(currentGlobalVersionKey))
-	if len(v) == 0 {
-		v = []byte{byte(txDBVersion)}
-		if err := openchainDB.PutValue(PersistCF, []byte(currentGlobalVersionKey), v); err != nil {
-			return err
+	if len(v) != 0 {
+		//we should execute upgrade ...
+		curV := int(v[0])
+		for uf, needUpgrade := globalDBUPgrade[curV]; needUpgrade; uf,
+			needUpgrade = globalDBUPgrade[curV] {
+
+			dbLogger.Infof("upgrading globalDB to next version (current %d)", curV)
+			curV = uf(openchainDB)
 		}
+	}
+
+	v = []byte{byte(txDBVersion)}
+	if err := openchainDB.PutValue(PersistCF, []byte(currentGlobalVersionKey), v); err != nil {
+		return err
 	}
 
 	//TODO: in some case we can force the db version?

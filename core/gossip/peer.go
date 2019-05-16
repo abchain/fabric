@@ -42,7 +42,7 @@ type GossipStub struct {
 	self            *pb.PeerID
 	disc            peer.Discoverer
 	catalogHandlers map[string]CatalogHandler
-	newPeerNotify   []CatalogHandlerEx
+	newPeerNotify   []CatalogHandler
 
 	*pb.StreamStub
 	peerACL.AccessControl
@@ -82,17 +82,14 @@ func (g *GossipStub) AddCatalogHandler(h CatalogHandler) {
 }
 
 func (g *GossipStub) SubScribeNewPeerNotify(h CatalogHandler) {
-	ex, ok := h.(CatalogHandlerEx)
-	if !ok {
-		panic("handler did not imply ex interface, wrong code")
-	}
-
-	g.newPeerNotify = append(g.newPeerNotify, ex)
+	g.newPeerNotify = append(g.newPeerNotify, h)
 }
 
-func (g *GossipStub) NotifyNewPeer(peerid *pb.PeerID) {
+func (g *GossipStub) NotifyNewPeer(peerid *pb.PeerID, _ *pb.StreamStub) {
 	for _, h := range g.newPeerNotify {
-		h.OnConnectNewPeer(peerid)
+		logger.Infof("Notify peer [%s] is connected", peerid.GetName())
+		//TODO: now we just trigger an update to target peer...
+		h.SelfUpdate(peerid)
 	}
 }
 

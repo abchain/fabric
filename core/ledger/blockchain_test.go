@@ -193,3 +193,57 @@ func TestBlockchainBlockLedgerCommitTimestampV0(t *testing.T) {
 func TestBlockchainBlockLedgerCommitTimestamp(t *testing.T) {
 	testBlockchainBlockLedgerCommitTimestamp(t)
 }
+
+func TestBlockchainBlockExistChecking(t *testing.T) {
+
+	testDBWrapper.CleanDB(t)
+	testBlockchainWrapper := newTestBlockchainWrapper(t)
+	defer func() { testBlockchainWrapper.blockchain.indexer.stop() }()
+	_, _, err := testBlockchainWrapper.populateBlockChainWithSampleData()
+	if err != nil {
+		t.Logf("Error populating block chain with sample data: %s", err)
+		t.Fail()
+	}
+
+	writeBatch := testDBWrapper.NewWriteBatch()
+	defer writeBatch.Destroy()
+
+	addDistancedBlock := func(h uint64, prevhash []byte) []byte {
+		block1 := protos.NewBlock(nil, nil)
+		block1.PreviousBlockHash = prevhash
+		block1.Timestamp = util.CreateUtcTimestamp()
+		err = testBlockchainWrapper.blockchain.addPersistenceChangesForNewBlock(block1, h, writeBatch)
+		testutil.AssertNoError(t, err, "Error while adding a new block")
+		testDBWrapper.WriteToDB(t, writeBatch)
+		testBlockchainWrapper.blockchain.blockPersistenceStatus(true)
+
+		bkhash, _ := block1.GetHash()
+		return bkhash
+	}
+
+	bkh := addDistancedBlock(5, []byte("blockhash 0"))
+	bkh = addDistancedBlock(6, bkh)
+	addDistancedBlock(7, bkh)
+
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExisted(2), true)
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExisted(6), true)
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExisted(8), false)
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExisted(9), false)
+
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(4, true), uint64(4))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(5, false), uint64(4))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(6, true), uint64(8))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(7, false), uint64(4))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(9, false), uint64(9))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(2, false), uint64(0))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(0, true), uint64(3))
+
+	bkh = addDistancedBlock(11, []byte("blockhash 10"))
+	bkh = addDistancedBlock(12, bkh)
+
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExisted(6), true)
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(6, true), uint64(8))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(12, true), uint64(13))
+	testutil.AssertEquals(t, testBlockchainWrapper.testBlockExistedRange(0, true), uint64(3))
+
+}

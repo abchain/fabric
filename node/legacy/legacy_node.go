@@ -23,7 +23,7 @@ func (e *LegacyEngineAdapter) Init() error {
 	defPeer := startnode.GetNode().DefaultPeer()
 	var err error
 
-	e.Engine, err = helper.GetEngine(defPeer.Peer, defPeer.StateSyncStub)
+	e.Engine, err = helper.GetEngine(defPeer.Peer, defPeer.Syncer())
 	if err != nil {
 		return err
 	}

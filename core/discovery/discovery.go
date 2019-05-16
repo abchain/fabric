@@ -38,25 +38,23 @@ type Discovery interface {
 }
 
 type DiscoveryPersistor interface {
-	LoadDiscoveryList() error
-	StoreDiscoveryList() error
+	LoadDiscoveryList(db.PersistorKey) error
+	StoreDiscoveryList(db.PersistorKey) error
 }
 
 // DiscoveryImpl is an implementation of Discovery
 type DiscoveryImpl struct {
 	sync.RWMutex
-	nodes     map[string]bool
-	seq       []string
-	random    *rand.Rand
-	persistor db.Persistor
+	nodes  map[string]bool
+	seq    []string
+	random *rand.Rand
 }
 
 // NewDiscoveryImpl is a constructor of a Discovery implementation
-func NewDiscoveryImpl(persistor db.Persistor) *DiscoveryImpl {
+func NewDiscoveryImpl() *DiscoveryImpl {
 	di := DiscoveryImpl{}
 	di.nodes = make(map[string]bool)
 	di.random = rand.New(rand.NewSource(time.Now().Unix()))
-	di.persistor = persistor
 	return &di
 }
 
@@ -129,26 +127,24 @@ func inArray(element string, array []string) bool {
 }
 
 // StoreDiscoveryList enables a peer to persist the discovery list to the database
-func (di *DiscoveryImpl) StoreDiscoveryList() error {
-	if di.persistor == nil {
-		return nil
-	}
+func (di *DiscoveryImpl) StoreDiscoveryList(k db.PersistorKey) error {
+
+	persistor := db.NewPersistor(k)
 	var err error
 	addresses := di.GetAllNodes()
 	raw, err := proto.Marshal(&pb.PeersAddresses{Addresses: addresses})
 	if err != nil {
 		return err
 	}
-	return di.persistor.Store("discovery", raw)
+	return persistor.Store("discovery", raw)
 }
 
 // LoadDiscoveryList enables a peer to load the discovery list from the database
-func (di *DiscoveryImpl) LoadDiscoveryList() error {
-	if di.persistor == nil {
-		return nil
-	}
+func (di *DiscoveryImpl) LoadDiscoveryList(k db.PersistorKey) error {
+
+	persistor := db.NewPersistor(k)
 	var err error
-	packed, err := di.persistor.Load("discovery")
+	packed, err := persistor.Load("discovery")
 	if err != nil {
 		return err
 	}

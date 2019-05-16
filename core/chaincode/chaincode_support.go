@@ -123,11 +123,11 @@ func (chaincodeSupport *ChaincodeSupport) FinalDeploy(chrte *chaincodeRTEnv, txe
 			return fmt.Errorf("encode deptx fail: %s", err)
 		}
 		chrte.handler.deployTXSecContext = depTx
-		outstate.Set(ccName, deployTxKey, depTxByte, nil)
+		outstate.Set(ccName, deployTxKey, depTxByte)
 	}
 
 	//a trick: the payload in original tx is just the deployspec ...
-	outstate.Set(codepackCCName, ccName, txe.Transaction.GetPayload(), nil)
+	outstate.Set(codepackCCName, ccName, txe.Transaction.GetPayload())
 	return nil
 }
 
@@ -226,6 +226,8 @@ func NewChaincodeSupport(chainname ChainName, nodeName string, srvSpec *config.S
 		return nil
 	}
 
+	s.debugCC = viper.GetBool("chaincode.debugmode")
+
 	//initialize global chain
 	chains[chainname] = s
 	chaincodeLogger.Infof("Chaincode support %s using peerAddress: %s\n", chainname, s.clientGuide.Address)
@@ -290,6 +292,7 @@ type ChaincodeSupport struct {
 	ccDeployTimeout   time.Duration
 	ccExecTimeout     time.Duration
 	userRunsCC        bool
+	debugCC           bool
 	nodeID            string
 	clientGuide       *config.ClientSpec
 	keepalive         time.Duration
@@ -480,7 +483,11 @@ func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, cds *pb.
 	}
 
 	//stop the chaincode
-	sir := container.StopImageReq{CCID: ccintf.CCID{ChaincodeSpec: cds.ChaincodeSpec, NetworkID: string(chaincodeSupport.name), PeerID: chaincodeSupport.nodeID}, Timeout: 0}
+	sir := container.StopImageReq{
+		CCID:       ccintf.CCID{ChaincodeSpec: cds.ChaincodeSpec, NetworkID: string(chaincodeSupport.name), PeerID: chaincodeSupport.nodeID},
+		Timeout:    0,
+		Dontremove: chaincodeSupport.debugCC,
+	}
 
 	vmtype, _ := chaincodeSupport.getVMType(cds)
 

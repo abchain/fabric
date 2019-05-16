@@ -7,22 +7,39 @@ import (
 	"github.com/abchain/fabric/core/ledger/statemgmt/state"
 	"github.com/abchain/fabric/core/util"
 	"github.com/abchain/fabric/protos"
-	"sync"
 )
 
 type LedgerSnapshot struct {
-	l *Ledger
+	stateM statemgmt.SnapshotState
 	*db.DBSnapshot
 }
 
-func (sledger *LedgerSnapshot) GetParitalRangeIterator(offset *protos.SyncOffset) (statemgmt.PartialRangeIterator, error) {
+func (sledger *LedgerSnapshot) Clone() *LedgerSnapshot {
+	return &LedgerSnapshot{sledger.stateM, sledger.DBSnapshot.Clone()}
+}
 
-	partialInf := sledger.l.state.GetDividableState()
-	if partialInf == nil {
-		return nil, fmt.Errorf("State not support")
+func (sledger *LedgerSnapshot) GetParitalRangeIterator() (statemgmt.PartialRangeIterator, error) {
+
+	return sledger.stateM.GetPartialRangeIterator(sledger.DBSnapshot)
+}
+
+//notice the indexs in snapshot is not ensured to be latest (e.g. in the asyncindexers)
+func (sledger *LedgerSnapshot) GetBlockNumberByState(hash []byte) (uint64, error) {
+	return fetchBlockNumberByStateHashFromSnapshot(sledger.DBSnapshot, hash)
+}
+
+func (sledger *LedgerSnapshot) GetRawBlockByNumber(blockNumber uint64) (*protos.Block, error) {
+	blockBytes, err := sledger.GetFromBlockchainCFSnapshot(encodeBlockNumberDBKey(blockNumber))
+	if err != nil {
+		return nil, err
 	}
 
-	return partialInf.GetPartialRangeIterator(sledger.DBSnapshot)
+	blk, err := bytesToBlock(blockBytes)
+
+	if err != nil {
+		return nil, err
+	}
+	return blk, nil
 }
 
 func (sledger *LedgerSnapshot) GetBlockByNumber(blockNumber uint64) (*protos.Block, error) {
@@ -33,15 +50,10 @@ func (sledger *LedgerSnapshot) GetBlockByNumber(blockNumber uint64) (*protos.Blo
 	}
 
 	if blockNumber >= size {
-		return nil, ErrOutOfBounds
+		return nil, newLedgerError(ErrorTypeOutOfBounds, fmt.Sprintf("block number %d too large (%d)", blockNumber, size))
 	}
 
-	blockBytes, err := sledger.GetFromBlockchainCFSnapshot(encodeBlockNumberDBKey(blockNumber))
-	if err != nil {
-		return nil, err
-	}
-
-	blk, err := bytesToBlock(blockBytes)
+	blk, err := sledger.GetRawBlockByNumber(blockNumber)
 
 	if err != nil {
 		return nil, err
@@ -86,6 +98,7 @@ func (sledger *LedgerSnapshot) GetStateDelta(blockNumber uint64) (*statemgmt.Sta
 }
 
 func (sledger *LedgerSnapshot) GetStateSnapshot() (*state.StateSnapshot, error) {
+
 	blockHeight, err := sledger.GetBlockchainSize()
 	if err != nil {
 		return nil, err
@@ -93,21 +106,51 @@ func (sledger *LedgerSnapshot) GetStateSnapshot() (*state.StateSnapshot, error) 
 	if 0 == blockHeight {
 		return nil, fmt.Errorf("Blockchain has no blocks, cannot determine block number")
 	}
-	return sledger.l.state.GetSnapshot(blockHeight-1, sledger.DBSnapshot)
+
+	itr, err := sledger.stateM.GetStateSnapshotIterator(sledger.DBSnapshot)
+	if err != nil {
+		return nil, err
+	}
+	return state.NewStateSnapshot(blockHeight-1, itr, sledger.DBSnapshot), nil
+}
+
+func (ledger *Ledger) GetLedgerStatus() *protos.LedgerState {
+
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
+	ret := new(protos.LedgerState)
+	ret.States = ledger.snapshots.GetStableIndex()
+	ret.Height = ledger.blockchain.getContinuousBlockHeight() + 1
+	if ret.Height > 0 {
+		blk, _ := ledger.blockchain.getRawBlock(ret.Height - 1)
+		ret.HeadBlock, _ = blk.GetHash()
+	}
+
+	return ret
 }
 
 func (ledger *Ledger) CreateSyncingSnapshot(shash []byte) (*LedgerSnapshot, error) {
 
-	if blkn, err := ledger.GetBlockNumberByState(shash); err != nil {
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
+	blkn, err := ledger.index.fetchBlockNumberByStateHash(shash)
+	if err != nil {
 		return nil, err
-	} else {
-		sn, snblkn := ledger.snapshots.GetSnapshot(blkn)
-		if snblkn != blkn {
-			return nil, fmt.Errorf("request state [%X] is not stable (found blocknumber is %d but not cached)", shash, blkn)
-		}
-
-		return &LedgerSnapshot{ledger, sn}, nil
 	}
+
+	//check current first
+	if blkn+1 == ledger.snapshots.currentHeight {
+		return &LedgerSnapshot{ledger.state.GetSnapshotManager(), ledger.snapshots.GetSnapshotCurrent()}, nil
+	}
+
+	if sn, snblkn := ledger.snapshots.GetSnapshot(blkn); sn != nil {
+		if snblkn != blkn {
+			sn.Release()
+			return nil, fmt.Errorf("request state [%X] is not stable (found blocknumber is %d but not cached [closed set is %d])", shash, blkn, snblkn)
+		}
+		return &LedgerSnapshot{ledger.state.GetSnapshotManager(), sn}, nil
+	}
+	return nil, fmt.Errorf("request state [%X] is not avaliable", shash)
 }
 
 // for state syncing, proving the state hash and block number which can be requested
@@ -122,13 +165,27 @@ func (ledger *Ledger) CreateSyncingSnapshot(shash []byte) (*LedgerSnapshot, erro
 // wish to sync) later we should use checkpoint for state syncing and a long hold node
 // should be provided for alleviating this problem
 func (ledger *Ledger) GetStableSyncingState() *protos.StateFilter {
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
 	return ledger.snapshots.GetStableIndex()
 }
 
-// create a snapshot wrapper for current db
-func (ledger *Ledger) CreateSnapshot() *LedgerSnapshot {
+// create a snapshot wrapper for current db, the corresponding blocknumber is also returned
+// for verifing
+// this snapshot is not enusred to sync with state and should be only used for block syncing
+// and indexing should be avoiding used
+func (ledger *Ledger) CreateSnapshot() (*LedgerSnapshot, uint64) {
 
-	return &LedgerSnapshot{ledger, ledger.snapshots.GetCurrentSnapshot()}
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
+
+	if ledger.blockchain.getSize() == 0 {
+		//no snapshot because we have no block yet
+		return nil, 0
+	}
+
+	return &LedgerSnapshot{ledger.state.GetSnapshotManager(), ledger.snapshots.db.GetSnapshot()},
+		ledger.blockchain.getSize() - 1
 }
 
 // ----- will be deprecated -----
@@ -136,44 +193,32 @@ func (ledger *Ledger) CreateSnapshot() *LedgerSnapshot {
 // should be used when transferring the state from one peer to another peer. You must call
 // stateSnapshot.Release() once you are done with the snapshot to free up resources.
 func (ledger *Ledger) GetStateSnapshot() (*state.StateSnapshot, error) {
-	snapshotL := ledger.CreateSnapshot()
-	blockHeight, err := snapshotL.GetBlockchainSize()
-	if err != nil {
-		snapshotL.Release()
-		return nil, err
+	snapshotL, blockHeight := ledger.CreateSnapshot()
+	if snapshotL == nil {
+		return nil, fmt.Errorf("Blockchain has no blocks")
 	}
-	if 0 == blockHeight {
-		snapshotL.Release()
-		return nil, fmt.Errorf("Blockchain has no blocks, cannot determine block number")
-	}
-	return ledger.state.GetSnapshot(blockHeight-1, snapshotL.DBSnapshot)
+	return ledger.state.GetSnapshot(blockHeight, snapshotL.DBSnapshot)
 }
 
-type indexedSnapshot struct {
-	*db.DBSnapshot
-	stateHash []byte
-}
+func indexState(stateHash []byte) string {
 
-func (s indexedSnapshot) index() string {
-
-	if l := len(s.stateHash); l == 0 {
-		return "NIL"
-	} else if l < 8 {
-		return fmt.Sprintf("%X", s.stateHash)
+	if l := len(stateHash); l == 0 {
+		return "#NIL"
+	} else if l < 20 { //the first 160bit is used
+		return fmt.Sprintf("#%X", stateHash)
 	} else {
-		return fmt.Sprintf("%X", s.stateHash[:8])
+		return fmt.Sprintf("#%X", stateHash[:20])
 	}
 }
 
 //maintain a series of snapshot for state querying
 type ledgerHistory struct {
-	sync.RWMutex
 	db               *db.OpenchainDB
 	snapshotInterval int
 	beginIntervalNum uint64
 	currentHeight    uint64
-	current          indexedSnapshot
-	sns              []*indexedSnapshot
+	currentState     []byte
+	snsIndexed       [][]byte
 	stableStatus     *protos.StateFilter
 }
 
@@ -181,46 +226,41 @@ type ledgerHistory struct {
 //see the doc for detail: https://github.com/facebook/rocksdb/wiki/Snapshot
 const defaultSnapshotTotal = 8
 const defaultSnapshotInterval = 16
+const currentSNTag = "#current"
 
-func initNewLedgerSnapshotManager(odb *db.OpenchainDB, shash []byte, blkheight uint64, config *ledgerConfig) *ledgerHistory {
+func initNewLedgerSnapshotManager(odb *db.OpenchainDB, s *stateWrapper, config *ledgerConfig) *ledgerHistory {
 	lsm := new(ledgerHistory)
 	//TODO: read config
 	lsm.snapshotInterval = defaultSnapshotInterval
-	lsm.sns = make([]*indexedSnapshot, defaultSnapshotTotal)
+	lsm.snsIndexed = make([][]byte, defaultSnapshotTotal)
 	lsm.stableStatus = new(protos.StateFilter)
 
-	filterEff := lsm.stableStatus.InitAuto(uint(len(lsm.sns)))
+	filterEff := lsm.stableStatus.InitAuto(uint(len(lsm.snsIndexed)))
 	if fr := filterEff * float64(100); fr > float64(1.0) {
 		ledgerLogger.Warningf("The false positive ratio of filter is larger than 1% (%f)", fr)
 	}
 
-	if blkheight > 0 {
-		lsm.beginIntervalNum = (blkheight - 1) / uint64(lsm.snapshotInterval)
-		lsm.currentHeight = blkheight
-		lsm.current = indexedSnapshot{odb.GetSnapshot(), shash}
-	}
-
 	lsm.db = odb
+	if s.cache.refHeight > 0 {
+		lsm.currentHeight = s.cache.refHeight
+		curBlk := lsm.currentHeight - 1
+		lsm.beginIntervalNum = curBlk / uint64(lsm.snapshotInterval)
+		shash := s.cache.refHash
+		if int(curBlk)%lsm.snapshotInterval == 0 {
+			ledgerLogger.Debugf("cached state at the beginning [%X]@%d", shash, curBlk)
+			lsm.currentState = shash
+			lsm.snapshotCurrent(shash)
+		}
+
+		if oldSN := odb.ManageSnapshot(currentSNTag, odb.GetSnapshot()); oldSN != nil {
+			oldSN.Release()
+		}
+	}
 
 	return lsm
 }
 
-func (lh *ledgerHistory) Release() {
-	for _, sn := range lh.sns {
-		sn.Release()
-	}
-}
-
-func (lh *ledgerHistory) GetCurrentSnapshot() *db.DBSnapshot {
-	lh.RLock()
-	defer lh.RUnlock()
-
-	return lh.current.DBSnapshot.Clone()
-}
-
 func (lh *ledgerHistory) GetStableIndex() *protos.StateFilter {
-	lh.RLock()
-	defer lh.RUnlock()
 
 	ret := new(protos.StateFilter)
 	ret.Filter = lh.stableStatus.Filter
@@ -229,84 +269,149 @@ func (lh *ledgerHistory) GetStableIndex() *protos.StateFilter {
 	return ret
 }
 
-func (lh *ledgerHistory) GetSnapshot(blknum uint64) (*db.DBSnapshot, uint64) {
-	lh.RLock()
-	defer lh.RUnlock()
+func (lh *ledgerHistory) GetSnapshotCurrent() *db.DBSnapshot {
+	return lh.db.GetManagedSnapshot(currentSNTag)
+}
 
+func (lh *ledgerHistory) GetSnapshot(blknum uint64) (sn *db.DBSnapshot, blkn uint64) {
 	sni, blkn := lh.historyIndex(blknum)
 	if sni == -1 {
-		return lh.current.DBSnapshot.Clone(), blkn
+		return nil, blkn
+	} else if pickS := lh.snsIndexed[sni]; len(pickS) > 0 {
+		return lh.db.GetManagedSnapshot(indexState(pickS)), blkn
 	} else {
-		return lh.sns[sni].DBSnapshot.Clone(), blkn
+		return nil, blkn
 	}
 }
 
 func (lh *ledgerHistory) historyIndex(blknum uint64) (int, uint64) {
 
+	if lh.currentHeight <= 1 {
+		//we have no history yet
+		return -1, blknum
+	} else if blknum+1 >= lh.currentHeight {
+		blknum = lh.currentHeight - 2
+	}
+
 	sec := blknum / uint64(lh.snapshotInterval)
 	if sec < lh.beginIntervalNum {
-		return int(lh.beginIntervalNum % uint64(len(lh.sns))), lh.beginIntervalNum * uint64(lh.snapshotInterval)
+		return -1, blknum
 	} else {
-		//ceiling ....
-		if blknum%uint64(lh.snapshotInterval) != 0 {
-			sec++
-		}
-
 		corblk := sec * uint64(lh.snapshotInterval)
-		if corblk >= lh.currentHeight {
-			return -1, lh.currentHeight - 1
-		}
+		return int(sec % uint64(len(lh.snsIndexed))), corblk
+	}
 
-		return int(sec % uint64(len(lh.sns))), corblk
+}
+
+func (lh *ledgerHistory) snapshotCurrent(shash []byte) {
+	duplicatedSn := lh.db.ManageSnapshot(indexState(shash), lh.db.GetSnapshot())
+	if duplicatedSn != nil {
+		ledgerLogger.Warningf("We have duplidated snapshot in state %X and release it", shash)
+		duplicatedSn.Release()
 	}
 }
 
-//force update current state
-func (lh *ledgerHistory) ForceUpdate() {
-	lh.Lock()
-	defer lh.Unlock()
-
-	lh.current.Release()
-	lh.current.DBSnapshot = lh.db.GetSnapshot()
+func (lh *ledgerHistory) UpdateFromState(s *stateWrapper) {
+	if s.cache.refHeight == 0 || len(s.cache.refHash) == 0 {
+		ledgerLogger.Errorf("Update with invalid (empty) state")
+		return
+	}
+	lh.Update(s.cache.refHash, s.cache.refHeight-1)
 }
 
 func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {
-	lh.Lock()
-	defer lh.Unlock()
 
-	if blknum < lh.currentHeight {
-		ledgerLogger.Errorf("Try update a less blocknumber %d (current %d), not accept", blknum, lh.currentHeight-1)
+	//out-of-order updating is allowed only if blknum is not exceed the current bound
+	sec := blknum / uint64(lh.snapshotInterval)
+	if sec < lh.beginIntervalNum {
+		ledgerLogger.Errorf("Try update too small blocknumber %d (current least bound is %d), not accept", blknum, lh.beginIntervalNum*uint64(lh.snapshotInterval))
+		return
+	} else if blknum+1 == lh.currentHeight {
+		ledgerLogger.Errorf("duplicated blocknumber %d, not accept", blknum)
 		return
 	}
 
-	if currentNum := lh.currentHeight - 1; lh.currentHeight > 0 && currentNum%uint64(lh.snapshotInterval) == 0 {
-		//can keep this snapshot
-		sec := currentNum / uint64(lh.snapshotInterval)
-		indx := int(sec % uint64(len(lh.sns)))
+	ledgerLogger.Debugf("updating state [%X]@%d (now height %d)", shash, blknum, lh.currentHeight)
 
-		if s := lh.sns[indx]; s != nil {
-			s.Release()
+	if blknum < lh.currentHeight {
+		//to see if we can cached it, and exit
+		//notice: it is ok when the modulo is expected to be 0, but not other integer
+		//(go get minus result for a negitave integer being modulo)
+		if int(blknum)%lh.snapshotInterval == 0 {
+			indx := int(sec % uint64(len(lh.snsIndexed)))
+			if s := lh.snsIndexed[indx]; len(s) == 0 {
+				lh.snapshotCurrent(shash)
+				lh.snsIndexed[indx] = shash
+				ledgerLogger.Debugf("kept out-of-order state [%X]@%d", shash, blknum)
+			} //or it should has been cached, we just duplicated, TODO: sanity check?
 		}
-		newsnapshot := &indexedSnapshot{lh.current.DBSnapshot, lh.current.stateHash}
-		lh.sns[indx] = newsnapshot
+		return
+	}
 
-		ledgerLogger.Debugf("Cache snapshot of %d at %d", lh.currentHeight-1, indx)
-		if lh.beginIntervalNum+uint64(len(lh.sns)) <= sec && lh.currentHeight > 0 {
-			lh.beginIntervalNum = sec - uint64(len(lh.sns)-1)
-			ledgerLogger.Debugf("Move update begin to %d", lh.beginIntervalNum)
+	//so we forwarded
+	cacheCurrent := int(blknum)%lh.snapshotInterval == 0
+	//if current blknum has "push" the history range forward, we still have some works
+	//to do
+	if lh.beginIntervalNum+uint64(len(lh.snsIndexed)) <= sec {
+		oldBegin := lh.beginIntervalNum
+		if !cacheCurrent {
+			lh.beginIntervalNum = sec - uint64(len(lh.snsIndexed)) + 1
+		} else {
+			//NOTICE: this is a trick: we cache the "edge" block at currentState
+			//and not put it into history now, so we will not "waste" a slot
+			//which will point to current height
+			lh.beginIntervalNum = sec - uint64(len(lh.snsIndexed))
 		}
-
-		//reset bloom filter
-		lh.stableStatus.ResetFilter()
-		for _, sn := range lh.sns {
-			if sn != nil && len(sn.stateHash) != 0 {
-				lh.stableStatus.Add(sn.stateHash)
+		if oldBegin < lh.beginIntervalNum {
+			ledgerLogger.Debugf("begin range has forward to [%d] (%d in section)", lh.beginIntervalNum*uint64(lh.snapshotInterval), lh.beginIntervalNum)
+			for i := oldBegin; i < lh.beginIntervalNum; i++ {
+				//now we must clean the current snapshot we kept in the old history
+				dropS := lh.snsIndexed[int(i)%len(lh.snsIndexed)]
+				lh.snsIndexed[int(i)%len(lh.snsIndexed)] = nil
+				lh.db.UnManageSnapshot(indexState(dropS))
+				ledgerLogger.Debugf("history snapshot [%X] has been dropped", dropS)
+			}
+			//rebuild bloom filter
+			lh.stableStatus.ResetFilter()
+			for _, h := range lh.snsIndexed {
+				if len(h) > 0 {
+					lh.stableStatus.Add(h)
+				}
 			}
 		}
+	}
+	//now, keep the cache of previous "current" if we have one
+	if len(lh.currentState) > 0 {
+		//keep last "current" snapshot we have cached first
+		sec := (lh.currentHeight - 1) / uint64(lh.snapshotInterval)
+		//CAUTION: we may forward too fast so the cached has to be drop ...
+		if sec < lh.beginIntervalNum {
+			ledgerLogger.Infof("we have dropped a cached snapshot [%X]", lh.currentState)
+			lh.db.UnManageSnapshot(indexState(lh.currentState))
+		} else {
+			indx := int(sec % uint64(len(lh.snsIndexed)))
+			//sanity check
+			if len(lh.snsIndexed[indx]) > 0 {
+				panic("wrong code: forwarding do not clean current slot yet")
+			}
+			lh.snsIndexed[indx] = lh.currentState
+			//remember add it into bloom filter
+			lh.stableStatus.Add(lh.currentState)
+			ledgerLogger.Debugf("we have kept a new snapshot [%X]", lh.currentState)
+		}
+		lh.currentState = nil
+	}
 
-	} else {
-		lh.current.Release()
+	if cacheCurrent {
+		lh.snapshotCurrent(shash)
+		lh.currentState = shash
+		ledgerLogger.Debugf("cache current snapshot [%X]@%d", lh.currentState, blknum)
+	}
+	//also cache another copy of current db
+	oldSN := lh.db.ManageSnapshot(currentSNTag, lh.db.GetSnapshot())
+	if oldSN != nil {
+		oldSN.Release()
 	}
 	lh.currentHeight = blknum + 1
-	lh.current = indexedSnapshot{lh.db.GetSnapshot(), shash}
+
 }

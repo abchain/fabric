@@ -14,14 +14,9 @@ type CatalogHandler interface {
 	Name() string
 	Model() *model.Model
 	//just notify the model is updated
-	SelfUpdate()
+	SelfUpdate(...*pb.PeerID)
 	HandleUpdate(*pb.GossipMsg_Update, CatalogPeerPolicies)
 	HandleDigest(*pb.StreamHandler, *pb.GossipMsg_Digest, CatalogPeerPolicies)
-}
-
-type CatalogHandlerEx interface {
-	CatalogHandler
-	OnConnectNewPeer(*pb.PeerID)
 }
 
 type CatalogPeerPolicies interface {
@@ -307,7 +302,7 @@ func (h *sessionHandler) Process(strm *pb.StreamHandler, d model.Digest) (err er
 		//notice we should exclude current stream
 		//so the triggered push wouldn't make duplicated pulling
 		if h.isRespond {
-			go h.executePush(map[*pb.StreamHandler]bool{strm: true})
+			go h.executePush(nil, strm)
 		}
 	} else if err == model.EmptyUpdate {
 		logger.Debugf("pull nothing from peer [%s]", cpo.GetId())
@@ -339,9 +334,9 @@ func (h *catalogHandler) Model() *model.Model {
 
 var emptyExcluded = make(map[*pb.StreamHandler]bool)
 
-func (h *catalogHandler) SelfUpdate() {
+func (h *catalogHandler) SelfUpdate(to ...*pb.PeerID) {
 
-	go h.executePush(emptyExcluded)
+	go h.executePush(to, nil)
 }
 
 func (h *catalogHandler) HandleDigest(strm *pb.StreamHandler, msg *pb.GossipMsg_Digest, cpo CatalogPeerPolicies) {
@@ -374,7 +369,7 @@ func (h *catalogHandler) HandleUpdate(msg *pb.GossipMsg_Update, cpo CatalogPeerP
 
 }
 
-func (h *catalogHandler) executePush(excluded map[*pb.StreamHandler]bool) error {
+func (h *catalogHandler) executePush(to []*pb.PeerID, excluded *pb.StreamHandler) error {
 
 	logger.Debug("try execute a pushing process for handler", h.Name())
 	wctx, targetCnt := h.schedule.newSchedule(h.hctx, h.GetPolicies().PushCount())
@@ -385,11 +380,17 @@ func (h *catalogHandler) executePush(excluded map[*pb.StreamHandler]bool) error 
 	defer h.schedule.endSchedule(wctx)
 
 	var pushCnt int
-	for strm := range h.sstub.OverAllHandlers(wctx) {
+	var overChn chan *pb.PickedStreamHandler
+	if len(to) == 0 {
+		overChn = h.sstub.OverAllHandlers(wctx)
+	} else {
+		overChn = h.sstub.OverHandlers(wctx, to)
+	}
+	for strm := range overChn {
 
 		if h.schedule.reachPlan(targetCnt) {
 			break
-		} else if _, ok := excluded[strm.StreamHandler]; ok {
+		} else if strm.StreamHandler == excluded {
 			logger.Debugf("stream %s is excluded, try next one", strm.Id.GetName())
 			continue
 		}

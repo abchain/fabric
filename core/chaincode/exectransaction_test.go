@@ -95,6 +95,7 @@ func initPeer(vp *viper.Viper) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
+	nodeName := "cc_test"
 	var opts []grpc.ServerOption
 	if conf.EnableTLS {
 		creds, err := credentials.NewServerTLSFromFile(conf.TLSCertFile, conf.TLSKeyFile)
@@ -102,6 +103,8 @@ func initPeer(vp *viper.Viper) (net.Listener, error) {
 			return nil, fmt.Errorf("Failed to generate credentials %v", err)
 		}
 		opts = []grpc.ServerOption{grpc.Creds(creds)}
+	} else {
+		nodeName = nodeName + "_notls"
 	}
 	grpcServer := grpc.NewServer(opts...)
 
@@ -129,7 +132,7 @@ func initPeer(vp *viper.Viper) (net.Listener, error) {
 	// 	}
 	// }
 
-	pb.RegisterChaincodeSupportServer(grpcServer, NewChaincodeSupport(DefaultChain, "cc_test", conf, usercc))
+	pb.RegisterChaincodeSupportServer(grpcServer, NewChaincodeSupport(DefaultChain, nodeName, conf, usercc))
 
 	go grpcServer.Serve(lis)
 

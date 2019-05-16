@@ -35,7 +35,9 @@ func createCheckpoint(db *gorocksdb.DB, cpPath string) error {
 	return nil
 }
 
-const checkpointNamePrefix = "checkpoint."
+const checkpointNamePrefix = "checkpoint"
+
+var checkpointNamePersistorIndex = PersistKeyRegister(checkpointNamePrefix)
 
 func (oc *OpenchainDB) CheckpointCurrent(statehash []byte) error {
 	statename := encodeStatehash(statehash)
@@ -46,14 +48,7 @@ func (oc *OpenchainDB) CheckpointCurrent(statehash []byte) error {
 		return err
 	}
 
-	var chkpkey []byte
-	if oc.dbTag == "" {
-		chkpkey = []byte(checkpointNamePrefix + statename)
-	} else {
-		chkpkey = []byte(oc.dbTag + "." + checkpointNamePrefix + statename)
-	}
-
-	err = globalDataDB.PutValue(PersistCF, chkpkey, statehash)
+	err = NewPersistor(checkpointNamePersistorIndex).StoreByKeys([]string{oc.dbTag, statename}, statehash)
 	if err != nil {
 		return err
 	}
@@ -103,7 +98,8 @@ func (oc *OpenchainDB) StateSwitch(statehash []byte) error {
 	}
 
 	//write the new db tag, if we fail here, we just have an discarded path
-	err = globalDataDB.put(globalDataDB.persistCF, oc.getDBKey(currentDBKey), []byte(newtag))
+	//err = globalDataDB.put(globalDataDB.persistCF, oc.getDBKey(currentDBKey), []byte(newtag))
+	err = odbPersistor.StoreByKeys(oc.getDBKey(currentDBKey), []byte(newtag))
 	if err != nil {
 		dbLogger.Errorf("[%s] Can't write globaldb: <%s>. Fail to create new state db at %s",
 			printGID, err, newdbPath)
@@ -120,23 +116,19 @@ func (oc *OpenchainDB) StateSwitch(statehash []byte) error {
 
 	//prepare ok, now do the switch ...
 	oc.Lock()
-	defer oc.Unlock()
-
 	olddb := oc.db
 	oc.db = newdb
+	oc.CleanManagedSnapshot()
+	oc.Unlock()
+	dbLogger.Infof("[%s] State switch to %s done", printGID, statename)
 
 	//done, now release one refcount, and close db if needed
-	olddb.finalDrop = false //DATA RACE? No, it should be SAFE
-	select {
-	case <-olddb.extendedLock:
+	olddb.additionalClean = func() { olddb.dropDB() } //DATA RACE? No, it should be SAFE
+	if hasReleased := olddb.finalRelease(); hasReleased {
 		dbLogger.Infof("[%s] Delay release current db <%s>", printGID, olddb.dbName)
-	default:
+	} else {
 		dbLogger.Infof("[%s] Release current db <%s>", printGID, olddb.dbName)
-		olddb.close()
-		olddb.dropDB()
 	}
-
-	dbLogger.Infof("[%s] State switch to %s done", printGID, statename)
 
 	return nil
 }

@@ -44,6 +44,43 @@ func InitTestLedger(t *testing.T) *Ledger {
 	testutil.AssertNoError(t, err, "Error while add gensis state")
 	//replace ledger singleton
 	ledger = newLedger
-	poolTxBeforeCommit = true
 	return newLedger
+}
+
+func CleanTestLedger(t *testing.T) {
+	testDBWrapper.CleanDB(t)
+}
+
+func MakeTestLedgerGenesis(t *testing.T) {
+	err := ledger.BeginTxBatch(0)
+	testutil.AssertNoError(t, err, "Error while make genesis (beginTxBatch)")
+	err = ledger.CommitTxBatch(0, nil, nil, nil)
+	testutil.AssertNoError(t, err, "Error while make genesis (commit)")
+}
+
+var dbNameCanUsed = []string{"Alice", "Bob", "Clarol", "David", "Emma", "Flora", "Geoge", "Henry", "Ive", "Jack", "Klark"}
+
+func InitSecondaryTestLedger(t *testing.T) (*Ledger, func()) {
+
+	//so if we used up all names, here will be complain
+	var tag string
+	tag, dbNameCanUsed = dbNameCanUsed[0], dbNameCanUsed[1:]
+	newdb, err := db.StartDB(tag, nil)
+	testutil.AssertNoError(t, err, "Error while constructing secondary db")
+	newLedger, err := GetNewLedger(newdb, nil)
+	testutil.AssertNoError(t, err, "Error while constructing secondary ledger")
+
+	gblk, err := ledger.GetBlockByNumber(0)
+	testutil.AssertNoError(t, err, "Error while obtain genesis block")
+	testutil.AssertNotNil(t, gblk)
+
+	err = newLedger.PutRawBlock(gblk, 0)
+	testutil.AssertNoError(t, err, "Error while adding a new block")
+
+	return newLedger, func() {
+		db.StopDB(newdb)
+		err := db.DropDB(newdb.GetDBPath())
+		testutil.AssertNoError(t, err, "Drop db "+newdb.GetDBPath())
+		dbNameCanUsed = append(dbNameCanUsed, tag)
+	}
 }

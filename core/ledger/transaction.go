@@ -112,14 +112,8 @@ func (tp *transactionPool) getConfirmedTransaction(txID string) (*pb.Transaction
 
 func (tp *transactionPool) getTransaction(txID string) (*pb.Transaction, error) {
 
-	tp.RLock()
-	tx, ok := tp.txPool[txID]
-	if !ok && tp.txPoolSnapshot != nil {
-		tx, ok = tp.txPoolSnapshot[txID]
-	}
-	tp.RUnlock()
-
-	if !ok {
+	tx := tp.getPooledTx(txID)
+	if tx == nil {
 
 		tx, err := fetchTxFromDB(txID)
 		if err != nil {
@@ -165,16 +159,25 @@ func (tp *transactionPool) getPooledTxCount() int {
 }
 
 func (tp *transactionPool) getPooledTx(txid string) *pb.Transaction {
+	return tp.getPooledTxs([]string{txid})[0]
+}
 
+//take pooled txs, ensure each request has corresponding entry (maybe nil)
+//in the response array
+func (tp *transactionPool) getPooledTxs(txids []string) (ret []*pb.Transaction) {
 	tp.RLock()
 	defer tp.RUnlock()
 
-	tx, ok := tp.txPool[txid]
-	if !ok && tp.txPoolSnapshot != nil {
-		tx = tp.txPoolSnapshot[txid]
+	for _, txid := range txids {
+		tx, ok := tp.txPool[txid]
+		if !ok && tp.txPoolSnapshot != nil {
+			tx = tp.txPoolSnapshot[txid]
+		}
+
+		ret = append(ret, tx)
 	}
 
-	return tx
+	return
 }
 
 //only one long-journey read is allowed once

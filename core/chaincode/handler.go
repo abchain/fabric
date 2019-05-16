@@ -359,9 +359,14 @@ func (ws *workingStream) processStream(handler *Handler) (err error) {
 
 			chaincodeLogger.Debugf("[%s]Sending new tx %s [tx:%v] to shim", shorttxid(msg.Txid), msg.Type.String(), tctxin.isTransaction)
 			ws.tctxs[txid] = tctxin
-			if tctxin.isTransaction && tctxin.state.StateDelta == nil {
-				//state may be come from another transaction
-				tctxin.state.InitForInvoking(handler.Ledger)
+			if tctxin.state.Uninited() {
+				//here is the legacy supproting for old executing of tx
+				//later we may just panic it
+				if tctxin.isTransaction {
+					tctxin.state.InitForInvoking(handler.Ledger)
+				} else {
+					tctxin.state.InitForQuerying(handler.Ledger)
+				}
 			}
 
 		case <-handler.waitForKeepaliveTimer():
@@ -614,13 +619,7 @@ func (handler *Handler) handleGetState(msg *pb.ChaincodeMessage, tctx *transacti
 
 	// Invoke ledger to get state
 	chaincodeID := handler.ChaincodeID.Name
-	var res []byte
-	var err error
-	if tctx.isTransaction {
-		res, err = ledgerObj.GetTransientState(chaincodeID, key, tctx.state.DeRef())
-	} else {
-		res, err = ledgerObj.GetState(chaincodeID, key, true)
-	}
+	res, err := tctx.state.Get(chaincodeID, key, ledgerObj)
 
 	if err != nil {
 		// Send error msg back to chaincode. GetState will not trigger event
@@ -653,7 +652,7 @@ func (handler *Handler) handleRangeQuery(rangeIter statemgmt.RangeScanIterator, 
 
 	var keysAndValues []*pb.RangeQueryStateKeyValue
 	var i = uint32(0)
-	hasNext := true
+	hasNext := rangeIter.Next()
 	txid := tctx.inputMsg.GetTxid()
 	for ; hasNext && i < maxRangeQueryStateLimit; i++ {
 		key, value := rangeIter.GetKeyValue()
@@ -696,13 +695,7 @@ func (handler *Handler) handleRangeQueryState(msg *pb.ChaincodeMessage, tctx *tr
 	chaincodeID := handler.ChaincodeID.Name
 	ledgerObj := handler.Ledger
 
-	var rangeIter statemgmt.RangeScanIterator
-	var err error
-	if tctx.isTransaction {
-		rangeIter, err = ledgerObj.GetTransientStateRangeScanIterator(chaincodeID, rangeQueryState.StartKey, rangeQueryState.EndKey, tctx.state.DeRef())
-	} else {
-		rangeIter, err = ledgerObj.GetStateRangeScanIterator(chaincodeID, rangeQueryState.StartKey, rangeQueryState.EndKey, true)
-	}
+	rangeIter, err := tctx.state.GetRangeScanIterator(chaincodeID, rangeQueryState.StartKey, rangeQueryState.EndKey, ledgerObj)
 
 	if err != nil {
 		// Send error msg back to chaincode. GetState will not trigger event
@@ -782,7 +775,6 @@ func (handler *Handler) handleRangeQueryStateClose(msg *pb.ChaincodeMessage, tct
 func (handler *Handler) handlePutState(msg *pb.ChaincodeMessage, tctx *transactionContext) (*pb.ChaincodeMessage, error) {
 
 	chaincodeID := handler.ChaincodeID.Name
-	ledgerObj := handler.Ledger
 	var err error
 
 	if msg.Type == pb.ChaincodeMessage_PUT_STATE {
@@ -797,38 +789,13 @@ func (handler *Handler) handlePutState(msg *pb.ChaincodeMessage, tctx *transacti
 			return nil, fmt.Errorf("An empty string key or a nil value is not supported")
 		}
 
-		var pVal, previousValue []byte
+		var pVal []byte
 		// Encrypt the data if the confidential is enabled
 		if pVal, err = tctx.encrypt(putStateInfo.Value); err == nil {
-
-			key := putStateInfo.GetKey()
-			// Check if a previous value is already set in the state delta
-			if tctx.state.IsUpdatedValueSet(chaincodeID, key) {
-				// No need to bother looking up the previous value as we will not
-				// set it again. Just pass nil
-				tctx.state.Set(chaincodeID, key, pVal, nil)
-			} else {
-				// Need to lookup the previous value
-				if previousValue, err = ledgerObj.GetState(chaincodeID, key, true); err == nil {
-					tctx.state.Set(chaincodeID, key, pVal, previousValue)
-				}
-			}
+			tctx.state.Set(chaincodeID, putStateInfo.GetKey(), pVal)
 		}
 	} else if msg.Type == pb.ChaincodeMessage_DEL_STATE {
-		// Invoke ledger to delete state
-		key := string(msg.Payload)
-		var previousValue []byte
-		// Check if a previous value is already set in the state delta
-		if tctx.state.IsUpdatedValueSet(chaincodeID, key) {
-			// No need to bother looking up the previous value as we will not
-			// set it again. Just pass nil
-			tctx.state.Delete(chaincodeID, key, nil)
-		} else {
-			// Need to lookup the previous value
-			if previousValue, err = ledgerObj.GetState(chaincodeID, key, true); err == nil {
-				tctx.state.Delete(chaincodeID, key, previousValue)
-			}
-		}
+		tctx.state.Delete(chaincodeID, string(msg.Payload))
 	}
 
 	if err != nil {

@@ -19,6 +19,7 @@ package state
 import (
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/ledger/statemgmt"
+	"sync"
 )
 
 // StateSnapshot encapsulates StateSnapshotIterator given by actual state implementation and the db snapshot
@@ -26,6 +27,10 @@ type StateSnapshot struct {
 	blockNumber  uint64
 	stateImplItr statemgmt.StateSnapshotIterator
 	dbSnapshot   *db.DBSnapshot
+}
+
+func NewStateSnapshot(blockNumber uint64, itr statemgmt.StateSnapshotIterator, dbSnapshot *db.DBSnapshot) *StateSnapshot {
+	return &StateSnapshot{blockNumber, itr, dbSnapshot}
 }
 
 // newStateSnapshot creates a new snapshot of the global state for the current block.
@@ -57,4 +62,35 @@ func (ss *StateSnapshot) GetRawKeyValue() ([]byte, []byte) {
 // GetBlockNumber returns the blocknumber associated with this global state snapshot
 func (ss *StateSnapshot) GetBlockNumber() uint64 {
 	return ss.blockNumber
+}
+
+//bind an state object to provide an "as is" implement for the SnapshotState interface
+type snapshotMgrAdapter struct {
+	sync.Mutex
+	bindedImpl statemgmt.HashableState
+}
+
+func (sa *snapshotMgrAdapter) GetStateSnapshotIterator(sn *db.DBSnapshot) (statemgmt.StateSnapshotIterator, error) {
+	sa.Lock()
+	defer sa.Unlock()
+	return sa.bindedImpl.GetStateSnapshotIterator(sn)
+}
+
+func (sa *snapshotMgrAdapter) GetPartialRangeIterator(sn *db.DBSnapshot) (statemgmt.PartialRangeIterator, error) {
+	sa.Lock()
+	defer sa.Unlock()
+
+	inf, ok := sa.bindedImpl.(statemgmt.HashAndDividableState)
+	if ok {
+		return inf.GetPartialRangeIterator(sn)
+	} else {
+		return nil, nil
+	}
+}
+
+func (sa *snapshotMgrAdapter) BindImpl(impl statemgmt.HashableState) {
+	sa.Lock()
+	defer sa.Unlock()
+
+	sa.bindedImpl = impl
 }

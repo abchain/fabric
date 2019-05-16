@@ -183,7 +183,7 @@ func AppendAll(content ...[]byte) []byte {
 	return combinedContent
 }
 
-func GenerateID(t *testing.T) string {
+func GenerateID(tb testing.TB) string {
 	return util.GenerateUUID()
 }
 

@@ -67,7 +67,7 @@ func (stateTrie *StateTrie) Get(chaincodeID string, key string) ([]byte, error) 
 	return trieNode.value, nil
 }
 
-func (stateTrie *StateTrie) GetSafe(sn *db.DBSnapshot, offset int, chaincodeID string, key string) ([]byte, error) {
+func (stateTrie *StateTrie) GetSafe(sn *db.DBSnapshot, chaincodeID string, key string) ([]byte, error) {
 	trieNode, err := fetchTrieNodeFromSnapshot(sn, newTrieKey(chaincodeID, key))
 	if err != nil {
 		return nil, err

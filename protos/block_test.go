@@ -28,17 +28,17 @@ import (
 func Test_Block_CreateNew(t *testing.T) {
 
 	chaincodePath := "contract_001"
-	/*
-		input := &pb.ChaincodeInput{Function: "invoke", Args: {"arg1","arg2"}}
-		spec := &pb.ChaincodeSpec{Type: pb.ChaincodeSpec_GOLANG,
-			ChaincodeID: &pb.ChaincodeID{Path: chaincodePath}, CtorMsg: input}
-
-		// Build the ChaincodeInvocationSpec message
-		chaincodeInvocationSpec := &pb.ChaincodeInvocationSpec{ChaincodeSpec: spec}
-
-		data, err := proto.Marshal(chaincodeInvocationSpec)
-	*/
 	var data []byte
+
+	input := &ChaincodeInput{Args: [][]byte{[]byte("arg1"), []byte("arg2")}}
+	spec := &ChaincodeSpec{Type: ChaincodeSpec_GOLANG,
+		ChaincodeID: &ChaincodeID{Path: chaincodePath}, CtorMsg: input}
+
+	// Build the ChaincodeInvocationSpec message
+	chaincodeInvocationSpec := &ChaincodeInvocationSpec{ChaincodeSpec: spec}
+
+	data, err := proto.Marshal(chaincodeInvocationSpec)
+
 	cidBytes, err := proto.Marshal(&ChaincodeID{Path: chaincodePath})
 	if err != nil {
 		t.Fatalf("Could not marshal chaincode: %s", err)
@@ -92,4 +92,66 @@ func TestBlockNonHashData(t *testing.T) {
 	if bytes.Compare(hash1, hash3) == 0 {
 		t.Fatalf("Expected block hashes to be NOT equal but get the same")
 	}
+}
+
+func Test_Block_Hashs(t *testing.T) {
+
+	var data = []byte("anydatawelike")
+	cidBytes, err := proto.Marshal(&ChaincodeID{Path: "contract_001"})
+	if err != nil {
+		t.Fatalf("Could not marshal chaincode: %s", err)
+	}
+	transaction := &Transaction{Type: 2, ChaincodeID: cidBytes, Payload: data}
+	transaction.Txid = DefaultTxNormalizedFunc()(transaction)
+	t.Logf("txid %v set to %s", transaction, transaction.GetTxid())
+	block := NewBlock([]*Transaction{transaction}, nil)
+
+	var bkhash, bkhash1, bkhash2 []byte
+	bkhash, err = block.GetHash()
+	if err != nil {
+		t.Errorf("Error get block hash: %s", err)
+	}
+
+	originalTxid := block.Txids[0]
+	block.Txids[0] = "changedtxid"
+	bkhash1, err = block.GetHash()
+	if err != nil {
+		t.Errorf("Error get block hash 1: %s", err)
+	}
+
+	if bytes.Compare(bkhash1, bkhash) == 0 {
+		t.Errorf("Unexpected matched block hash")
+	}
+
+	block.Normalize()
+	t.Logf("txid now is %v", block.Transactions[0])
+	if block.Txids[0] != originalTxid {
+		t.Errorf("block txid is changed unexpectedly to %s", block.Txids[0])
+	}
+
+	bkhash2, err = block.GetHash()
+	if err != nil {
+		t.Errorf("Error get block hash 2: %s", err)
+	}
+
+	if bytes.Compare(bkhash, bkhash2) != 0 {
+		t.Errorf("block hash unmatched: %x (origin) vs %x", bkhash, bkhash2)
+	}
+
+	block.Prune()
+	if len(block.GetTxids()) > 0 {
+		t.Errorf("block data not pruned")
+	}
+
+	block.Transactions[0].Payload = []byte("changedTxData")
+	block.Normalize()
+	bkhash1, err = block.GetHash()
+	if err != nil {
+		t.Errorf("Error get block hash 3: %s", err)
+	}
+
+	if bytes.Compare(bkhash1, bkhash) == 0 {
+		t.Errorf("Unexpected matched block hash")
+	}
+
 }

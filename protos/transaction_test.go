@@ -17,9 +17,9 @@ limitations under the License.
 package protos
 
 import (
-	"testing"
-
+	"bytes"
 	"github.com/golang/protobuf/proto"
+	"testing"
 )
 
 func Test_Transaction_CreateNew(t *testing.T) {
@@ -45,4 +45,58 @@ func Test_Transaction_CreateNew(t *testing.T) {
 		t.Errorf("Error unmarshalling block: %s", err)
 	}
 
+}
+
+func Test_Transaction_Digest(t *testing.T) {
+
+	cidBytes, err := proto.Marshal(&ChaincodeID{Path: "Contract001"})
+	if err != nil {
+		t.Fatalf("Could not marshal chaincode: %s", err)
+	}
+	tx := &Transaction{ChaincodeID: cidBytes}
+	t.Logf("Transaction: %v", tx)
+
+	//should be correct on re-entry
+	d1, err := tx.Digest()
+	if err != nil {
+		t.Errorf("Error digesting transaction 1: %s", err)
+	}
+
+	d2, err := tx.Digest()
+	if err != nil {
+		t.Errorf("Error digesting transaction 2: %s", err)
+	}
+
+	if bytes.Compare(d1, d2) != 0 {
+		t.Errorf("tx digest re-entry fail")
+	}
+
+	//should be correct on re-entry
+	d1a, err := tx.DigestWithAlg("sha256")
+	if err != nil {
+		t.Errorf("Error digesting transaction 3: %s", err)
+	}
+
+	d2a, err := tx.DigestWithAlg("sha256")
+	if err != nil {
+		t.Errorf("Error digesting transaction 4: %s", err)
+	}
+
+	if bytes.Compare(d1a, d2a) != 0 {
+		t.Errorf("tx digest with sha256 re-entry fail")
+	}
+
+	if bytes.Compare(d1, d1a) == 0 {
+		t.Errorf("tx get same digest with different algo")
+	}
+
+	tx.Payload = []byte("some bytes")
+	d3, err := tx.Digest()
+	if err != nil {
+		t.Errorf("Error digesting transaction 5: %s", err)
+	}
+
+	if bytes.Compare(d1, d3) == 0 {
+		t.Errorf("tx get same digest with different content")
+	}
 }

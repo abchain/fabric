@@ -50,7 +50,6 @@ func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (Messa
 		initiatedStream: initiatedStream,
 		Coordinator:     coord,
 	}
-	d.doneChan = make(chan struct{})
 
 	d.FSM = fsm.NewFSM(
 		"created",
@@ -82,19 +81,6 @@ func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (Messa
 	return d, nil
 }
 
-
-
-func (d *Handler) IsActive() bool {
-	return d.initiatedStream
-}
-
-func (d *Handler) CloseSend() {
-	client, ok := d.ChatStream.(pb.Peer_ChatClient)
-	if ok {
-		client.CloseSend()
-	}
-}
-
 func (d *Handler) enterState(e *fsm.Event) {
 	peerLogger.Debugf("The Peer's bi-directional stream to %s is %s, from event %s\n", d.ToPeerEndpoint, e.Dst, e.Event)
 }
@@ -104,11 +90,15 @@ func (d *Handler) deregister() error {
 	if d.registered {
 		err = d.Coordinator.DeregisterHandler(d)
 		//doneChan is created and waiting for registered handlers only
-		d.doneChan <- struct{}{}
+		if d.doneChan != nil {
+			d.doneChan <- struct{}{}
+		}
 		d.registered = false
 	}
 	return err
 }
+
+func (d *Handler) GetStream() ChatStream { return d.ChatStream }
 
 // To return the PeerEndpoint this Handler is connected to.
 func (d *Handler) To() (pb.PeerEndpoint, error) {
@@ -195,6 +185,7 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 				peerLogger.Errorf("Error sending %s during handler discovery tick: %s", pb.Message_DISC_GET_PEERS, err)
 			}
 			//then send get_peer message periodically
+			d.doneChan = make(chan struct{})
 			go d.start()
 		}
 	}
@@ -209,9 +200,12 @@ func (d *Handler) beforeGetPeers(e *fsm.Event) {
 		if ok := d.Coordinator.GetDiscHelper().AddNode(otherPeer); !ok {
 			peerLogger.Warningf("Unable to add peer %v to discovery list", otherPeer)
 		}
-		err := d.Coordinator.discHelper.StoreDiscoveryList()
-		if err != nil {
-			peerLogger.Error(err)
+
+		if d.Coordinator.discHelper.doPersist {
+			err := d.Coordinator.discHelper.StoreDiscoveryList(d.Coordinator.persistor)
+			if err != nil {
+				peerLogger.Error(err)
+			}
 		}
 	}
 

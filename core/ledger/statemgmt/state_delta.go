@@ -134,6 +134,9 @@ func (stateDelta *StateDelta) GetUpdatedChaincodeIds(sorted bool) []string {
 	return updatedChaincodeIds
 }
 
+//maybe useful for some case
+var UpdatesNothing = map[string]*pb.UpdatedValue{}
+
 // GetUpdates returns changes associated with given chaincodeId
 func (stateDelta *StateDelta) GetUpdates(chaincodeID string) map[string]*pb.UpdatedValue {
 	chaincodeStateDelta := stateDelta.ChaincodeStateDeltas[chaincodeID]
@@ -141,6 +144,10 @@ func (stateDelta *StateDelta) GetUpdates(chaincodeID string) map[string]*pb.Upda
 		return nil
 	}
 	return chaincodeStateDelta.UpdatedKVs
+}
+
+func (stateDelta *StateDelta) SafeGetUpdates(chaincodeID string) *pb.ChaincodeStateDelta {
+	return stateDelta.getOrCreateChaincodeStateDelta(chaincodeID)
 }
 
 func (stateDelta *StateDelta) getOrCreateChaincodeStateDelta(chaincodeID string) *pb.ChaincodeStateDelta {

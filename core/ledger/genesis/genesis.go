@@ -61,8 +61,12 @@ func MakeGenesisForLedger(l *ledger.Ledger, chaincode string, initValue map[stri
 	if l.GetBlockchainSize() == 0 {
 		genesisLogger.Info("Creating genesis block for ledger", chaincode)
 
-		s := new(ledger.TxExecStates)
-		s.InitForInvoking(l)
+		commitAgent, err := ledger.NewTxEvaluatingAgent(l)
+		if err != nil {
+			return err
+		}
+
+		s := commitAgent.AssignExecRT()
 		if chaincode == "" {
 			chaincode = "default_gensis_CC"
 		}
@@ -70,19 +74,24 @@ func MakeGenesisForLedger(l *ledger.Ledger, chaincode string, initValue map[stri
 			initValue = map[string][]byte{"_genesis_": []byte{42, 42, 42}}
 		}
 		for k, v := range initValue {
-			s.Set(chaincode, k, v, nil)
+			s.Set(chaincode, k, v)
 		}
 
+		commitAgent.MergeExec(s)
+
+		err = commitAgent.FullCommit([]byte("genesis"))
+		if err != nil {
+			return err
+		}
+
+		info, err := l.GetBlockchainInfo()
+		if err != nil {
+			return err
+		}
 		l.ApplyStateDeltaDirect(s.DeRef())
-		if gensisstate, err := l.GetCurrentStateHash(); err != nil {
-			return err
-		} else if err = db.GetGlobalDBHandle().PutGenesisGlobalState(gensisstate); err != nil {
-			return err
-		}
-
-		if err := l.BeginTxBatch(0); err == nil {
-			return l.CommitTxBatch(0, nil, nil, nil)
-		} else {
+		if shash := info.GetCurrentStateHash(); len(shash) == 0 {
+			return ledger.ErrResourceNotFound
+		} else if err = db.GetGlobalDBHandle().PutGenesisGlobalState(shash); err != nil {
 			return err
 		}
 	}

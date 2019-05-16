@@ -33,15 +33,17 @@ type HashableState interface {
 	Get(chaincodeID string, key string) ([]byte, error)
 
 	// Should replace the original Get
-	// offset indicate the actual state we wished is early than the given one by <offset>
-	// states, some implement (like trie) may be able to inference the target state
-	GetSafe(sn *db.DBSnapshot, offset int, chaincodeID string, key string) ([]byte, error)
+	GetSafe(sn *db.DBSnapshot, chaincodeID string, key string) ([]byte, error)
 
 	// PrepareWorkingSet passes a stateDelta that captures the changes that needs to be applied to the state
 	PrepareWorkingSet(stateDelta *StateDelta) error
 
 	// ComputeCryptoHash state implementation to compute crypto-hash of state
 	// assuming the stateDelta (passed in PrepareWorkingSet method) is to be applied
+	//
+	// When state impl. is under syncing status, it should always return the target
+	// state hash it will be synced to when no error occurs. And can return undefined
+	// value after any syncing error
 	ComputeCryptoHash() ([]byte, error)
 
 	// AddChangesForPersistence state implementation to add all the key-value pair that it needs
@@ -52,6 +54,8 @@ type HashableState interface {
 
 	// ClearWorkingSet state implementation may clear any data structures that it may have constructed
 	// for computing cryptoHash and persisting the changes for the stateDelta (passed in PrepareWorkingSet method)
+	// NOTICE: the behavior will be UNDEFINED if data is not really persisted but it was call with
+	// a true changesPersisted flag
 	ClearWorkingSet(changesPersisted bool)
 
 	// GetStateSnapshotIterator state implementation to provide an iterator that is supposed to give
@@ -82,6 +86,7 @@ type HashableState interface {
 type SyncInProgress interface {
 	error
 	IsSyncInProgress()
+	SyncTarget() []byte
 }
 
 type DividableSyncState interface {
@@ -98,6 +103,13 @@ type DividableSyncState interface {
 
 type HashAndDividableState interface {
 	DividableSyncState
+	GetPartialRangeIterator(*db.DBSnapshot) (PartialRangeIterator, error)
+}
+
+//we should deprecated the snapshot API in hashablestate and put them here
+//this interface should be global and not related to any instance of stateimpl
+type SnapshotState interface {
+	GetStateSnapshotIterator(*db.DBSnapshot) (StateSnapshotIterator, error)
 	GetPartialRangeIterator(*db.DBSnapshot) (PartialRangeIterator, error)
 }
 

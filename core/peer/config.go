@@ -39,6 +39,7 @@ import (
 )
 
 type PeerConfig struct {
+	PeerTag      string
 	IsValidator  bool
 	PeerEndpoint *pb.PeerEndpoint
 	Discovery    struct {

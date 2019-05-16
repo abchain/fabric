@@ -212,8 +212,9 @@ func (proc *syncProcess) calcSyncLevels() {
 }
 
 //implement for syncinprogress interface
-func (proc *syncProcess) IsSyncInProgress() {}
-func (proc *syncProcess) Error() string     { return "buckettree: state syncing is in progress" }
+func (proc *syncProcess) IsSyncInProgress()  {}
+func (proc *syncProcess) SyncTarget() []byte { return proc.targetStateHash }
+func (proc *syncProcess) Error() string      { return "buckettree: state syncing is in progress" }
 
 //return a range, which is in the verifylevel and the minimun cover of current sync range
 //and a "remainder" index for the last index in last node we must check

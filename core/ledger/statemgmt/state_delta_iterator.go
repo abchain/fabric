@@ -16,7 +16,10 @@ limitations under the License.
 
 package statemgmt
 
-import 	pb "github.com/abchain/fabric/protos"
+import (
+	pb "github.com/abchain/fabric/protos"
+	"sort"
+)
 
 // StateDeltaIterator - An iterator implementation over state-delta
 type StateDeltaIterator struct {
@@ -24,12 +27,22 @@ type StateDeltaIterator struct {
 	relevantKeys    []string
 	currentKeyIndex int
 	done            bool
+	vcache          *pb.UpdatedValue
 }
 
 // NewStateDeltaRangeScanIterator - return an iterator for performing a range scan over a state-delta object
 func NewStateDeltaRangeScanIterator(delta *StateDelta, chaincodeID string, startKey string, endKey string) *StateDeltaIterator {
 	updates := delta.GetUpdates(chaincodeID)
-	return &StateDeltaIterator{updates, retrieveRelevantKeys(updates, startKey, endKey), -1, false}
+	return &StateDeltaIterator{updates, retrieveRelevantKeys(updates, startKey, endKey), -1, false, nil}
+}
+
+func NewStateDeltaRangeScanIteratorFromRaw(delta *StateDelta, implItr RangeScanIterator, chaincodeID string, startKey string, endKey string) *StateDeltaIterator {
+	for implItr.Next() {
+		k, v := implItr.GetKeyValue()
+		delta.Set(chaincodeID, k, v, v)
+	}
+	updates := delta.GetUpdates(chaincodeID)
+	return &StateDeltaIterator{updates, retrieveRelevantKeys(updates, startKey, endKey), -1, false, nil}
 }
 
 func retrieveRelevantKeys(updates map[string]*pb.UpdatedValue, startKey string, endKey string) []string {
@@ -37,22 +50,37 @@ func retrieveRelevantKeys(updates map[string]*pb.UpdatedValue, startKey string, 
 	if updates == nil {
 		return relevantKeys
 	}
-	for k, v := range updates {
-		if k >= startKey && (endKey == "" || k <= endKey) && !v.IsDeleted() {
+	for k, _ := range updates {
+		if k >= startKey && (endKey == "" || k <= endKey) {
 			relevantKeys = append(relevantKeys, k)
 		}
 	}
+	sort.Strings(relevantKeys)
 	return relevantKeys
 }
 
-// Next - see interface 'RangeScanIterator' for details
-func (itr *StateDeltaIterator) Next() bool {
+func (itr *StateDeltaIterator) NextWithDeleted() bool {
 	itr.currentKeyIndex++
 	if itr.currentKeyIndex < len(itr.relevantKeys) {
+		itr.vcache = itr.updates[itr.relevantKeys[itr.currentKeyIndex]]
 		return true
 	}
 	itr.currentKeyIndex--
 	itr.done = true
+	return false
+}
+
+func (itr *StateDeltaIterator) GetKeyRawValue() (string, *pb.UpdatedValue) {
+	return itr.relevantKeys[itr.currentKeyIndex], itr.vcache
+}
+
+// Next - see interface 'RangeScanIterator' for details
+func (itr *StateDeltaIterator) Next() bool {
+	for itr.NextWithDeleted() {
+		if !itr.vcache.IsDeleted() {
+			return true
+		}
+	}
 	return false
 }
 
@@ -61,17 +89,15 @@ func (itr *StateDeltaIterator) GetKeyValue() (string, []byte) {
 	if itr.done {
 		logger.Warning("Iterator used after it has been exhausted. Last retrieved value will be returned")
 	}
-	key := itr.relevantKeys[itr.currentKeyIndex]
-	value := itr.updates[key].GetValue()
-	return key, value
+	return itr.relevantKeys[itr.currentKeyIndex], itr.vcache.GetValue()
 }
 
 // Close - see interface 'RangeScanIterator' for details
 func (itr *StateDeltaIterator) Close() {
 }
 
-// ContainsKey - checks wether the given key is present in the state-delta
-func (itr *StateDeltaIterator) ContainsKey(key string) bool {
-	_, ok := itr.updates[key]
-	return ok
-}
+// // ContainsKey - checks wether the given key is present in the state-delta
+// func (itr *StateDeltaIterator) ContainsKey(key string) bool {
+// 	_, ok := itr.updates[key]
+// 	return ok
+// }

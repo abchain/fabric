@@ -64,13 +64,13 @@ func (pe *PeerEngine) Run() error {
 		return fmt.Errorf("PeerEngine is still running")
 	}
 
-	lastState, id := pe.GetPeerStatus()
+	lastState, id := pe.txn.GetPeerStatus()
 	if lastState == nil {
 		return fmt.Errorf("PeerEngine is not set a self peer yet")
 	}
 
 	var txlast txPoint
-	txlast.Series, txlast.Digest = pe.GetTxStatus()
+	txlast.Series, txlast.Digest = pe.txn.GetTxStatus()
 
 	if id != pe.lastID {
 		//ok, we start a new handler
@@ -109,10 +109,10 @@ func (pe *PeerEngine) Run() error {
 	}()
 
 	//resume txnetwork first
-	pe.PauseTxNetwork(false)
+	pe.txn.PauseTxNetwork(false)
 
 	var wctx context.Context
 	wctx, pe.stopFunc = context.WithCancel(pe.GetPeerCtx())
-	pe.TxNetworkEntry.Start(wctx, h)
+	pe.txn.Start(wctx, h)
 	return nil
 }

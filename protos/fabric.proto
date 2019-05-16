@@ -134,7 +134,7 @@ message BlockchainInfo {
     uint64 height = 1;
     bytes currentBlockHash = 2;
     bytes previousBlockHash = 3;
-
+    bytes currentStateHash = 4;
 }
 
 // NonHashData is data that is recorded on the block, but not included in

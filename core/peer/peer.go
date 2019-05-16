@@ -18,12 +18,11 @@ package peer
 
 import (
 	"fmt"
+	"golang.org/x/net/context"
 	"io"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"google.golang.org/grpc"
 
@@ -54,7 +53,7 @@ type StreamFilter interface {
 }
 
 type StreamPostHandler interface {
-	NotifyNewPeer(*pb.PeerID)
+	NotifyNewPeer(*pb.PeerID, *pb.StreamStub)
 }
 
 type Neighbour interface {
@@ -71,6 +70,121 @@ type ChatStream interface {
 	Send(*pb.Message) error
 	Recv() (*pb.Message, error)
 	Context() context.Context
+	//this can be called externally and stop current stream (Recv will be interrupted and
+	//return non io.EOF error)
+	Close()
+}
+
+type clientChatStream struct {
+	sync.Mutex
+	pb.Peer_ChatClient
+	endF context.CancelFunc
+}
+
+func (cli *clientChatStream) Close() {
+	cli.Lock()
+	defer cli.Unlock()
+	if cli.endF != nil {
+		cli.CloseSend()
+		cli.endF()
+		cli.endF = nil
+	}
+}
+
+func newClientChatStream(ctx context.Context, cli pb.PeerClient) (ChatStream, error) {
+	wctx, wctxf := context.WithCancel(ctx)
+	stream, err := cli.Chat(wctx)
+	if err != nil {
+		wctxf()
+		return nil, err
+	}
+
+	return &clientChatStream{Peer_ChatClient: stream, endF: wctxf}, nil
+}
+
+type serverChatStream struct {
+	sync.Mutex
+	pb.Peer_ChatServer
+	recvC     <-chan *pb.Message
+	recvError error
+	srvCtx    context.Context
+	srvCtxF   context.CancelFunc
+}
+
+func newServerChatStream(ctx context.Context, stream pb.Peer_ChatServer) (ChatStream, func()) {
+
+	recvChn := make(chan *pb.Message)
+	wctx, wctxf := context.WithCancel(ctx)
+
+	ret := &serverChatStream{
+		Peer_ChatServer: stream,
+		recvC:           recvChn,
+		srvCtx:          wctx,
+		srvCtxF:         wctxf,
+	}
+
+	go func() {
+
+		peerLogger.Debugf("Start a recv thread for chatserver [%v]", stream)
+		defer close(recvChn)
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				ret.recvError = err
+				return
+			} else {
+				recvChn <- msg
+			}
+		}
+		peerLogger.Debugf("recv thread for chatserver [%v] quit", stream)
+
+	}()
+
+	return ret, func() {
+		//pump out all pending msg, notice this must run beyond the
+		//handling function of server
+		go func() {
+			for {
+				_, ok := <-recvChn
+				if !ok {
+					return
+				}
+			}
+		}()
+	}
+}
+
+func (srv *serverChatStream) Context() context.Context {
+	return srv.srvCtx
+}
+
+func (srv *serverChatStream) Recv() (*pb.Message, error) {
+
+	select {
+	case <-srv.srvCtx.Done():
+		return nil, srv.srvCtx.Err()
+	default:
+		select {
+		case <-srv.srvCtx.Done():
+			return nil, srv.srvCtx.Err()
+		case msg, ok := <-srv.recvC:
+			if ok {
+				return msg, nil
+			} else {
+				return nil, srv.recvError
+			}
+		}
+	}
+}
+
+func (srv *serverChatStream) Close() {
+	srv.Lock()
+	defer srv.Unlock()
+
+	if srv.srvCtxF != nil {
+		srv.srvCtxF()
+		srv.srvCtxF = nil
+	}
 }
 
 var peerLogger = logging.MustGetLogger("peer")
@@ -109,24 +223,28 @@ type Impl struct {
 		discovery.Discovery
 		touchPeriod   time.Duration
 		touchMaxNodes int
+		doPersist     bool
 		hidden        bool
 		disable       bool
 	}
 	aclHelper acl.AccessControl
-	persistor db.Persistor
+	persistor db.PersistorKey
 }
 
 // MessageHandler standard interface for handling Openchain messages.
 type MessageHandler interface {
 	LegacyMessageHandler
 	SendMessage(msg *pb.Message) error
+	GetStream() ChatStream
 	To() (pb.PeerEndpoint, error)
 	Stop() error
-	CloseSend()
-	IsActive() bool
 }
 
 var PeerGlobalParentCtx = context.Background()
+
+const legacyPeerStoreKeyPrefix = "peer"
+
+var defaultPeerStoreKey = db.PersistKeyRegister(legacyPeerStoreKeyPrefix)
 
 func NewPeer(self *pb.PeerEndpoint) *Impl {
 
@@ -140,7 +258,7 @@ func NewPeer(self *pb.PeerEndpoint) *Impl {
 	pctx, endf := context.WithCancel(PeerGlobalParentCtx)
 	peer.pctx = pctx
 	peer.onEnd = endf
-	peer.persistor = db.NewPersistor(db.PeerStoreKeyPrefix)
+	peer.persistor = defaultPeerStoreKey
 
 	//mapping of all streamstubs above:
 	peer.streamStubs = make(map[string]*pb.StreamStub)
@@ -155,6 +273,10 @@ func CreateNewPeer(cred cred.PeerCreds, config *PeerConfig) (peer *Impl, err err
 
 	peer = NewPeer(config.PeerEndpoint)
 	peer.secHelper = cred
+	if config.PeerTag != "peer" && config.PeerTag != "" {
+		peer.persistor = db.PersistKeyRegister("peer" + config.PeerTag)
+	}
+
 	// Install security object for peer
 	if securityEnabled() {
 		if peer.secHelper == nil {
@@ -181,7 +303,9 @@ func (p *Impl) EndPeer() {
 
 // Chat implementation of the the Chat bidi streaming RPC function
 func (p *Impl) Chat(stream pb.Peer_ChatServer) error {
-	return p.handleChat(stream.Context(), stream, false)
+	cstream, endf := newServerChatStream(stream.Context(), stream)
+	defer endf()
+	return p.handleChat(cstream, false)
 }
 
 func (p *Impl) ProcessTransaction(context.Context, *pb.Transaction) (*pb.Response, error) {
@@ -310,23 +434,6 @@ func (p *Impl) GetNeighbour() (Neighbour, error) {
 	return p, nil
 }
 
-func (p *Impl) overwrite(acitve bool, peerKey *pb.PeerID, existing MessageHandler) bool {
-
-	overwrite := false
-	if strings.Compare(p.self.ID.Name, peerKey.Name) > 0 {
-		if acitve && !existing.IsActive() {
-			overwrite = true
-		}
-	} else if strings.Compare(p.self.ID.Name, peerKey.Name) < 0 {
-		if !acitve && existing.IsActive(){
-			overwrite = true
-		}
-	}
-	return overwrite
-}
-
-
-
 // RegisterHandler register a MessageHandler with this coordinator
 func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandler MessageHandler) error {
 	key, err := getHandlerKey(messageHandler)
@@ -337,18 +444,20 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	defer p.handlerMap.Unlock()
 
 	if existing, ok := p.handlerMap.m[*key]; ok {
-		if p.overwrite(initiated, key, existing) {
-			peerLogger.Debugf("Close glared handler with key: %s, active: %t, address: %p. " +
-				"Replaced by handler: active: %t, address: %p.",
-				key, existing.IsActive(), existing, initiated, messageHandler)
-			// close the previous connection
-			go existing.CloseSend()
+
+		//resolving duplicated case: if current incoming connection is consider to be
+		//"strong", it replace the old one and if it was "weak" it will be abondanded
+		//"weak" is defined like following:
+		if initiated != (strings.Compare(p.self.ID.Name, key.Name) > 0) {
+			peerLogger.Infof("Incoming connection will replace existed handler [%v] with key: %s",
+				messageHandler, key)
+			//so we close the existing stream of replaced handler here
+			existing.GetStream().Close()
 		} else {
 			//Duplicate, return error
 			return newDuplicateHandlerError(messageHandler)
 		}
 	}
-
 	p.handlerMap.m[*key] = messageHandler
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("registered handler with key: %s, active: %t", key, initiated)
@@ -380,15 +489,16 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 			go func(conn *grpc.ClientConn, stub *pb.StreamStub, name string) {
 				peerLogger.Debugf("start <%s> streamhandler for peer %s", name, key.GetName())
 				err, retf := stub.HandleClient(conn, key)
-				defer retf()
 				clidone <- err
+				//a client is handled here...
+				retf()
 			}(v.(*grpc.ClientConn), stub, name)
 
 			err := <-clidone
 			if err != nil {
 				peerLogger.Errorf("running streamhandler <%s> fail: %s", name, err)
 			} else if posth, ok := p.streamPostHandlers[name]; ok {
-				posth.NotifyNewPeer(key)
+				posth.NotifyNewPeer(key, stub)
 			}
 		}
 	}
@@ -412,8 +522,8 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 	}
 
 	if existing != messageHandler {
-		peerLogger.Warningf("Ignore deregistering handler with key: %s, " +
-			"expected handler address[%p], existing handler address[%p]",
+		peerLogger.Warningf("Ignore deregistering handler with key: %s, "+
+			"expected handler address[%v], existing handler address[%v]",
 			key, messageHandler, existing)
 		return nil
 	}
@@ -582,14 +692,14 @@ func (p *Impl) chatWithPeer(address string) error {
 	serverClient := pb.NewPeerClient(conn)
 	ctx := context.WithValue(context.Background(), peerConnCtxKey("conn"), conn)
 
-	stream, err := serverClient.Chat(ctx)
+	stream, err := newClientChatStream(ctx, serverClient)
 	if err != nil {
 		peerLogger.Errorf("Error establishing chat with peer address %s: %s", address, err)
 		return err
 	}
 	peerLogger.Debugf("Established Chat with peer address: %s", address)
-	err = p.handleChat(ctx, stream, true)
-	stream.CloseSend()
+	err = p.handleChat(stream, true)
+	stream.Close()
 	if err != nil {
 		peerLogger.Errorf("Ending Chat with peer address %s due to error: %s", address, err)
 		return err
@@ -598,8 +708,8 @@ func (p *Impl) chatWithPeer(address string) error {
 }
 
 // Chat implementation of the the Chat bidi streaming RPC function
-func (p *Impl) handleChat(ctx context.Context, stream ChatStream, initiatedStream bool) error {
-	deadline, ok := ctx.Deadline()
+func (p *Impl) handleChat(stream ChatStream, initiatedStream bool) error {
+	deadline, ok := stream.Context().Deadline()
 	peerLogger.Debugf("Current context deadline = %s, ok = %v", deadline, ok)
 	handler, err := NewPeerHandler(p, stream, initiatedStream)
 	if err != nil {
@@ -702,15 +812,17 @@ func (p *Impl) signMessageMutating(msg *pb.Message) error {
 // initDiscovery load the addresses from the discovery list previously saved to disk and adds them to the current discovery list
 func (p *Impl) initDiscovery(cfg *PeerConfig) []string {
 
+	p.discHelper.Discovery = discovery.NewDiscoveryImpl()
 	if !cfg.Discovery.Persist {
 		peerLogger.Warning("Discovery list will not be persisted to disk")
-		p.discHelper.Discovery = discovery.NewDiscoveryImpl(nil)
 	} else {
-		p.discHelper.Discovery = discovery.NewDiscoveryImpl(p.persistor)
-		err := p.discHelper.LoadDiscoveryList()
+		err := p.discHelper.LoadDiscoveryList(p.persistor)
 		if err != nil {
-			peerLogger.Errorf("load discoverylist fail: %s", err)
+			peerLogger.Errorf("load discoverylist fail: %s, list will not be persisted", err)
+		} else {
+			p.discHelper.doPersist = true
 		}
+
 	}
 
 	p.discHelper.hidden = cfg.Discovery.Hidden

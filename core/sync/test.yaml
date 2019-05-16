@@ -33,17 +33,10 @@ logging:
   #
   # Developers: Please see fabric/docs/Setup/logging-control.md for more
   # options.
-  level: debug
-  client: debug
-  statesync: debug
-  peer:      debug
-  node:      debug
-  network:   debug
-  chaincode: debug
-  version:   warning
-  output:
-    file: "test.log"
-    postfix: false
+  test: info:statesync,statesync/cli,indexes=debug
+#  output:
+#    file: "test.log"
+#    postfix: false
 
 ledger:
 
@@ -53,3 +46,9 @@ ledger:
     # disk space, but allow the state to be rolled backwards and forwards
     # without the need to replay transactions.
     deltaHistorySize: 500000
+    dataStructure:
+      name: buckettree
+      configs:
+        numBuckets: 100
+        maxGroupingAtEachLevel: 3
+        syncdelta: 4

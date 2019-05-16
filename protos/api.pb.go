@@ -67,30 +67,30 @@ It has these top-level messages:
 	Gossip_Tx
 	Gossip_TxState
 	ServerStatus
-	BlockState
+	SimpleReq
+	SimpleResp
+	LedgerState
+	TxQuery
+	OpenSession
+	AcceptSession
+	TransferDetail
+	RequestError
+	TransferRequest
+	TransferResponse
+	StateIndex
 	SyncBlockRange
-	SyncBlocks
-	SyncStateSnapshotRequest
-	SyncStateSnapshot
-	SyncStateDeltasRequest
+	SyncBlock
 	SyncStateDeltas
-	SyncBlockState
-	SyncMsg
-	SyncStateQuery
-	SyncStateResp
-	SyncStartRequest
-	SyncStartResponse
+	SyncStateChunk
 	UpdatedValue
 	ChaincodeStateDelta
-	SyncStateChunk
-	SyncMessage
-	SyncState
 	BucketTreeOffset
 	BlockOffset
 	SyncOffset
+	SyncMetadata
 	BucketNode
 	BucketNodes
-	SyncMetadata
+	SyncMsg
 */
 package protos
 

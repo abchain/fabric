@@ -179,7 +179,7 @@ func (s *SyncSimulator) PullOut(onTask ...func()) error {
 }
 
 //populate a moderate size of state collection for testing
-func PopulateStateForTest(t testing.TB, target HashAndDividableState, db *db.OpenchainDB, datakeys int) {
+func PopulateStateForTest(t testing.TB, target HashableState, db *db.OpenchainDB, datakeys int) {
 
 	//notice in ConstructRandomStateDelta the arg. "maxKeySuffix" do not indicate the bytelength but the
 	//max decimal value of keysuffix (which must be an integer), so we must provide many possible value

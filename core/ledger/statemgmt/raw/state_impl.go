@@ -44,7 +44,7 @@ func (impl *StateImpl) Get(chaincodeID string, key string) ([]byte, error) {
 	return impl.GetValue(db.StateCF, compositeKey)
 }
 
-func (impl *StateImpl) GetSafe(_ *db.DBSnapshot, _ int, chaincodeID string, key string) ([]byte, error) {
+func (impl *StateImpl) GetSafe(_ *db.DBSnapshot, chaincodeID string, key string) ([]byte, error) {
 	//TODO: no implement, simply downgrade onto Get
 	return impl.Get(chaincodeID, key)
 }

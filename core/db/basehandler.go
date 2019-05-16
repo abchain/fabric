@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/tecbot/gorocksdb"
 	"path/filepath"
+	"time"
 )
 
 var dbLogger = logging.MustGetLogger("db")
@@ -21,7 +22,7 @@ var rocksDBLogLevelMap = map[string]gorocksdb.InfoLogLevel{
 	"fatal": gorocksdb.FatalInfoLogLevel}
 
 const DBVersion = 1
-const txDBVersion = 2
+const txDBVersion = 3
 
 // cf in txdb
 const TxCF = "txCF"
@@ -35,9 +36,17 @@ const StateCF = "stateCF"
 const StateDeltaCF = "stateDeltaCF"
 const IndexesCF = "indexesCF"
 
+const odbsettings = "openchainDBsetting"
+
+var odbPersistor = NewPersistor(PersistKeyRegister(odbsettings))
+
 const currentDBKey = "currentDB"
 const currentVersionKey = "currentVer"
+
 const currentGlobalVersionKey = "currentVerGlobal"
+
+//ver global is a simple key, we reg it for duplicating detecting but not use it
+var _ = PersistKeyRegister(currentGlobalVersionKey)
 
 // base class of db handler and txdb handler
 type baseHandler struct {
@@ -138,7 +147,8 @@ func startDBInner(odb *OpenchainDB, opts baseOpt, forcePath bool) error {
 		return globalDataDB.openError
 	}
 
-	k, err := globalDataDB.get(globalDataDB.persistCF, odb.getDBKey(currentDBKey))
+	//k, err := globalDataDB.get(globalDataDB.persistCF, odb.getDBKey(currentDBKey))
+	k, err := odbPersistor.LoadByKeys(odb.getDBKey(currentDBKey))
 	if err != nil {
 		return fmt.Errorf("get db [%s]'s path fail: %s", odb.dbTag, err)
 	}
@@ -149,7 +159,8 @@ func startDBInner(odb *OpenchainDB, opts baseOpt, forcePath bool) error {
 			orgDBPath = getDBPath("db")
 		} else {
 			newtag := util.GenerateUUID()
-			err = globalDataDB.put(globalDataDB.persistCF, odb.getDBKey(currentDBKey), []byte(newtag))
+			err = odbPersistor.StoreByKeys(odb.getDBKey(currentDBKey), []byte(newtag))
+			//err = globalDataDB.put(globalDataDB.persistCF, odb.getDBKey(currentDBKey), []byte(newtag))
 			if err != nil {
 				return fmt.Errorf("Save storage tag for db <%s> fail: %s", odb.dbTag, newtag)
 			}
@@ -173,6 +184,7 @@ func startDBInner(odb *OpenchainDB, opts baseOpt, forcePath bool) error {
 		dbLogger.Infof("DB [%s] at %s is created before", odb.dbTag, orgDBPath)
 	}
 
+	odb.managedSnapshots.m = make(map[string]*DBSnapshot)
 	if odb.db == nil {
 		odb.db = new(ocDB)
 	}
@@ -222,10 +234,32 @@ func Stop() {
 //NOTICE: stop the db do not ensure a completely "clean" of all resource, memory leak
 //is highly possible and we should avoid to use it frequently
 func StopDB(odb *OpenchainDB) {
-	if odb.db != nil {
-		odb.db.close()
+
+	// notice you don't need to lock odb for you don't change the underlying db field
+	// odb.Lock()
+	// defer odb.Unlock()
+	odb.CleanManagedSnapshot()
+
+	notifyChn := make(chan interface{})
+
+	odb.db.additionalClean = func() {
+		odb.cleanDBOptions()
+		dbLogger.Infof("current db [%s] has been completed stopped", odb.db.dbName)
+		close(notifyChn)
 	}
-	odb.cleanDBOptions()
+	odb.db.finalRelease()
+
+	//we wait here, until all resource is ENSURED to be release
+	//(we put a default timeout here, for warnning and debug purpose)
+	select {
+	case _, notClosed := <-notifyChn:
+		if notClosed {
+			panic("wrong code, channel get msg rather than closed notify")
+		}
+	case <-time.NewTimer(5 * time.Second).C:
+		panic("can not stop db clean, check your code")
+	}
+
 }
 
 func DropDB(path string) error {

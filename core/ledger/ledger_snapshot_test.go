@@ -29,7 +29,7 @@ func populateLedgerForSnapshotTesting(w *ledgerTestWrapper, t *testing.T, testSt
 
 	sn := ledger.snapshots
 	sn.snapshotInterval = 3
-	sn.sns = make([]*indexedSnapshot, 3)
+	sn.snsIndexed = make([][]byte, 3)
 
 	for i, ss := range testStates {
 
@@ -50,28 +50,26 @@ func TestSnapshot_indexing(t *testing.T) {
 	sn := ledgerTestWrapper.ledger.snapshots
 
 	ind, blk := sn.historyIndex(0)
-	testutil.AssertEquals(t, ind, 2)
-	testutil.AssertEquals(t, blk, uint64(6))
+	testutil.AssertEquals(t, ind, -1)
 
 	ind, blk = sn.historyIndex(5)
-	testutil.AssertEquals(t, ind, 2)
-	testutil.AssertEquals(t, blk, uint64(6))
+	testutil.AssertEquals(t, ind, -1)
 
 	ind, blk = sn.historyIndex(6)
 	testutil.AssertEquals(t, ind, 2)
 	testutil.AssertEquals(t, blk, uint64(6))
 
 	ind, blk = sn.historyIndex(8)
-	testutil.AssertEquals(t, ind, 0)
-	testutil.AssertEquals(t, blk, uint64(9))
+	testutil.AssertEquals(t, ind, 2)
+	testutil.AssertEquals(t, blk, uint64(6))
 
 	ind, blk = sn.historyIndex(12)
 	testutil.AssertEquals(t, ind, 1)
 	testutil.AssertEquals(t, blk, uint64(12))
 
 	ind, blk = sn.historyIndex(13)
-	testutil.AssertEquals(t, ind, -1)
-	testutil.AssertEquals(t, blk, uint64(13))
+	testutil.AssertEquals(t, ind, 1)
+	testutil.AssertEquals(t, blk, uint64(12))
 }
 
 func TestSnapshot_caching(t *testing.T) {
@@ -79,20 +77,51 @@ func TestSnapshot_caching(t *testing.T) {
 	ledgerTestWrapper := createFreshDBAndTestLedgerWrapper(t)
 	sn := ledgerTestWrapper.ledger.snapshots
 	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, testStates[:1])
-	testutil.AssertNil(t, sn.sns[0])
-	testutil.AssertNil(t, sn.sns[1])
-	testutil.AssertNil(t, sn.sns[2])
+	testutil.AssertNil(t, sn.snsIndexed[0])
+	testutil.AssertNil(t, sn.snsIndexed[1])
+	testutil.AssertNil(t, sn.snsIndexed[2])
 
 	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, testStates[1:3])
-	testutil.AssertNotNil(t, sn.sns[0])
-	testutil.AssertNil(t, sn.sns[1])
+	testutil.AssertNotNil(t, sn.snsIndexed[0])
+	testutil.AssertNil(t, sn.snsIndexed[1])
 	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, testStates[3:11])
-	testutil.AssertNotNil(t, sn.sns[2])
+	testutil.AssertNotNil(t, sn.snsIndexed[2])
 	testutil.AssertEquals(t, sn.beginIntervalNum, uint64(1))
 	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, testStates[11:])
 
 	testutil.AssertEquals(t, sn.currentHeight, uint64(len(testStates)))
 	testutil.AssertEquals(t, sn.beginIntervalNum, uint64(2))
+}
+
+func TestSnapshot_cache_outoforder(t *testing.T) {
+
+	ledgerTestWrapper := createFreshDBAndTestLedgerWrapper(t)
+	populateLedgerForSnapshotTesting(ledgerTestWrapper, t, nil) //not set anyblock
+
+	sn := ledgerTestWrapper.ledger.snapshots
+	sn.Update([]byte("test1A"), 3)
+	testutil.AssertNil(t, sn.snsIndexed[0])
+	testutil.AssertNil(t, sn.snsIndexed[1])
+	testutil.AssertNil(t, sn.snsIndexed[2])
+	sn.Update([]byte("test1B"), 0)
+	testutil.AssertEquals(t, sn.snsIndexed[0], []byte("test1B"))
+	sn.Update([]byte("test1C"), 2)
+	sn.Update([]byte("test1D"), 4)
+	testutil.AssertEquals(t, sn.snsIndexed[1], []byte("test1A"))
+	testutil.AssertEquals(t, sn.snsIndexed[0], []byte("test1B"))
+	testutil.AssertNil(t, sn.snsIndexed[2])
+
+	sn.Update([]byte("test2A"), 6)
+	sn.Update([]byte("test2B"), 15)
+	sn.Update([]byte("test2C"), 15)
+	sn.Update([]byte("test2D"), 16)
+	sn.Update([]byte("test2E"), 0)
+	testutil.AssertEquals(t, sn.snsIndexed[2], []byte("test2B"))
+	testutil.AssertNil(t, sn.snsIndexed[1])
+	testutil.AssertNil(t, sn.snsIndexed[0])
+	//block 6 should not be cached
+	testutil.AssertNil(t, sn.db.GetManagedSnapshot(indexState([]byte("test2A"))))
+
 }
 
 func TestSnapshot_get(t *testing.T) {
@@ -103,18 +132,25 @@ func TestSnapshot_get(t *testing.T) {
 	ledger := ledgerTestWrapper.ledger
 
 	rv, _, err := ledger.GetSnapshotState("chaincode1", "key3", 0)
-	testutil.AssertNoError(t, err, "snapshot error")
-	testutil.AssertEquals(t, "value3", string(rv))
+	testutil.AssertError(t, err, "snapshot error")
 
+	//see block 6
 	rv, _, err = ledger.GetSnapshotState("chaincode2", "key1", 8)
 	testutil.AssertNoError(t, err, "snapshot error")
-	testutil.AssertEquals(t, "value9", string(rv))
+	testutil.AssertEquals(t, string(rv), "value4")
 
+	//see block 9
+	rv, _, err = ledger.GetSnapshotState("chaincode2", "key3", 11)
+	testutil.AssertNoError(t, err, "snapshot error")
+	testutil.AssertEquals(t, string(rv), "value6")
+
+	//see block 12
 	rv, _, err = ledger.GetSnapshotState("chaincode1", "key3", 12)
 	testutil.AssertNoError(t, err, "snapshot error")
-	testutil.AssertEquals(t, "valueB", string(rv))
+	testutil.AssertEquals(t, string(rv), "valueB")
 
+	//can see top (13)
 	rv, _, err = ledger.GetSnapshotState("chaincode3", "key1", 13)
 	testutil.AssertNoError(t, err, "snapshot error")
-	testutil.AssertEquals(t, "valueC", string(rv))
+	testutil.AssertEquals(t, string(rv), "valueC")
 }

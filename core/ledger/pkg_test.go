@@ -31,7 +31,6 @@ var testParams []string
 func TestMain(m *testing.M) {
 	//temporary disable panic for old fashion block bytes
 	compatibleLegacy = true
-	poolTxBeforeCommit = true
 	testParams = testutil.ParseTestParams()
 	testutil.SetupTestConfig()
 	os.Exit(m.Run())
@@ -62,7 +61,8 @@ func (testWrapper *blockchainTestWrapper) addNewBlock(block *protos.Block, state
 	err = testWrapper.blockchain.addPersistenceChangesForNewBlock(block, newBlockNumber, writeBatch)
 	testutil.AssertNoError(testWrapper.t, err, "Error while adding a new block")
 	testDBWrapper.WriteToDB(testWrapper.t, writeBatch)
-	testWrapper.blockchain.blockPersistenceStatus(true)
+	err = testWrapper.blockchain.blockPersistenceStatus(true)
+	testutil.AssertNoError(testWrapper.t, err, "Error while persist done")
 	return newBlockNumber
 }
 
@@ -88,6 +88,14 @@ func (testWrapper *blockchainTestWrapper) getBlockByHash(blockHash []byte) *prot
 	block, err := testWrapper.blockchain.getBlockByHash(blockHash)
 	testutil.AssertNoError(testWrapper.t, err, "Error while getting block by blockhash from blockchain")
 	return block
+}
+
+func (testWrapper *blockchainTestWrapper) testBlockExisted(height uint64) bool {
+	return testBlockExisted(testWrapper.blockchain.OpenchainDB, height)
+}
+
+func (testWrapper *blockchainTestWrapper) testBlockExistedRange(height uint64, upside bool) uint64 {
+	return testBlockExistedRange(testWrapper.blockchain.OpenchainDB, height, upside)
 }
 
 func (testWrapper *blockchainTestWrapper) getTransaction(blockNumber uint64, txIndex uint64) *protos.Transaction {

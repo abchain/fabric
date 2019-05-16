@@ -271,6 +271,13 @@ func (s *StreamStub) deliverHandlers(ctx context.Context, peerids []*PeerID, out
 	return
 }
 
+func (s *StreamStub) HandlerCount() int {
+	s.handlerMap.Lock()
+	defer s.handlerMap.Unlock()
+
+	return len(s.handlerMap.m)
+}
+
 //pick handlers by random from given peerids, whether candidates to be choosed is decided
 //at each time before it was delivered. This is oftenn used by a range statement
 func (s *StreamStub) OverHandlers(ctx context.Context, peerids []*PeerID) chan *PickedStreamHandler {

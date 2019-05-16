@@ -1,143 +1,179 @@
 syntax = "proto3";
 package protos;
 import "fabric.proto";
+import "google/protobuf/empty.proto";
 
 service Sync {
     rpc Data(stream SyncMsg) returns (stream SyncMsg) {}
 }
 
-// BlockState is the payload of Message.SYNC_BLOCK_ADDED. When a VP
-// commits a new block to the ledger, it will notify its connected NVPs of the
-// block and the delta state. The NVP may call the ledger APIs to apply the
-// block and the delta state to its ledger if the block's previousBlockHash
-// equals to the NVP's current block hash
-message BlockState {
-    Block block = 1;
-    bytes stateDelta = 2;
-    uint64 Height = 3;
+
+//simple syncing req/resp, the resp should have the same correlationId with
+//the incoming 
+message SimpleReq {
+    oneof req{
+        TxQuery tx = 1;
+        LedgerState state = 2;
+    }
 }
 
-// SyncBlockRange is the payload of Message.SYNC_GET_BLOCKS, where
+message SimpleResp {
+    oneof resp{
+        LedgerState state = 1;
+        TransactionBlock tx = 2;
+    }
+}
+
+
+//simple state sync via msg-pushing
+message LedgerState {
+    uint64 height = 1;
+    //hash of headblock, it has limited usage but we still keep it
+    bytes  headBlock = 2;
+    //states which can be synced by the peer
+    StateFilter states = 5; 
+}
+
+//query some transactions, and the response should be a TransactionBlock message
+message TxQuery {
+    repeated string txid = 1;
+}
+
+//request to open a long hold transferring
+//client must specified a "open for" field
+//so server can prepare for the following transfermation
+//process, or simply reject it
+message OpenSession {
+    TransferDetail transfer = 1;
+
+    oneof for{
+        //for query global state, nothing need to be specified
+        google.protobuf.Empty query = 2;
+        //for syncing index, if a hash is specified, server must 
+        //own this hash in his history or just rejected
+        bytes index = 3;
+        //for syncing full state, the hash of target state MUST
+        //be specified
+        bytes fullstate = 4;
+        //for syncing blocks or state delta, the minimum height
+        //can be specified and server should has its history
+        //larger than that height
+        uint64 blocksOrDelta = 5;
+    }
+
+}
+
+//reponse for the opensession message, more detail may be provided
+//so client can prepare a better plan in transferring
+message AcceptSession {
+    LedgerState states = 1;
+    TransferDetail transfer = 2;
+
+    message StateStatus {
+        uint64 estimatedSize = 1;
+    }
+
+    oneof detail {
+        //if session is opened for full state syncing, the detail of
+        //current state is provided
+        StateStatus state = 4;
+    } 
+}
+
+
+message TransferDetail {
+    uint32 maxWindowSize = 1;
+}
+
+//can be sent by server during any time of a session
+message RequestError {
+    string errorDetail = 1;
+    uint64 errorCode = 2;
+}
+
+//session message: all messages in a session must has the same 
+//correlation id
+
+//request wrap one of the request field which has been negotiated in
+//handshake phase
+message TransferRequest {
+    oneof req {
+        //for index request, server iterating from height sepcified by 
+        //this field, transfer each statehash and "state core" 
+        //payload till current end 
+        uint64 index = 1;
+        //state query, ask the corresponding state 
+        uint64  query = 2;
+        //sync full state which hash is specified by statehash field
+        //mutiple offset field should be specified according to implements
+        SyncOffset state = 4;
+        SyncBlockRange block = 5;
+        SyncBlockRange delta = 6;
+    }    
+}
+
+//the response contain one of the payload and client should know
+//which field it should check, its seq field is which transferAck can ack for, 
+//(notice seq is 32bit so there will be an implicit constration that a
+//no more than 4G messages can be transferred in one session)
+//it must be unique for each response message 
+//and incremental during a whole session
+message TransferResponse {
+
+    //both index and query should use this field
+    StateIndex index = 1;
+    SyncStateChunk state = 4;
+    SyncBlock   block = 5;
+    SyncStateDeltas delta = 6; 
+
+    //please notice seq is used for nothing than congest controlling
+    //for example, server can consider the session is finished after
+    //the last message is sent without waiting for client's acking
+    uint32 seq = 20;
+}
+
+// StateIndex is the payload in response to the index/query request
+// (but the response in query may not contain corePayload field)
+message StateIndex {
+    uint64 height = 1;
+    bytes  hash = 2;
+    bytes  corePayload = 4;
+}
+
+// SyncBlockRange is the payload of block request, where
 // start and end indicate the starting and ending blocks inclusively. The order
 // in which blocks are returned is defined by the start and end values. For
 // example, if start=3 and end=5, the order of blocks will be 3, 4, 5.
 // If start=5 and end=3, the order will be 5, 4, 3.
 message SyncBlockRange {
-    uint64 correlationId = 1;
+//    uint64 correlationId = 1;
     uint64 start = 2;
     uint64 end = 3;
+    //the hash of first block (start), if specified, server can check and
+    //stop before transfer starts when the hash is found unmatched
+    bytes  firstHash = 5;
 }
 
-// SyncBlocks is the payload of Message.SYNC_BLOCKS, where the range
-// indicates the blocks responded to the request SYNC_GET_BLOCKS
-message SyncBlocks {
-    SyncBlockRange range = 1;
-    repeated Block blocks = 2;
+// SyncStateDeltas is the payload in response to the block request message.
+message SyncBlock {
+    uint64 height = 1;
+    Block   block = 2;
 }
 
-// SyncSnapshotRequest Payload for the penchainMessage.SYNC_GET_SNAPSHOT message.
-message SyncStateSnapshotRequest {
-  uint64 correlationId = 1;
-}
-
-// SyncStateSnapshot is the payload of Message.SYNC_SNAPSHOT, which is a response
-// to penchainMessage.SYNC_GET_SNAPSHOT. It contains the snapshot or a chunk of the
-// snapshot on stream, and in which case, the sequence indicate the order
-// starting at 0.  The terminating message will have len(delta) == 0.
-message SyncStateSnapshot {
-    bytes delta = 1;
-    uint64 sequence = 2;
-    uint64 blockNumber = 3;
-    SyncStateSnapshotRequest request = 4;
-}
-
-// SyncStateDeltasRequest is the payload of Message.SYNC_GET_STATE.
-// blockNumber indicates the block number for the delta which is being
-// requested. If no payload is included with SYNC_GET_STATE, it represents
-// a request for a snapshot of the current state.
-message SyncStateDeltasRequest {
-    SyncBlockRange range = 1;
-}
-
-// SyncStateDeltas is the payload of the Message.SYNC_STATE in response to
-// the Message.SYNC_GET_STATE message.
+// SyncStateDeltas is the payload in response to the delta request message.
 message SyncStateDeltas {
-    SyncBlockRange range = 1;
-    repeated bytes deltas = 2;
+    uint64 height = 1;
+    map<string, ChaincodeStateDelta> deltas = 2;
 }
 
-message SyncBlockState {
-    SyncBlockRange range = 1;
-    repeated BlockState syncdata = 2;
-//    string failedReason = 3;
+// SyncStateChunk is the payload to the request of state syncing request
+message SyncStateChunk {
+    SyncOffset offset = 1;
+//    bytes roothash = 2;
+    SyncMetadata metaData = 5;
+    map<string, ChaincodeStateDelta> ChaincodeStateDeltas = 3;
 }
 
-// Like chat, stateSync wrap messages used in a syncing session
-message SyncMsg {
-    enum Type {
-        UNDEFINED = 0;
-
-        SYNC_STATE_NOTIFY = 1;
-        SYNC_STATE_OPT = 2;
-
-        SYNC_SESSION_START = 3;
-        SYNC_SESSION_START_ACK = 4;
-        SYNC_SESSION_QUERY = 5;
-        SYNC_SESSION_QUERY_ACK = 6;
-        SYNC_SESSION_END = 8;
-
-        //        SYNC_SESSION_GET_BLOCKS = 11;
-        //        SYNC_SESSION_BLOCKS = 12;
-        //        SYNC_SESSION_GET_SNAPSHOT = 14;
-        //        SYNC_SESSION_SNAPSHOT = 15;
-
-        SYNC_SESSION_DELTAS = 16;
-        SYNC_SESSION_DELTAS_ACK = 17;
-
-        SYNC_SESSION_SYNC_MESSAGE  = 18;
-        SYNC_SESSION_SYNC_MESSAGE_ACK  = 19;
-
-        SYNC_QUERY_LEDGER      = 20;
-        SYNC_QUERY_LEDGER_ACK  = 21;
-
-        SYNC_QUERY_BLOCK      = 22;
-        SYNC_DATA_BLOCK  = 23;
-        SYNC_QUERY_TRANSACTIONS      = 24;
-        SYNC_DATA_TRANSACTIONS  = 25;
-
-    }
-    Type type = 1;
-    uint64 correlationId = 2;
-    bytes payload = 3;  
-}
-
-
-////////////////////////////////
-message SyncStateQuery {
-    uint32  id = 1;
-    uint64  blockHeight = 2;
-}
-
-message SyncStateResp {
-  uint32  id = 1;
-  bool   postive     = 3;
-  bytes  statehash   = 4;
-  uint64  blockHeight = 5;
-}
-
-message SyncStartRequest {
-    uint32  id = 1;
-    SyncType payloadType = 2;
-    bytes  payload   = 3;
-
-}
-
-message SyncStartResponse {
-    uint32  id = 1;
-    string  rejectedReason = 2;
-    bytes  statehash   = 4;
-    uint64  blockHeight = 5;
-}
 
 message UpdatedValue {
 
@@ -153,33 +189,6 @@ message ChaincodeStateDelta {
     map<string, UpdatedValue> UpdatedKVs = 1;
 }
 
-message SyncStateChunk {
-    SyncOffset offset = 1;
-//    bytes roothash = 2;
-    SyncMetadata metaData = 5;
-    map<string, ChaincodeStateDelta> ChaincodeStateDeltas = 3;
-}
-
-enum SyncType {
-    UNDEFINED      = 0;
-    SYNC_BLOCK     = 1;
-    SYNC_BLOCK_ACK = 2;
-    SYNC_STATE     = 3;
-    SYNC_STATE_ACK = 4;
-}
-
-message SyncMessage {
-    SyncType payloadType = 1;
-    bytes payload = 2;
-    SyncOffset offset = 3;
-    uint64 correlationId = 4;
-    string failedReason = 5;
-}
-
-message SyncState {
-    bytes  statehash = 1;
-    SyncOffset offset = 2;
-}
 
 message BucketTreeOffset {
     uint64 level = 1;
@@ -192,12 +201,19 @@ message BlockOffset {
     uint64 endNum = 2;
 }
 
+//we have specified field for each implement of states (buckettree, trie, etc.)
 message SyncOffset {
     oneof data {
-        BlockOffset block = 1;
         BucketTreeOffset buckettree = 2;
     }
 }
+
+message SyncMetadata {
+    oneof data {
+        BucketNodes buckettree = 1;
+    }
+}
+
 
 message BucketNode {
     uint64 level = 1;
@@ -209,10 +225,57 @@ message BucketNodes {
     repeated BucketNode nodes = 1;
 }
 
-message SyncMetadata {
-    oneof data {
-        BucketNodes buckettree = 1;
+
+// Like chat, stateSync wrap messages used in a syncing session
+message SyncMsg {
+    enum Type {
+        UNDEFINED = 0;
+
+        CLIENT_SIMPLE = 1;
+        //when request, its correlationId incidate the id of
+        //session, which must be unique to any other simple request
+        //or sessions it has requested for (no matter accepted or not)
+        CLIENT_SESSION_OPEN = 2;        
+        CLIENT_SESSION = 3;     
+        //client using this message for acking a message from
+        //server's current session, it may piggyback next request
+        //in this message sever should always handle the newest request
+        //and drop the task it received before 
+        //the fields of session and ack may both exist
+        //client MUST prepare for receiving unexpected data package from previous
+        //request because they may have been in wired before new request
+        //is delivered
+        CLIENT_SESSION_ACK = 4;
+        CLIENT_SESSION_CLOSE = 5;
+
+        //err can be sent at any time, the correlationId incidate
+        //its corresponding request or session
+        SERVER_ERROR = 9;
+        SERVER_SIMPLE = 10;
+        SERVER_SESSION_ACCEPT = 11;
+        SERVER_SESSION = 12;
+        SERVER_SESSION_ERROR = 13;
     }
+    Type type = 1;
+    uint64 correlationId = 2;
+
+    //we have one of the following fields specified by the type
+    //bytes payload = 3;
+    message Request{
+        SimpleReq  simple = 1;
+        OpenSession handshake = 2;
+        TransferRequest session = 3;
+        uint32 ack = 4;
+    }
+        
+    message Response{
+        SimpleResp simple = 1;
+        AcceptSession handshake = 2;
+        TransferResponse session = 3;
+        RequestError     err = 4;
+    }
+
+    Request request = 4;
+    Response response = 5;
+
 }
-
-

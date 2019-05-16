@@ -51,7 +51,9 @@ type pathUpdateTask struct {
 	updatingPath []*pathUnderUpdating //the indexs of paths this task are updating (involving)
 }
 
-const pathUpdatingTaskPersist = "pathupdate."
+const pathUpdatingTaskPersist = "pathupdate"
+
+var pathUpdatingTaskPersistor = NewPersistor(PersistKeyRegister(pathUpdatingTaskPersist))
 
 func (t *pathUpdateTask) index() string {
 	return statesEdge([2][]byte{t.TargetEdgeBeg, t.TargetEdgeEnd}).String()
@@ -64,8 +66,7 @@ func (t *pathUpdateTask) persist(wb *gorocksdb.WriteBatch, txdb *GlobalDataDB) e
 		return err
 	}
 
-	wb.PutCF(txdb.persistCF, []byte(pathUpdatingTaskPersist+t.index()), bytes)
-
+	pathUpdatingTaskPersistor.StoreOnBatch(wb, []string{t.index()}, bytes)
 	return nil
 }
 

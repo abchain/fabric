@@ -67,6 +67,51 @@ func TestIndexes_GetTransactionByID(t *testing.T) {
 	testIndexesGetTransactionByID(t)
 }
 
+func setRollback(rb int) (cur int) {
+	cur, defaultSyncIndexerRollbackLen = defaultSyncIndexerRollbackLen, rb
+	return
+}
+
+func TestIndexesCache_GetBlockByBlockHash(t *testing.T) {
+	defer setRollback(setRollback(2))
+	defaultSetting := indexBlockDataSynchronously
+	indexBlockDataSynchronously = true
+	defer func() { indexBlockDataSynchronously = defaultSetting }()
+	testIndexesGetBlockByBlockHash(t)
+}
+
+func TestIndexesCache_GetBlockByBlockHashWrongHash(t *testing.T) {
+	defer setRollback(setRollback(2))
+	defaultSetting := indexBlockDataSynchronously
+	indexBlockDataSynchronously = true
+	defer func() { indexBlockDataSynchronously = defaultSetting }()
+	testIndexesGetBlockByBlockHashWrongHash(t)
+}
+
+func TestIndexesCache_GetTransactionByBlockNumberAndTxIndex(t *testing.T) {
+	defer setRollback(setRollback(2))
+	defaultSetting := indexBlockDataSynchronously
+	indexBlockDataSynchronously = true
+	defer func() { indexBlockDataSynchronously = defaultSetting }()
+	testIndexesGetTransactionByBlockNumberAndTxIndex(t)
+}
+
+func TestIndexesCache_GetTransactionByBlockHashAndTxIndex(t *testing.T) {
+	defer setRollback(setRollback(2))
+	defaultSetting := indexBlockDataSynchronously
+	indexBlockDataSynchronously = true
+	defer func() { indexBlockDataSynchronously = defaultSetting }()
+	testIndexesGetTransactionByBlockHashAndTxIndex(t)
+}
+
+func TestIndexesCache_GetTransactionByID(t *testing.T) {
+	defer setRollback(setRollback(2))
+	defaultSetting := indexBlockDataSynchronously
+	indexBlockDataSynchronously = true
+	defer func() { indexBlockDataSynchronously = defaultSetting }()
+	testIndexesGetTransactionByID(t)
+}
+
 func TestIndexes_Rebuild(t *testing.T) {
 
 	testutil.SetLogLevel(logging.DEBUG, "indexes")

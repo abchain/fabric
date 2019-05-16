@@ -11,8 +11,8 @@ import (
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/core/ledger/genesis"
 	"github.com/abchain/fabric/core/peer"
-	"github.com/abchain/fabric/core/statesync"
-	sync_stub "github.com/abchain/fabric/core/statesync/stub"
+	"github.com/abchain/fabric/core/sync/strategy"
+	sync_stub "github.com/abchain/fabric/core/sync/stub"
 	"github.com/abchain/fabric/events/litekfk"
 	pb "github.com/abchain/fabric/protos"
 	"github.com/spf13/viper"
@@ -198,10 +198,6 @@ func (pe *PeerEngine) PreInit(node *NodeEngine) {
 	pe.TxHandlerOpts.ccSpecValidator = NewCCSpecValidator(node.Cred.ccSpecValidator)
 }
 
-func (p *PeerEngine) GetSyncStub() *statesync.StateSyncStub {
-	return p.StateSyncStub
-}
-
 func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error {
 
 	config.CacheViper(vp)
@@ -233,6 +229,7 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	if peercfg, err = peer.NewPeerConfig(isValidator, vp, pe.srvPoint.spec); err != nil {
 		return fmt.Errorf("Init peer config fail: %s", err)
 	}
+	peercfg.PeerTag = tag
 
 	var pimpl *peer.Impl
 	if pimpl, err = peer.CreateNewPeer(credrv.PeerValidator, peercfg); err != nil {
@@ -253,10 +250,10 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	if gstub := gossip_stub.InitGossipStub(pe.Peer, pe.srvPoint.Server); gstub == nil {
 		return fmt.Errorf("Can not create gossip server: %s", err)
 	} else {
-		pe.TxNetworkEntry = txnetwork.GetNetworkEntry(gstub)
+		pe.txn = txnetwork.GetNetworkEntry(gstub)
 	}
 
-	pe.TxNetworkEntry.InitCred(credrv.TxValidator)
+	pe.txn.InitCred(credrv.TxValidator)
 	var peerLedger *ledger.Ledger
 
 	//test ledger configuration
@@ -292,13 +289,16 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 
 	}
 
-	//create and init sync entry
-	pe.StateSyncStub = sync_stub.InitStateSyncStub(pe.Peer, peerLedger, pe.srvPoint.Server)
-	if err = pe.StateSyncStub.Configure(config.SubViper("sync", vp)); err != nil {
-		return fmt.Errorf("Could not configure state sync module: %s", err)
+	if systub := sync_stub.InitSyncStub(pe.Peer, peerLedger, pe.srvPoint.Server); systub == nil {
+		return fmt.Errorf("Can not create syncing server: %s", err)
+	} else {
+		pe.sync = syncstrategy.GetSyncStrategyEntry(systub)
+		if err := pe.sync.Configure(config.SubViper("sync", vp)); err != nil {
+			return fmt.Errorf("Could not configure sync entry: %s", err)
+		}
 	}
 
-	pe.TxNetworkEntry.InitLedger(peerLedger)
+	pe.txn.InitLedger(peerLedger)
 	pe.TxHandlerOpts.ccSpecValidator = NewCCSpecValidator(node.Cred.ccSpecValidator)
 	//construct txhandler groups:
 	/*
@@ -336,17 +336,17 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	}
 	handlerArray = append(handlerArray, &recordHandler{node.TxTopic, node.TxTopicNameHandler})
 
-	pe.TxNetworkEntry.InitTerminal(pb.MutipleTxHandler(handlerArray...))
+	pe.txn.InitTerminal(pb.MutipleTxHandler(handlerArray...))
 
 	//reset peer trigger update so we should run it finally
 	if pe.defaultEndorser != nil {
-		err = pe.TxNetworkEntry.ResetPeer(pe.defaultEndorser)
+		err = pe.txn.ResetPeer(pe.defaultEndorser)
 	} else {
 		networkName := peercfg.PeerEndpoint.GetID().GetName()
 		if networkName == "" {
 			networkName = tag
 		}
-		err = pe.TxNetworkEntry.ResetPeerSimple([]byte(networkName + "_PeerId16BytePadding"))
+		err = pe.txn.ResetPeerSimple([]byte(networkName + "_PeerId16BytePadding"))
 	}
 
 	if err != nil {

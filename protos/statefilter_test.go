@@ -11,33 +11,33 @@ func Test_FilterInit(t *testing.T) {
 	fl := new(StateFilter)
 
 	if pr := fl.Init(256, 16) * float64(100); pr > 0.05 || pr < 0.04 {
-		t.Fatal("wrong possibility: %f", pr)
+		t.Fatalf("wrong possibility: %f", pr)
 	} else if fl.HashCounts != 11 || len(fl.Filter) != 32 {
-		t.Fatal("unexpected filter data: [%v]", fl)
+		t.Fatalf("unexpected filter data: [%v]", fl)
 	}
 
 	if pr := fl.Init(512, 32) * float64(100); pr > 0.05 || pr < 0.04 {
-		t.Fatal("wrong possibility: %f", pr)
+		t.Fatalf("wrong possibility: %f", pr)
 	} else if fl.HashCounts != 11 || len(fl.Filter) != 64 {
-		t.Fatal("unexpected filter data: [%v]", fl)
+		t.Fatalf("unexpected filter data: [%v]", fl)
 	}
 
 	if pr := fl.Init(1024, 72) * float64(100); pr > 0.11 || pr < 0.10 {
-		t.Fatal("wrong possibility: %f", pr)
+		t.Fatalf("wrong possibility: %f", pr)
 	} else if fl.HashCounts != 9 || len(fl.Filter) != 128 {
-		t.Fatal("unexpected filter data: [%v]", fl)
+		t.Fatalf("unexpected filter data: [%v]", fl)
 	}
 
 	if pr := fl.Init(2048, 136) * float64(100); pr > 0.08 || pr < 0.07 {
-		t.Fatal("wrong possibility: %f", pr)
+		t.Fatalf("wrong possibility: %f", pr)
 	} else if fl.HashCounts != 10 || len(fl.Filter) != 256 {
-		t.Fatal("unexpected filter data: [%v]", fl)
+		t.Fatalf("unexpected filter data: [%v]", fl)
 	}
 
 	if pr := fl.Init(2048, 184) * float64(100); pr > 0.48 || pr < 0.47 {
-		t.Fatal("wrong possibility: %f", pr)
+		t.Fatalf("wrong possibility: %f", pr)
 	} else if fl.HashCounts != 7 || len(fl.Filter) != 256 {
-		t.Fatal("unexpected filter data: [%v]", fl)
+		t.Fatalf("unexpected filter data: [%v]", fl)
 	}
 }
 
@@ -121,7 +121,7 @@ func Test_FalsePositiveRate(t *testing.T) {
 	for i, sample := range testSets {
 
 		if ret := checkF(sample); ret != i {
-			t.Fatalf("check sample[@i] fail: get %d", i, ret)
+			t.Fatalf("check sample[@%d] fail: get %d", i, ret)
 		}
 
 		if !fl.Match(sample) {
@@ -144,7 +144,7 @@ func Test_FalsePositiveRate(t *testing.T) {
 		//collision of 2^160 must be extremely small, we count it
 		//and ... (how many should we tolerate?)
 		if ret := checkF(sample); ret != -1 {
-			t.Logf("sample collide with [@i]", ret)
+			t.Logf("sample collide with [@%d]", ret)
 			collisions++
 			continue
 		}
@@ -161,6 +161,6 @@ func Test_FalsePositiveRate(t *testing.T) {
 	}
 
 	if falsePositive*100 > totalNum {
-		t.Fatalf("fail filter, false positive ratio larger than 1%")
+		t.Fatal("fail filter, false positive ratio larger than 1%")
 	}
 }

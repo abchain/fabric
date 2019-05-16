@@ -63,7 +63,7 @@ func (ne *NodeEngine) ExecuteTransaction(ctx context.Context,
 	tx *pb.Transaction, endorser cred.TxEndorser, targets ...*PeerEngine) (resp []*pb.Response) {
 
 	for _, netw := range targets {
-		resp = append(resp, netw.TxNetworkEntry.ExecuteTransaction(ctx, tx, endorser))
+		resp = append(resp, netw.txn.ExecuteTransaction(ctx, tx, endorser))
 	}
 
 	return

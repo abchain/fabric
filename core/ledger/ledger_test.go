@@ -390,7 +390,8 @@ func TestVerifyChain(t *testing.T) {
 	badBlock.PreviousBlockHash = []byte("evil")
 	for i := uint64(0); i < ledger.GetBlockchainSize(); i++ {
 		goodBlock := ledgerTestWrapper.GetBlockByNumber(i)
-		ledger.PutBlock(i, badBlock)
+		err := ledger.PutBlock(i, badBlock)
+		testutil.AssertNoError(t, err, "put bad block")
 		for lowBlock := uint64(0); lowBlock < ledger.GetBlockchainSize()-1; lowBlock++ {
 			if i == ledger.GetBlockchainSize()-1 {
 				testutil.AssertEquals(t, ledgerTestWrapper.VerifyChain(ledger.GetBlockchainSize()-1, lowBlock), uint64(i))
@@ -410,6 +411,7 @@ func TestVerifyChain(t *testing.T) {
 			}
 		}
 		ledgerTestWrapper.PutRawBlock(goodBlock, i)
+		testutil.AssertNoError(t, err, "put good block")
 	}
 
 	// Test edge cases
@@ -492,6 +494,7 @@ func TestRollBackwardsAndForwards(t *testing.T) {
 	// Roll backwards once
 	delta2 := ledgerTestWrapper.GetStateDelta(2)
 	delta2.RollBackwards = true
+	t.Log(delta2)
 	ledgerTestWrapper.ApplyStateDelta(1, delta2)
 	ledgerTestWrapper.CommitStateDelta(1)
 	testutil.AssertEquals(t, ledgerTestWrapper.GetState("chaincode1", "key1", true), []byte("value1B"))
@@ -716,11 +719,12 @@ func TestRangeScanIterator(t *testing.T) {
 
 	///////// Test with an empty Ledger //////////
 	//////////////////////////////////////////////
-	itr, _ := ledger.GetStateRangeScanIterator("chaincodeID2", "key2", "key5", false)
-	statemgmt.AssertIteratorContains(t, itr, map[string][]byte{})
-	itr.Close()
+	// Don't call this without a tx context
+	// itr, _ := ledger.GetStateRangeScanIterator("chaincodeID2", "key2", "key5", false)
+	// statemgmt.AssertIteratorContains(t, itr, map[string][]byte{})
+	// itr.Close()
 
-	itr, _ = ledger.GetStateRangeScanIterator("chaincodeID2", "key2", "key5", true)
+	itr, _ := ledger.GetStateRangeScanIterator("chaincodeID2", "key2", "key5", true)
 	statemgmt.AssertIteratorContains(t, itr, map[string][]byte{})
 	itr.Close()
 

@@ -46,13 +46,26 @@ func NewStateImpl(db *db.OpenchainDB) *StateImpl {
 	return &StateImpl{OpenchainDB: db}
 }
 
+//notice the general snapshotstate is not related to a stateimpl object
+//it just make use of the config in stateimpl for creating
+func (stateImpl *StateImpl) NewSnapshotState() statemgmt.SnapshotState {
+	if stateImpl.currentConfig == nil {
+		panic("impl not inited")
+	}
+	return snapshotGen{stateImpl.currentConfig}
+}
+
 // Initialize - method implementation for interface 'statemgmt.HashableState'
 func (stateImpl *StateImpl) Initialize(configs map[string]interface{}) error {
+
+	//if this flag is set (no matter what value it is), always load all settings
+	//from config file
+	_, forceLoad := configs["forceload"]
 
 	//load config first, which will replace the configs in argument
 	if cfgSaved, err := stateImpl.GetValue(db.StateCF, configDataKey); err != nil {
 		return err
-	} else if len(cfgSaved) != 0 {
+	} else if len(cfgSaved) != 0 && !forceLoad {
 		stateImpl.currentConfig, err = loadconfig(cfgSaved, configs)
 		if err != nil {
 			return fmt.Errorf("loading config fail: %s", err)
@@ -111,7 +124,7 @@ func (stateImpl *StateImpl) Get(chaincodeID string, key string) ([]byte, error) 
 	return dataNode.value, nil
 }
 
-func (stateImpl *StateImpl) GetSafe(sn *db.DBSnapshot, _ int, chaincodeID string, key string) ([]byte, error) {
+func (stateImpl *StateImpl) GetSafe(sn *db.DBSnapshot, chaincodeID string, key string) ([]byte, error) {
 	dataKey := newDataKey(stateImpl.currentConfig, chaincodeID, key)
 	dataNode, err := fetchDataNodeFromSnapshot(sn, dataKey)
 	if err != nil {
@@ -441,7 +454,7 @@ func (stateImpl *StateImpl) SyncTarget() []byte {
 
 func (stateImpl *StateImpl) RequiredParts() ([]*pb.SyncOffset, error) {
 	if stateImpl.underSync == nil {
-		return nil, fmt.Errorf("Not under syncing progress")
+		return nil, nil
 	}
 
 	return stateImpl.underSync.RequiredParts()

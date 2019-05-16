@@ -18,73 +18,82 @@ package state
 
 import (
 	"github.com/abchain/fabric/core/ledger/statemgmt"
+	"strings"
 )
 
 // CompositeRangeScanIterator - an implementation of interface 'statemgmt.RangeScanIterator'
 // This provides a wrapper on top of more than one underlying iterators
 type CompositeRangeScanIterator struct {
-	itrs             []statemgmt.RangeScanIterator
-	currentItrNumber int
+	itrs        []*statemgmt.StateDeltaIterator
+	currentItrs []int
 }
 
-func newCompositeRangeScanIterator(
-	txDeltaItr *statemgmt.StateDeltaIterator,
-	batchDeltaItr *statemgmt.StateDeltaIterator,
-	implItr statemgmt.RangeScanIterator) statemgmt.RangeScanIterator {
-	itrs := make([]statemgmt.RangeScanIterator, 3)
-	itrs[0] = txDeltaItr
-	itrs[1] = batchDeltaItr
-	itrs[2] = implItr
-	return &CompositeRangeScanIterator{itrs, 0}
+func newCompositeRangeScanIterator(itrs ...*statemgmt.StateDeltaIterator) statemgmt.RangeScanIterator {
+	ret := &CompositeRangeScanIterator{itrs: itrs}
+	ret.init()
+	return ret
 }
 
-// Next - see interface 'statemgmt.RangeScanIterator' for details
-// The specific implementation below starts from first underlying iterator and
-// after exhausting the first underlying iterator, move to the second underlying iterator.
-// The implementation repeats this until last underlying iterator has been exhausted
-// In addition, the key-value from an underlying iterator are skipped if the key is found
-// in any of the preceding iterators
-func (itr *CompositeRangeScanIterator) Next() bool {
-	currentItrNumber := itr.currentItrNumber
-	currentItr := itr.itrs[currentItrNumber]
-	logger.Debugf("Operating on iterator number = %d", currentItrNumber)
-	keyAvailable := currentItr.Next()
-	for keyAvailable {
-		key, _ := currentItr.GetKeyValue()
-		logger.Debugf("Retrieved key = %s", key)
-		skipKey := false
-		for i := currentItrNumber - 1; i >= 0; i-- {
-			logger.Debugf("Evaluating key = %s in itr number = %d. currentItrNumber = %d", key, i, currentItrNumber)
-			previousItr := itr.itrs[i]
-			if previousItr.(*statemgmt.StateDeltaIterator).ContainsKey(key) {
-				skipKey = true
-				break
+//fill every number for first tasks
+func (citr *CompositeRangeScanIterator) init() {
+	for i, _ := range citr.itrs {
+		citr.currentItrs = append(citr.currentItrs, i)
+	}
+}
+
+func (citr *CompositeRangeScanIterator) next() bool {
+
+	if len(citr.currentItrs) == 0 {
+		return false
+	}
+
+	logger.Debugf("Next task: currentItrNumbers = %v", citr.currentItrs)
+	var lastPos int
+	for i, itr := range citr.itrs {
+
+		if len(citr.currentItrs) > 0 && i == citr.currentItrs[0] {
+			citr.currentItrs = citr.currentItrs[1:]
+			if !itr.NextWithDeleted() {
+				logger.Debugf("iterator %d is over", i)
+				continue
 			}
 		}
-		if skipKey {
-			logger.Debugf("Skipping key = %s", key)
-			keyAvailable = currentItr.Next()
-			continue
+		citr.itrs[lastPos] = itr
+		lastPos++
+	}
+	citr.itrs = citr.itrs[:lastPos]
+
+	//scan for next availiable values
+	//merge sort, from top to bottom, notice same value will be also considered ...
+	var minKey string
+	for i, itr := range citr.itrs {
+		k, _ := itr.GetKeyValue()
+		if cmp := strings.Compare(k, minKey); minKey == "" || cmp < 0 {
+			citr.currentItrs = []int{i}
+			minKey = k
+		} else if cmp == 0 {
+			citr.currentItrs = append(citr.currentItrs, i)
 		}
-		break
 	}
+	logger.Debugf("Evaluating key = %s currentItrNumbers = %v", minKey, citr.currentItrs)
+	return len(citr.currentItrs) > 0
+}
 
-	if keyAvailable || currentItrNumber == 2 {
-		logger.Debug("Returning for current key")
-		return keyAvailable
+func (citr *CompositeRangeScanIterator) Next() bool {
+	for citr.next() {
+		if k, v := citr.itrs[citr.currentItrs[0]].GetKeyRawValue(); v.IsDeleted() {
+			logger.Debugf("Evaluating key = %s is deleted key, skip for next", k)
+		} else {
+			return true
+		}
 	}
-
-	logger.Debug("Moving to next iterator")
-	itr.currentItrNumber++
-	return itr.Next()
+	return false
 }
 
-// GetKeyValue - see interface 'statemgmt.RangeScanIterator' for details
-func (itr *CompositeRangeScanIterator) GetKeyValue() (string, []byte) {
-	return itr.itrs[itr.currentItrNumber].GetKeyValue()
+// GetKeyValue - see interface 'statemgmt.StateDeltaIterator' for details
+func (citr *CompositeRangeScanIterator) GetKeyValue() (string, []byte) {
+	return citr.itrs[citr.currentItrs[0]].GetKeyValue()
 }
 
-// Close - see interface 'statemgmt.RangeScanIterator' for details
-func (itr *CompositeRangeScanIterator) Close() {
-	itr.itrs[2].Close()
-}
+// Close - see interface 'statemgmt.StateDeltaIterator' for details
+func (citr *CompositeRangeScanIterator) Close() {}

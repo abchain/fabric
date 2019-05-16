@@ -208,6 +208,7 @@ func TestDBIteratorAndSnapshotIterator(t *testing.T) {
 
 	// create a snapshot
 	snapshot := openchainDB.GetSnapshot()
+	defer snapshot.Release()
 
 	// add/delete/modify key-values
 	openchainDB.DeleteKey(StateCF, []byte("key1"))

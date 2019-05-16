@@ -23,6 +23,15 @@ import (
 	"sync"
 )
 
+//export config
+type StateConfig struct {
+	V *stateConfig
+}
+
+func (cw StateConfig) ImplConfigs() map[string]interface{} {
+	return cw.V.stateImplConfigs
+}
+
 type stateConfig struct {
 	stateImplName    stateImplType
 	stateImplConfigs map[string]interface{}

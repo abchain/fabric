@@ -144,7 +144,7 @@ func Execute(ctxt context.Context, chain *ChaincodeSupport, t *pb.Transaction) (
 	defer func(err error) {
 
 		if result != nil && !result.State.IsEmpty() {
-			ledger.ApplyTxExec(result.State.DeRef())
+			result.State.AppyInvokingResult(ledger)
 		}
 		txSuccess := err == nil
 		markTxFinish(ledger, te.Transaction, txSuccess)
