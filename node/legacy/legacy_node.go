@@ -62,4 +62,5 @@ func (e *LegacyEngineAdapter) Scheme(thenode *node.NodeEngine) {
 	})
 
 	thenode.CustomFilters = append(thenode.CustomFilters, legacyHandler)
+	thenode.Options.MakeGenesisForLedger = true
 }

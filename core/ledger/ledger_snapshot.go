@@ -64,6 +64,22 @@ func (sledger *LedgerSnapshot) GetBlockByNumber(blockNumber uint64) (*protos.Blo
 	return blk, nil
 }
 
+// TODO: make the snapshot version for testBlockExistedRangeSafe
+// func (sledger *LedgerSnapshot) TestExistedBlockRange(blockNumber uint64) uint64 {
+
+// 	return 0
+// }
+
+//test how height the blocks we have obtained continuously
+func (sledger *LedgerSnapshot) TestContinuouslBlockRange() (uint64, error) {
+
+	bytes, err := sledger.GetFromBlockchainCFSnapshot(continuousblockCountKey)
+	if err != nil {
+		return 0, err
+	}
+	return bytesToBlockNumber(bytes), nil
+}
+
 func (sledger *LedgerSnapshot) GetBlockchainSize() (uint64, error) {
 
 	bytes, err := sledger.GetFromBlockchainCFSnapshot(blockCountKey)

@@ -35,6 +35,10 @@ func (ep ServicePoint) Status() error {
 	return ep.srvStatus
 }
 
+func (ep ServicePoint) CleanStatus() {
+	ep.srvStatus = nil
+}
+
 func (ep ServicePoint) Release() error {
 	return ep.lPort.Close()
 }
@@ -110,11 +114,16 @@ func (ep *servicePoint) Start(notify chan<- ServicePoint) error {
 	}
 
 	go func() {
-		ep.srvStatus = ep.Serve(ep.lPort)
+		if ep.srvStatus == nil {
+			serviceLogger.Infof("service [%s] has startted", ep.spec.Address)
+			ep.srvStatus = ep.Serve(ep.lPort)
+		} else {
+			serviceLogger.Errorf("service [%s] can not start again for previous error: %s", ep.srvStatus)
+		}
+		serviceLogger.Infof("service [%s] has exited", ep.spec.Address)
 		notify <- ServicePoint{ep}
 	}()
 
-	serviceLogger.Infof("service [%s] has startted", ep.spec.Address)
 	return nil
 }
 

@@ -377,7 +377,14 @@ func (*Ledger) HashBlock(block *protos.Block) ([]byte, error) {
 }
 
 func (ledger *Ledger) TestExistedBlockRange(blockNumber uint64) uint64 {
-	return testBlockExistedRange(ledger.blockchain.OpenchainDB, blockNumber, false)
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
+	limit := ledger.blockchain.getContinuousBlockHeight()
+	ret := testBlockExistedRangeSafe(ledger.blockchain.OpenchainDB, blockNumber, limit, false)
+	if ret == limit {
+		return 0
+	}
+	return ret
 }
 
 //test how height the blocks we have obtained continuously

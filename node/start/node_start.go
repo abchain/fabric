@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/embedded_chaincode"
 	"github.com/abchain/fabric/core/peer"
 	"github.com/abchain/fabric/events/producer"
@@ -17,14 +16,31 @@ import (
 	"golang.org/x/net/context"
 )
 
-var (
-	logger         = logging.MustGetLogger("engine")
-	theNode        *node.NodeEngine
-	theDoom        context.CancelFunc
-	theEndServices func()
+//entries for init and run the fabric node, including following steps
+//* Pre-init (call PreInitFabricNode), which will create the global node
+//  object and execute PreInit in the node, and init other required
+//  variables
 
-	//an helper for simply waiting while running
-	TheGuard func(context.Context)
+//* Init (call InitFabricNode), init the node object, all of the
+//  rpc services is ready now
+
+//* Run (call RunFabricNode), the node start accepting incoming request
+//  and communicating to the world
+
+//* Keep, run the guard function, which will keep block until the incoming
+//  context is canceled, and just keep tracking the status of each rpc
+//  services. When finish, the running rpc services in the node will be stopped
+//  (and RunFabricNode can be called again)
+//  if a nil context is passed, it exit without blocking and simply stop
+//  current running node
+
+//* Final, when exit, just do not forget call Final to release most of the
+//  resources (process is recommended to be exit after that)
+
+var (
+	logger  = logging.MustGetLogger("engine")
+	theNode *node.NodeEngine
+	theDoom context.CancelFunc //use to cancel all ops in the node
 )
 
 func GetNode() *node.NodeEngine { return theNode }
@@ -41,53 +57,40 @@ func PreInitFabricNode(name string) {
 }
 
 func Final() {
-	if theEndServices != nil {
-		theEndServices()
-	}
 
-	db.Stop()
 	if theDoom != nil {
 		theDoom()
+		theNode.FinalRelease()
 	}
 
-	theNode.FinalRelease()
 }
 
-func RunFabricNode() error {
+func RunFabricNode() (error, func(ctx context.Context)) {
 	status, err := theNode.RunAll()
 	if err != nil {
-		return err
+		return err, nil
 	}
 
-	theEndServices = func() {
-		theNode.StopServices(status)
-	}
+	return nil, func(ctx context.Context) {
 
-	TheGuard = func(ctx context.Context) {
-
+		defer theNode.StopServices(status)
+		if ctx == nil {
+			return
+		}
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case srvp := <-status:
 				logger.Errorf("server point [%s] fail: %s", srvp.Spec().Address, srvp.Status())
+				//simply respawn it (just fail for we do not clean the error)
+				//TODO: we may need a more robust way before we can really respawn the
+				//server (for example, retry after serveral seconds, stop after some
+				//times of retrying, etc)
+				srvp.Start(status)
 			}
 		}
 	}
-
-	return nil
-}
-
-func SetEndServicesFunc(f func()) {
-	if theEndServices == nil {
-		theEndServices = f
-	} else {
-		theEndServices = func() {
-			f()
-			theEndServices()
-		}
-	}
-
 }
 
 func InitFabricNode() error {

@@ -1,89 +1,239 @@
 package main
 
 import (
+	"fmt"
+	"math/rand"
+	"strconv"
 	"time"
-	"github.com/abchain/fabric/core/embedded_chaincode/api"
-	"github.com/abchain/fabric/node/legacy"
+
+	"github.com/abchain/fabric/core/ledger"
+	"github.com/abchain/fabric/core/ledger/statemgmt"
+	"github.com/abchain/fabric/core/sync"
 	node "github.com/abchain/fabric/node/start"
-	"github.com/spf13/viper"
 	pb "github.com/abchain/fabric/protos"
-	"os"
-	"log"
-	"net/http"
-	_ "net/http/pprof"
 	"github.com/op/go-logging"
-	"github.com/abchain/fabric/core/statesync/testsync/chaincode"
+	"github.com/spf13/viper"
 )
 
-var logger = logging.MustGetLogger("main")
+var logger = logging.MustGetLogger("synctest")
 
-func runTest() error {
+func constructRandomBytes(r *rand.Rand, size int) ([]byte, error) {
+	value := make([]byte, size)
+	_, err := r.Read(value)
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
 
-	syncTarget := viper.GetString("peer.syncTarget")
-	if len(syncTarget) == 0 {
-		return nil
+// ConstructRandomStateDelta creates a random state delta for testing
+func constructRandomStateDelta(
+	chaincodeIDPrefix string,
+	numChaincodes int,
+	maxKeySuffix int,
+	numKeysToInsert int,
+	kvSize int) (*statemgmt.StateDelta, error) {
+	delta := statemgmt.NewStateDelta()
+	s2 := rand.NewSource(time.Now().UnixNano())
+	r2 := rand.New(s2)
+
+	for i := 0; i < numKeysToInsert; i++ {
+		chaincodeID := chaincodeIDPrefix + "_" + strconv.Itoa(r2.Intn(numChaincodes))
+		key := "key_" + strconv.Itoa(r2.Intn(maxKeySuffix))
+		valueSize := kvSize - len(key)
+		if valueSize < 1 {
+			panic(fmt.Errorf("valueSize cannot be less than one. ValueSize=%d", valueSize))
+		}
+		value, err := constructRandomBytes(r2, valueSize)
+		if err != nil {
+			return nil, err
+		}
+		delta.Set(chaincodeID, key, value, nil)
 	}
 
-	for {
-		<-time.After(1 * time.Second)
-		syncStub := node.GetNode().DefaultPeer().StateSyncStub
-		peer := &pb.PeerID{syncTarget}
-		h := syncStub.StreamStub.PickHandler(peer)
+	for ccID, chaincodeDelta := range delta.ChaincodeStateDeltas {
+		sortedKeys := chaincodeDelta.GetSortedKeys()
+		smallestKey := sortedKeys[0]
+		largestKey := sortedKeys[len(sortedKeys)-1]
+		logger.Infof("chaincode=%s, numKeys=%d, smallestKey=%s, largestKey=%s", ccID, len(sortedKeys), smallestKey, largestKey)
+	}
+	return delta, nil
+}
 
-		if h == nil {
-			logger.Infof("Stream Handler <%s> not ready...\n\n\n", peer)
-		} else {
-			logger.Infof("Stream Handler <%s> ready!!\n\n\n", peer)
+func prepareLedger(l *ledger.Ledger, datakeys int, blocks int) error {
 
-			blockSync := viper.GetString("peer.syncType")
-			err := syncStub.SyncToStateByPeer(nil,nil, peer, blockSync)
-			if err != nil {
-				logger.Infof("Failed to sync to <%s>: %s", peer, err)
-			} else {
-				logger.Infof("Successfully sync to <%s>", peer)
-			}
-			os.Exit(0)
-		}
+	if l.GetBlockchainSize() != 0 {
+		return nil
+	}
+	logger.Info("Testsync init ledger for server running first time ...")
+
+	//add gensis block
+	logger.Debugf("prepare for %d keys ...", datakeys)
+	delta, err := constructRandomStateDelta("", 8, 125*datakeys, datakeys, 32)
+	if err != nil {
+		return err
+	}
+	cid := "bigTx"
+	err = l.ApplyStateDelta(cid, delta)
+	if err != nil {
+		return err
+	}
+	err = l.CommitTxBatch(cid, nil, nil, []byte("great tx"))
+	if err != nil {
+		return err
+	}
+
+	offset := int(l.GetBlockchainSize())
+
+	logger.Debugf("prepare for %d blocks ...", blocks)
+	for ib := 0; ib < blocks; ib++ {
+
+		transaction, _ := pb.NewTransaction(pb.ChaincodeID{Path: "testUrl"}, "", "", []string{"param1, param2"})
+		dig, _ := transaction.Digest()
+		transaction.Txid = pb.TxidFromDigest(dig)
+
+		l.BeginTxBatch(ib)
+		l.TxBegin("txUuid")
+		l.SetState("chaincode1", "keybase", []byte{byte(ib + offset)})
+		l.SetState("chaincode2", "keybase", []byte{byte(ib + offset)})
+		l.SetState("chaincode3", "keybase", []byte{byte(ib + offset)})
+		l.TxFinished("txUuid", true)
+		l.CommitTxBatch(ib, []*pb.Transaction{transaction}, nil, []byte("proof1"))
 	}
 
 	return nil
 }
 
+const populateKeysDef = 120
+const populateAdditionalBlocks = 60
 
-func startDebug() {
-	enablePprof := viper.GetBool("peer.enablePprof")
-	enablePprof = true
-	debugUrl := viper.GetString("peer.debug.listenAddress")
-
-	if len(debugUrl) > 0 && enablePprof {
-		go func() {
-			log.Println(http.ListenAndServe(debugUrl, nil))
-		}()
+func runAsServer() error {
+	logger.Info("Testsync node run as server")
+	keys := viper.GetInt("sync.test.serverkeys")
+	if keys == 0 {
+		keys = populateKeysDef
 	}
+
+	blocks := viper.GetInt("sync.test.serverblocks")
+	if blocks == 0 {
+		blocks = populateAdditionalBlocks
+	}
+
+	l, err := ledger.GetLedger()
+	if err != nil {
+		return err
+	}
+
+	err = prepareLedger(l, keys, blocks)
+	if err != nil {
+		return err
+	}
+
+	inf, err := l.GetBlockchainInfo()
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("--------------- Testsync node prepare done ---------------")
+	logger.Info("Below is the top block's info of ledger, record it for client!")
+	logger.Warningf("%d:%X", inf.GetHeight(), inf.GetCurrentBlockHash())
+	logger.Infof("--------------- -------------------------- ---------------\n\n\n")
+
+	return nil
+}
+
+func runAsClient() {
+	logger.Info("Testsync node run as client, start ...")
+	blockh := viper.GetString("sync.test.targetblock")
+	if blockh == "" {
+		logger.Errorf("No hash of block is specified, just quit")
+		return
+	}
+	var targetHash []byte
+	var targetHeight uint64
+	_, err := fmt.Sscanf(blockh, "%d:%X", &targetHeight, &targetHash)
+	if err != nil {
+		logger.Errorf("scan hash fail: %s, exit", err)
+		return
+	}
+	logger.Infof("Client will sync to %d:%X", targetHeight, targetHash)
+	l := node.GetNode().DefaultLedger()
+	sstub := node.GetNode().DefaultPeer().GetStreamStub("sync")
+	if sstub == nil {
+		panic("no stream stub")
+	}
+	baseCtx := node.GetNode().DefaultPeer().GetPeerCtx()
+
+	blkAgent := ledger.NewBlockAgent(l)
+	blockCli := sync.NewBlockSyncClient(baseCtx, blkAgent.SyncCommitBlock,
+		sync.CheckpointToSyncPlan(map[uint64][]byte{targetHeight: targetHash}))
+
+	err = sync.ExecuteSyncTask(blockCli, sstub)
+	if err != nil {
+		logger.Errorf("syncing blocks fail: %s, exit", err)
+		return
+	}
+
+	sdetector := sync.NewStateSyncDetector(baseCtx, l, 0)
+	err = sdetector.DoDetection(sstub)
+	if err != nil {
+		logger.Errorf("state detect fail: %s, exit", err)
+		return
+	}
+
+	logger.Infof("can sync to state %X@%d", sdetector.Candidate.State,
+		sdetector.Candidate.Height)
+
+	syncer, err := ledger.NewSyncAgent(l, sdetector.Candidate.Height,
+		sdetector.Candidate.State)
+	if err != nil {
+		logger.Errorf("create state syncer fail: %s, exit", err)
+		return
+	}
+	stateCli, endSyncF := sync.NewStateSyncClient(baseCtx, syncer)
+	defer endSyncF()
+
+	err = sync.ExecuteSyncTask(stateCli, sstub)
+	if err != nil {
+		logger.Errorf("create state syncer fail: %s, exit", err)
+		return
+	}
+
+	err = syncer.FinishTask()
+	if err != nil {
+		logger.Errorf("finish state task fail: %s, exit", err)
+		return
+	}
+
+	finalS, err := l.GetCurrentStateHash()
+	if err != nil {
+		logger.Errorf("get state hash fail: %s, exit", err)
+		return
+	}
+	finalInf, err := l.GetBlockchainInfo()
+	if err != nil {
+		logger.Errorf("get chain info  fail: %s, exit", err)
+		return
+	}
+
+	logger.Info(" ---------- Congratulations, sync done, following is the infos --------------")
+	logger.Infof("State hash: %X", finalS)
+	logger.Infof("Chain top: %d:%X", finalInf.GetHeight(), finalInf.GetCurrentBlockHash())
 }
 
 func main() {
 
-	adapter := &legacynode.LegacyEngineAdapter{}
-
-	postRun := func() error {
-		regFunc := func(name string) error {
-			return api.RegisterECC(&api.EmbeddedChaincode{name, new(testsync_chaincode.TestSyncChaincode)})
-		}
-
-		regFunc("example01_")
-		regFunc("example02_")
-		regFunc("example03_")
-
-		if err := adapter.Init(); err != nil {
-			return err
-		}
-
-		go startDebug()
-		go runTest()
-		return nil
+	ncfg := new(node.NodeConfig)
+	if err := ncfg.PreConfig(); err != nil {
+		panic(err)
 	}
 
-	node.RunNode(&node.NodeConfig{PostRun: postRun, Schemes: adapter.Scheme})
+	if viper.GetBool("sync.test.server") {
+		ncfg.PostRun = runAsServer
+		node.RunNode(ncfg)
+	} else {
+		ncfg.TaskRun = runAsClient
+		node.RunNode(ncfg)
+	}
 
 }
