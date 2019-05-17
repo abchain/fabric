@@ -18,12 +18,20 @@ import (
 	"github.com/spf13/viper"
 )
 
-func addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, error) {
+func (ne *NodeEngine) addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, error) {
 
 	tagdb, err := db.StartDB(tag, config.SubViper("db", vp))
 	if err != nil {
 		return nil, fmt.Errorf("Try to create db fail: %s", err)
 	}
+
+	done := false
+	defer func() {
+		if !done {
+			logger.Debugf("clean db [%s] for unsucessful creation of ledger", tag)
+			db.StopDB(tagdb)
+		}
+	}()
 
 	checkonly := vp.GetBool("notUpgrade")
 	err = ledger.UpgradeLedger(tagdb, checkonly)
@@ -35,11 +43,17 @@ func addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Try to create ledger fail: %s", err)
 	}
-	err = genesis.MakeGenesisForLedger(l, "", nil)
-	if err != nil {
-		return nil, fmt.Errorf("Try to create genesis block for ledger fail: %s", err)
+	//a legacy progress...
+	if ne.Options.MakeGenesisForLedger {
+		err = genesis.MakeGenesisForLedger(l, "", nil)
+		if err != nil {
+			return nil, fmt.Errorf("Try to create genesis block for ledger fail: %s", err)
+		}
 	}
 
+	done = true
+	ne.releaseFunc = append(ne.releaseFunc, func() { db.StopDB(tagdb) })
+	ne.Ledgers[tag] = l
 	return l, nil
 }
 
@@ -85,9 +99,9 @@ func (ne *NodeEngine) PreInit() {
 		ne.Peers["peer"] = p
 	}
 
-	ne.runPeersFunc = func() {
+	ne.runPeersFunc = []func(){func() {
 		logger.Info("Start the running peer stack")
-	}
+	}}
 }
 
 //ne will fully respect an old-fashion (fabric 0.6) config file
@@ -114,11 +128,9 @@ func (ne *NodeEngine) ExecInit() error {
 		}
 
 		var err error
-		if l, err = addLedger(vp, tag); err != nil {
+		if l, err = ne.addLedger(vp, tag); err != nil {
 			return fmt.Errorf("Init ledger %s in node fail: %s", tag, err)
 		}
-
-		ne.Ledgers[tag] = l
 		logger.Info("Init ledger:", tag)
 	}
 
@@ -138,10 +150,14 @@ func (ne *NodeEngine) ExecInit() error {
 	} else {
 		//start default db
 		db.Start()
+		ne.releaseFunc = append(ne.releaseFunc, func() { db.Stop() })
 		if l, err := ledger.GetLedger(); err != nil {
 			return fmt.Errorf("Init default ledger fail: %s", err)
 		} else {
-			genesis.MakeGenesis()
+			if ne.Options.MakeGenesisForLedger {
+				genesis.MakeGenesis()
+			}
+
 			ne.Ledgers[""] = l
 			logger.Warningf("No ledger created, use old-fashion default one")
 		}
@@ -236,12 +252,13 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 		return fmt.Errorf("Init peer fail: %s", err)
 	}
 
-	deeperF := node.runPeersFunc
-	node.runPeersFunc = func() {
-		deeperF()
+	//register init action right before running to node, which require the
+	//running environment but just need to call once, the Run/Stop of PeerEngine
+	//never touch these
+	node.runPeersFunc = append(node.runPeersFunc, func() {
 		logger.Infof("starting peer [%s]", tag)
 		pimpl.RunPeer(peercfg)
-	}
+	})
 
 	pe.Peer = pimpl
 	pb.RegisterPeerServer(pe.srvPoint.Server, pimpl)
@@ -270,12 +287,11 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 		var err error
 		l, exist := node.Ledgers[useledger]
 		if !exist {
-			l, err = addLedger(vp, useledger)
+			l, err = node.addLedger(vp, useledger)
 			if err != nil {
 				return fmt.Errorf("Create peer's default ledger [%s] fail: %s", useledger, err)
 			}
-			node.Ledgers[useledger] = l
-			logger.Info("Create default ledger [%s] for peer [%s]", useledger, tag)
+			logger.Info("Create default sole ledger for peer [%s]", tag)
 		}
 		peerLedger = l
 

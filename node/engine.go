@@ -82,11 +82,14 @@ type NodeEngine struct {
 	TxTopicNameHandler CCNameTransformer
 
 	Options struct {
-		EnforceSec bool
+		EnforceSec           bool
+		MakeGenesisForLedger bool
 	}
 
-	srvPoints    []*servicePoint
-	runPeersFunc func()
+	srvPoints []*servicePoint
+	//some action stacks, for init before running and final release
+	runPeersFunc []func()
+	releaseFunc  []func()
 }
 
 func (ne *NodeEngine) DefaultLedger() *ledger.Ledger {
@@ -129,6 +132,15 @@ func (ne *NodeEngine) AddServicePoint(s ServicePoint) {
 	ne.srvPoints = append(ne.srvPoints, s.servicePoint)
 }
 
+//run both peers and service
+func (ne *NodeEngine) RunAll() (chan ServicePoint, error) {
+	if err := ne.RunPeers(); err != nil {
+		return nil, err
+	}
+
+	return ne.RunServices()
+}
+
 func (ne *NodeEngine) RunPeers() error {
 
 	if ne.runPeersFunc == nil {
@@ -143,7 +155,8 @@ func (ne *NodeEngine) RunPeers() error {
 	}
 
 	for name, p := range ne.Peers {
-		//skip default peer (which is a shadow)
+		//skip default peer (which is a shadow of the peer with
+		//another name in Peers table)
 		if name == "" {
 			continue
 		}
@@ -153,15 +166,21 @@ func (ne *NodeEngine) RunPeers() error {
 		defer errExit(p)
 	}
 
-	//also run peers' impl (only once)
-	ne.runPeersFunc()
+	//for first run, also run peers' impl (only once)
+	for _, f := range ne.runPeersFunc {
+		f()
+	}
 	ne.runPeersFunc = nil
 
 	success = true
 	return nil
 }
 
-func (ne *NodeEngine) RunServices() (<-chan ServicePoint, error) {
+//return a manage channel for all running services, for any value s
+//receive from the channel, it MUST call Start of the s, passing
+//this channel to s again, to respawn the rpc service thread,
+//BEFORE StopServices is called. Or user should just never touch the channel
+func (ne *NodeEngine) RunServices() (chan ServicePoint, error) {
 
 	notify := make(chan ServicePoint)
 
@@ -174,10 +193,23 @@ func (ne *NodeEngine) RunServices() (<-chan ServicePoint, error) {
 		}
 	}
 
+	recycleCnt := 0
+	defer func() {
+		if success {
+			return
+		}
+		for ; recycleCnt > 0; recycleCnt-- {
+			<-notify
+		}
+	}()
+
 	for _, p := range ne.srvPoints {
+		//simply clean status
+		p.srvStatus = nil
 		if err := p.Start(notify); err != nil {
 			return nil, fmt.Errorf("start service [%s] fail: %s", p.spec.Address, err)
 		}
+		recycleCnt++
 		defer errExit(p)
 	}
 
@@ -189,16 +221,14 @@ func (ne *NodeEngine) RunServices() (<-chan ServicePoint, error) {
 func (ne *NodeEngine) StopServices(notify <-chan ServicePoint) {
 
 	for _, p := range ne.srvPoints {
-		if p.srvStatus != nil {
-			logger.Infof("service [%s] has stopped before (%s)", p.spec.Address, p.srvStatus)
-		}
 		p.Stop()
-		for endp := <-notify; p != endp.servicePoint; {
-			logger.Warningf("service [%s] stopped occasionally when stopping (%s)", endp.spec.Address, p.spec.Address)
-		}
-
-		logger.Warningf("service [%s] has stopped", p.spec.Address)
 	}
+
+	for i := len(ne.srvPoints); i > 0; i-- {
+		endp := <-notify
+		logger.Warningf("service [%s] has stopped ", endp.spec.Address)
+	}
+
 }
 
 func (ne *NodeEngine) FinalRelease() {
@@ -208,12 +238,8 @@ func (ne *NodeEngine) FinalRelease() {
 			p.lPort.Close()
 		}
 	}
-}
 
-func (ne *NodeEngine) RunAll() (<-chan ServicePoint, error) {
-	if err := ne.RunPeers(); err != nil {
-		return nil, err
+	for _, f := range ne.releaseFunc {
+		f()
 	}
-
-	return ne.RunServices()
 }
