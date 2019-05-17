@@ -138,8 +138,15 @@ func GetNewLedger(db *db.OpenchainDB, config *ledgerConfig) (*Ledger, error) {
 		return nil, err
 	}
 
+	checkDB := true
+	if config == nil {
+		checkDB = sanityCheckLedger()
+	} else if config.IsSet("sanitycheck") {
+		checkDB = config.GetBool("sanitycheck")
+	}
+
 	ver := db.GetDBVersion()
-	if ver >= 1 {
+	if ver >= 1 && checkDB {
 		err = sanityCheck(db)
 		if err != nil {
 			return nil, err

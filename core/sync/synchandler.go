@@ -132,7 +132,7 @@ func (h *syncHandler) GetRemoteLedgerState() *pb.LedgerState {
 func (h *syncHandler) Stop() {
 
 	h.stopMainRoutine()
-	logger.Debug("handler for session [%v] is stopped", h.remotePeerId)
+	logger.Debugf("handler for session [%v] is stopped", h.remotePeerId)
 
 }
 

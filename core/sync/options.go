@@ -45,6 +45,8 @@ type clientOpts struct {
 	//wait seconds before retring walking-through streams,
 	//notice we force a 10s interval after 3 times of traversal
 	RetryInterval int
+	//retry the sessions even we have failed before
+	RetryFail bool
 }
 
 func DefaultClientOption(ctx context.Context) *clientOpts {

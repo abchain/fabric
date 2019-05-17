@@ -2,10 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
-	"strconv"
-	"time"
-
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/core/ledger/statemgmt"
 	"github.com/abchain/fabric/core/sync"
@@ -13,6 +9,10 @@ import (
 	pb "github.com/abchain/fabric/protos"
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
+	"math/rand"
+	"os"
+	"strconv"
+	"time"
 )
 
 var logger = logging.MustGetLogger("synctest")
@@ -105,7 +105,10 @@ func prepareLedger(l *ledger.Ledger, datakeys int, blocks int) error {
 }
 
 const populateKeysDef = 120
-const populateAdditionalBlocks = 60
+
+//NOTICE we MUST set the blocks align to the snapshot interval, so we has at least one stable state
+//for syncing
+const populateAdditionalBlocks = 64
 
 func runAsServer() error {
 	logger.Info("Testsync node run as server")
@@ -132,11 +135,13 @@ func runAsServer() error {
 	inf, err := l.GetBlockchainInfo()
 	if err != nil {
 		return err
+	} else if inf.GetHeight() == 0 {
+		panic("blockchain is still empty")
 	}
 
 	logger.Infof("--------------- Testsync node prepare done ---------------")
 	logger.Info("Below is the top block's info of ledger, record it for client!")
-	logger.Warningf("%d:%X", inf.GetHeight(), inf.GetCurrentBlockHash())
+	logger.Warningf("%d:%X", inf.GetHeight()-1, inf.GetCurrentBlockHash())
 	logger.Infof("--------------- -------------------------- ---------------\n\n\n")
 
 	return nil
@@ -162,11 +167,16 @@ func runAsClient() {
 	if sstub == nil {
 		panic("no stream stub")
 	}
+
 	baseCtx := node.GetNode().DefaultPeer().GetPeerCtx()
 
 	blkAgent := ledger.NewBlockAgent(l)
 	blockCli := sync.NewBlockSyncClient(baseCtx, blkAgent.SyncCommitBlock,
 		sync.CheckpointToSyncPlan(map[uint64][]byte{targetHeight: targetHash}))
+
+	//left some time and chance to ensure we have connect the server ...
+	blockCli.Opts().RetryInterval = 2
+	blockCli.Opts().RetryCount = 3
 
 	err = sync.ExecuteSyncTask(blockCli, sstub)
 	if err != nil {
@@ -174,7 +184,7 @@ func runAsClient() {
 		return
 	}
 
-	sdetector := sync.NewStateSyncDetector(baseCtx, l, 0)
+	sdetector := sync.NewStateSyncDetector(baseCtx, l, int(targetHeight))
 	err = sdetector.DoDetection(sstub)
 	if err != nil {
 		logger.Errorf("state detect fail: %s, exit", err)
@@ -218,7 +228,7 @@ func runAsClient() {
 
 	logger.Info(" ---------- Congratulations, sync done, following is the infos --------------")
 	logger.Infof("State hash: %X", finalS)
-	logger.Infof("Chain top: %d:%X", finalInf.GetHeight(), finalInf.GetCurrentBlockHash())
+	logger.Infof("Chain top: %d:%X", finalInf.GetHeight()-1, finalInf.GetCurrentBlockHash())
 }
 
 func main() {
@@ -233,6 +243,12 @@ func main() {
 		node.RunNode(ncfg)
 	} else {
 		ncfg.TaskRun = runAsClient
+		//we prompt cleanning data path instead of remove it directly for safety
+		dataPath := viper.GetString("peer.fileSystemPath")
+		if _, err := os.Stat(dataPath); err == nil {
+			panic(fmt.Sprintf("PLEASE CLEAN DATA PATH %s first", dataPath))
+		}
+
 		node.RunNode(ncfg)
 	}
 

@@ -325,6 +325,8 @@ func (lh *ledgerHistory) snapshotCurrent(shash []byte) {
 		ledgerLogger.Warningf("We have duplidated snapshot in state %X and release it", shash)
 		duplicatedSn.Release()
 	}
+	//also add current state into bloom filter
+	lh.stableStatus.Add(shash)
 }
 
 func (lh *ledgerHistory) UpdateFromState(s *stateWrapper) {
@@ -385,7 +387,7 @@ func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {
 				dropS := lh.snsIndexed[int(i)%len(lh.snsIndexed)]
 				lh.snsIndexed[int(i)%len(lh.snsIndexed)] = nil
 				lh.db.UnManageSnapshot(indexState(dropS))
-				ledgerLogger.Debugf("history snapshot [%X] has been dropped", dropS)
+				ledgerLogger.Debugf("history snapshot [%X]@<%d> has been dropped", dropS, i)
 			}
 			//rebuild bloom filter
 			lh.stableStatus.ResetFilter()
@@ -411,8 +413,6 @@ func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {
 				panic("wrong code: forwarding do not clean current slot yet")
 			}
 			lh.snsIndexed[indx] = lh.currentState
-			//remember add it into bloom filter
-			lh.stableStatus.Add(lh.currentState)
 			ledgerLogger.Debugf("we have kept a new snapshot [%X]", lh.currentState)
 		}
 		lh.currentState = nil

@@ -12,6 +12,6 @@ set CORE_PEER_VALIDATOR_EVENTS_ADDRESS=127.0.0.1:%EVENTPORT%
 set CORE_PEER_ID=billgates_%1
 set CORE_PEER_FILESYSTEMPATH=%FILEPATHBASE%\sync%1
 set CORE_SYNC_TEST_SERVER=false
-start cmd /k sync.exe
+sync.exe
 rem start echo .
 endlocal

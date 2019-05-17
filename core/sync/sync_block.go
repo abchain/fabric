@@ -272,13 +272,12 @@ func (cli *blockSyncClient) OnData(custom interface{}, pack *pb.TransferResponse
 	}
 
 	//update task datas
-	nextBlk := blk.Height - 1
-	if nextBlk < task.cur.GetEnd() {
+	if blk.GetHeight() <= task.cur.GetEnd() {
 		//this task has done (touch another checkpoint or current height)
 		clilogger.Debugf("Task %d finish", task.id)
 		return NormalEnd{}
 	} else {
-		task.cur.Start = nextBlk
+		task.cur.Start = blk.GetHeight() - 1
 		task.cur.FirstHash = blk.GetBlock().GetPreviousBlockHash()
 	}
 
