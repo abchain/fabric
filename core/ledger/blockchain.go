@@ -141,7 +141,7 @@ func (blockchain *blockchain) getSize() uint64 {
 }
 
 func (blockchain *blockchain) getContinuousBlockHeight() uint64 {
-	return blockchain.continuousTo.beginBlockID
+	return blockchain.continuousTo.GetProgress()
 }
 
 // getBlock get block at arbitrary height in block chain
@@ -616,9 +616,16 @@ func testBlockExisted(odb *db.OpenchainDB, height uint64) bool {
 	return len(blockBytes) > 0
 }
 
-//test from specified height, obtain the highest/lowest block which existed
-//as a continual range
+//the legacy version of testBlockExistedRangeSafe
 func testBlockExistedRange(odb *db.OpenchainDB, height uint64, upside bool) uint64 {
+	return testBlockExistedRangeSafe(odb, height, 0, upside)
+}
+
+//obtain the highest/lowest block number adjacent to
+//a continuous range, which include the specified height
+//if it return height itself, indicating block at height is not existed
+//function also return when it hit limit
+func testBlockExistedRangeSafe(odb *db.OpenchainDB, height uint64, limit uint64, upside bool) uint64 {
 
 	if upside && height == 0 {
 		//we omit 0 for upside test: it was always supposed to be existed
@@ -637,7 +644,7 @@ func testBlockExistedRange(odb *db.OpenchainDB, height uint64, upside bool) uint
 		nextHeight = func() { height-- }
 	}
 
-	for blockItr.Seek(encodeBlockNumberDBKey(height)); height > 0 && blockItr.Valid(); nextF() {
+	for blockItr.Seek(encodeBlockNumberDBKey(height)); height > 0 && height != limit && blockItr.Valid(); nextF() {
 
 		//we had to filter out the two "marking" key (luckily)...
 		if len(blockItr.Key().Data()) > 8 {

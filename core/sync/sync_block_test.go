@@ -98,7 +98,10 @@ func TestBlockSync_Basic(t *testing.T) {
 	cliCore := newFsmHandler()
 	cliCore.sessionOpt.maxWindow = DefaultSyncOption().baseSessionWindow
 
-	blockCli := NewBlockSyncClient(testCtx, targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight))
+	blkAgent := ledger.NewBlockAgent(targetLedger)
+	blockCli := NewBlockSyncClient(testCtx, blkAgent.SyncCommitBlock,
+		BlocSyncSimplePlan(targetLedger, syncTargetHeight,
+			getBlockInfo(t, testLedger, syncTargetHeight)))
 	dummyMsg, endDF := NewReceiver(handler.core.syncCore, cliCore, nil)
 	defer endDF()
 	err := blockCli.handlingFunc(1, dummyMsg, cliCore)
@@ -128,7 +131,10 @@ func TestBlockSync_Large(t *testing.T) {
 	cliCore := newFsmHandler()
 	cliCore.sessionOpt.maxWindow = DefaultSyncOption().baseSessionWindow
 
-	blockCli := NewBlockSyncClient(testCtx, targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight))
+	blkAgent := ledger.NewBlockAgent(targetLedger)
+
+	blockCli := NewBlockSyncClient(testCtx, blkAgent.SyncCommitBlock,
+		BlocSyncSimplePlan(targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight)))
 	dummyMsg, endDF := NewReceiver(handler.core.syncCore, cliCore, nil)
 	defer endDF()
 	err := blockCli.handlingFunc(1, dummyMsg, cliCore)
@@ -155,6 +161,8 @@ func TestBlockSync_Resume(t *testing.T) {
 	targetLedger, endf := ledger.InitSecondaryTestLedger(t)
 	defer endf()
 
+	blkAgent := ledger.NewBlockAgent(targetLedger)
+
 	testCtx, endTest := context.WithCancel(context.Background())
 	defer endTest()
 
@@ -165,7 +173,8 @@ func TestBlockSync_Resume(t *testing.T) {
 
 	//first we try to sync to block 20 ...
 	syncTargetHeight := uint64(20)
-	blockCli1 := NewBlockSyncClient(testCtx, targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight))
+	blockCli1 := NewBlockSyncClient(testCtx, blkAgent.SyncCommitBlock,
+		BlocSyncSimplePlan(targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight)))
 	dummyMsg, endDF := NewReceiver(handler.core.syncCore, cliCore, nil)
 	defer endDF()
 	err := blockCli1.handlingFunc(1, dummyMsg, cliCore)
@@ -176,10 +185,9 @@ func TestBlockSync_Resume(t *testing.T) {
 
 	//then from 30 to 35 (so 20 to 29 is left vanished)
 	syncTargetHeight2 := uint64(35)
-	blockCli2 := NewBlockSyncClient(testCtx, targetLedger, syncTargetHeight2, getBlockInfo(t, testLedger, syncTargetHeight2))
-	cliImpl := blockCli2.SessionClientImpl.(*blockSyncClient)
-	cliImpl.tillHeight = syncTargetHeight2 - 5
-
+	tsks := CheckpointToSyncPlan(map[uint64][]byte{syncTargetHeight2: getBlockInfo(t, testLedger, syncTargetHeight2)})
+	tsks[0].End = syncTargetHeight2 - 5
+	blockCli2 := NewBlockSyncClient(testCtx, blkAgent.SyncCommitBlock, tsks)
 	err = blockCli2.handlingFunc(1, dummyMsg, cliCore)
 	testutil.AssertNoError(t, filterErr(err), "syncing phase 2")
 
@@ -188,13 +196,15 @@ func TestBlockSync_Resume(t *testing.T) {
 	testBlocks(t, testLedger, targetLedger, 30)
 
 	syncTargetHeight3 := uint64(49)
-	blockCli3 := NewBlockSyncClient(testCtx, targetLedger, syncTargetHeight3, getBlockInfo(t, testLedger, syncTargetHeight3))
-	cliImpl = blockCli3.SessionClientImpl.(*blockSyncClient)
-	testutil.AssertEquals(t, cliImpl.tillHeight, uint64(syncTargetHeight)+1)
+	blockCli3 := NewBlockSyncClient(testCtx, blkAgent.SyncCommitBlock,
+		BlocSyncSimplePlan(targetLedger, syncTargetHeight3, getBlockInfo(t, testLedger, syncTargetHeight3)))
+	cliImpl := blockCli3.SessionClientImpl.(*blockSyncClient)
+	testutil.AssertEquals(t, cliImpl.tasks[0].End, uint64(syncTargetHeight)+1)
 
 	err = blockCli3.handlingFunc(1, dummyMsg, cliCore)
 	testutil.AssertNoError(t, filterErr(err), "syncing phase 3")
-	testutil.AssertEquals(t, len(cliImpl.interrupted), 0)
+
+	testutil.AssertEquals(t, len(cliImpl.tasks), 0)
 
 	testutil.AssertEquals(t, targetLedger.TestContinuouslBlockRange(), syncTargetHeight3)
 	testutil.AssertEquals(t, targetLedger.GetBlockchainSize(), syncTargetHeight3+1)
@@ -235,14 +245,17 @@ func TestBlockSync_WrongData(t *testing.T) {
 	cliCore := newFsmHandler()
 	cliCore.sessionOpt.maxWindow = DefaultSyncOption().baseSessionWindow
 
-	blockCli := NewBlockSyncClient(testCtx, targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight))
+	blkAgent := ledger.NewBlockAgent(targetLedger)
+
+	blockCli := NewBlockSyncClient(testCtx, blkAgent.SyncCommitBlock,
+		BlocSyncSimplePlan(targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight)))
 	dummyMsg, endDF := NewReceiver(handler.core.syncCore, cliCore, nil)
 	defer endDF()
 	cliImpl := blockCli.SessionClientImpl.(*blockSyncClient)
 
 	err = blockCli.handlingFunc(1, dummyMsg, cliCore)
 	testutil.AssertError(t, filterErr(err), "syncing wrong data")
-	testutil.AssertEquals(t, len(cliImpl.interrupted), 1)
+	testutil.AssertEquals(t, len(cliImpl.tasks), 1)
 
 	err = testLedger.PutRawBlock(originalBlk, 2)
 	testutil.AssertNoError(t, err, "resume block in ledger")
@@ -250,7 +263,7 @@ func TestBlockSync_WrongData(t *testing.T) {
 
 	err = blockCli.handlingFunc(1, dummyMsg, cliCore)
 	testutil.AssertNoError(t, filterErr(err), "syncing resumed data")
-	testutil.AssertEquals(t, len(cliImpl.interrupted), 0)
+	testutil.AssertEquals(t, len(cliImpl.tasks), 0)
 	testBlocks(t, testLedger, targetLedger, 2)
 
 }

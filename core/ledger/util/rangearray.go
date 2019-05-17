@@ -3,12 +3,12 @@ package util
 //a simple sorted range [closed, open) array (not tree), invalid
 //range is not allow and PANIC
 //it has been tested outside of this projected
-type rangeArray struct {
+type RangeArray struct {
 	ranges [][2]uint64
 }
 
 //-1 indicate not found
-func (ra rangeArray) Find(pos uint64) int {
+func (ra RangeArray) Find(pos uint64) int {
 	for i, r := range ra.ranges {
 		//no change, do not find
 		if pos < r[0] {
@@ -21,8 +21,10 @@ func (ra rangeArray) Find(pos uint64) int {
 	return -1
 }
 
+func (ra RangeArray) Get() [][2]uint64 { return ra.ranges }
+
 //add or merge
-func (ra *rangeArray) Insert(r [2]uint64) {
+func (ra *RangeArray) Insert(r [2]uint64) {
 	//sanity check
 	if r[1] <= r[0] {
 		panic("invalid range")
@@ -52,7 +54,7 @@ func (ra *rangeArray) Insert(r [2]uint64) {
 }
 
 //after a range is inserted, the ranges follwing it may be also merged ...
-func (ra *rangeArray) repair(pos int) {
+func (ra *RangeArray) repair(pos int) {
 	testR := ra.ranges[pos]
 	finalPos := pos + 1
 

@@ -131,7 +131,9 @@ func TestStateSync_FullSimu(t *testing.T) {
 
 	syncTargetHeight := uint64(61)
 	//now let's try sync blocks!
-	blockCli := NewBlockSyncClient(baseCtx, targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight))
+	blkAgent := ledger.NewBlockAgent(targetLedger)
+	blockCli := NewBlockSyncClient(baseCtx, blkAgent.SyncCommitBlock,
+		BlocSyncSimplePlan(targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight)))
 
 	err = ExecuteSyncTask(blockCli, peerTarget.StreamStub)
 	testutil.AssertNoError(t, err, "block syncing")
