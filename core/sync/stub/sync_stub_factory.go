@@ -21,7 +21,7 @@ func (r rpcServer) Data(stream pb.Sync_DataServer) error {
 	return r.HandleServer(stream)
 }
 
-func InitSyncStub(bindPeer peer.Peer, l *ledger.Ledger, srv *grpc.Server) *sync.SyncStub {
+func InitSyncStub(bindPeer peer.Peer, l *ledger.Ledger, srv *grpc.Server) *pb.StreamStub {
 
 	ep, _ := bindPeer.GetPeerEndpoint()
 	syncstub := sync.NewSyncStub(bindPeer.GetPeerCtx(), l)
@@ -39,7 +39,7 @@ func InitSyncStub(bindPeer peer.Peer, l *ledger.Ledger, srv *grpc.Server) *sync.
 	}
 
 	pb.RegisterSyncServer(srv, rpcServer{sstub})
-	return syncstub
+	return sstub
 }
 
 func (t syncStubFactory) NewClientStream(conn *grpc.ClientConn) (grpc.ClientStream, error) {

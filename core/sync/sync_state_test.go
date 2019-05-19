@@ -58,7 +58,7 @@ func TestStateSync_Basic(t *testing.T) {
 	defer endSyncF()
 	dummyMsg, endDF := NewReceiver(handler.core.syncCore, cliCore, nil)
 	defer endDF()
-	err = stateCli.handlingFunc(1, dummyMsg, cliCore)
+	err = stateCli.handlingFunc(testCtx, 1, dummyMsg, cliCore)
 	testutil.AssertNoError(t, filterErr(err), "Full syncing")
 
 	err = syncer.FinishTask()
@@ -132,16 +132,16 @@ func TestStateSync_FullSimu(t *testing.T) {
 	syncTargetHeight := uint64(61)
 	//now let's try sync blocks!
 	blkAgent := ledger.NewBlockAgent(targetLedger)
-	blockCli := NewBlockSyncClient(baseCtx, blkAgent.SyncCommitBlock,
+	blockCli := NewBlockSyncClient(blkAgent.SyncCommitBlock,
 		BlocSyncSimplePlan(targetLedger, syncTargetHeight, getBlockInfo(t, testLedger, syncTargetHeight)))
 
-	err = ExecuteSyncTask(blockCli, peerTarget.StreamStub)
+	err = ExecuteSyncTask(baseCtx, blockCli, peerTarget.StreamStub)
 	testutil.AssertNoError(t, err, "block syncing")
 	testutil.AssertEquals(t, targetLedger.GetBlockchainSize(), syncTargetHeight+1)
 	testBlocks(t, testLedger, targetLedger, 60)
 
 	//then, states!
-	sdetector := NewStateSyncDetector(baseCtx, targetLedger, 40)
+	sdetector := NewStateSyncDetector(targetLedger, 40)
 	err = sdetector.DoDetection(peerTarget.StreamStub)
 	testutil.AssertNoError(t, err, "s detection")
 	testutil.AssertNotNil(t, sdetector.Candidate.State)
@@ -156,7 +156,7 @@ func TestStateSync_FullSimu(t *testing.T) {
 	stateCli, endSyncF := NewStateSyncClient(baseCtx, syncer)
 	defer endSyncF()
 
-	err = ExecuteSyncTask(stateCli, peerTarget.StreamStub)
+	err = ExecuteSyncTask(baseCtx, stateCli, peerTarget.StreamStub)
 	testutil.AssertNoError(t, err, "state syncing")
 
 	err = syncer.FinishTask()

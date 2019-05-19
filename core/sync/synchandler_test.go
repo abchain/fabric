@@ -62,13 +62,13 @@ func (cf *testTxCliFactory) Opts() *clientOpts {
 func (cf *testTxCliFactory) PreFilter(_ *pb.LedgerState) bool {
 	return true
 }
-func (cf *testTxCliFactory) AssignHandling() func(*pb.StreamHandler, *syncCore) error {
+func (cf *testTxCliFactory) AssignHandling() func(context.Context, *pb.StreamHandler, *syncCore) error {
 
 	cf.Lock()
 	defer cf.Unlock()
 	if len(cf.target) == 0 {
 		//done, just assign a empty function
-		return func(*pb.StreamHandler, *syncCore) error {
+		return func(context.Context, *pb.StreamHandler, *syncCore) error {
 			return NormalEnd{}
 		}
 	}
@@ -82,7 +82,7 @@ func (cf *testTxCliFactory) AssignHandling() func(*pb.StreamHandler, *syncCore) 
 		cf.target, assignedTask = cf.target[:assignedPos], cf.target[assignedPos:]
 	}
 
-	return func(h *pb.StreamHandler, c *syncCore) (err error) {
+	return func(ctx context.Context, h *pb.StreamHandler, c *syncCore) (err error) {
 
 		var ret []*pb.Transaction
 		reside := make(map[string]bool)
@@ -99,7 +99,7 @@ func (cf *testTxCliFactory) AssignHandling() func(*pb.StreamHandler, *syncCore) 
 
 			if len(residearr) > 0 {
 				clilogger.Debugf("tx sync not finished, resident task: %v", residearr)
-				err = fmt.Errorf("Not finished")
+				err = fmt.Errorf("Not finished (%d of %d)", len(residearr), len(reside))
 			}
 
 			cf.Lock()
@@ -131,8 +131,8 @@ func (cf *testTxCliFactory) AssignHandling() func(*pb.StreamHandler, *syncCore) 
 				return NormalEnd{}
 			}
 
-		case <-cf.opt.Done():
-			return cf.opt.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }
@@ -166,10 +166,10 @@ func TestTxSync_Basic(t *testing.T) {
 	}
 	testutil.AssertNoError(t, testLedger.PutTransactions(txs), "put txs")
 
-	opt := DefaultClientOption(baseCtx)
+	opt := DefaultClientOption()
 	opt.ConcurrentLimit = 3
-	//we need one retry: one worker may take out 2 resident task once but just
-	//obtain 1, left another for more retry...
+	opt.RetryFail = true
+
 	opt.RetryCount = 1
 	testCF := &testTxCliFactory{
 		opt:         opt,
@@ -177,7 +177,7 @@ func TestTxSync_Basic(t *testing.T) {
 		target:      txids[:5],
 	}
 
-	err := ExecuteSyncTask(testCF, targetStub.StreamStub)
+	err := ExecuteSyncTask(baseCtx, testCF, targetStub.StreamStub)
 
 	testutil.AssertNoError(t, err, "sync tx")
 	testutil.AssertEquals(t, len(testCF.txout), 5)

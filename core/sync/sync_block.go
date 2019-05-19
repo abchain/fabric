@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/abchain/fabric/core/ledger"
 	pb "github.com/abchain/fabric/protos"
-	"golang.org/x/net/context"
 	"sync"
 )
 
@@ -213,7 +212,7 @@ func BlocSyncSimplePlan(l *ledger.Ledger, targetHeight uint64, targetBlock []byt
 
 }
 
-func NewBlockSyncClient(ctx context.Context, pf func(uint64, *pb.Block) error, tsk []*pb.SyncBlockRange) *sessionCliAdapter {
+func NewBlockSyncClient(pf func(uint64, *pb.Block) error, tsk []*pb.SyncBlockRange) *sessionCliAdapter {
 
 	cliCore := &blockSyncClient{
 		putBlock: pf,
@@ -228,7 +227,7 @@ func NewBlockSyncClient(ctx context.Context, pf func(uint64, *pb.Block) error, t
 	}
 
 	clilogger.Infof("Start new blocksync client: %v", cliCore)
-	retAdapter := newSessionClient(ctx, "blocksyncer", cliCore)
+	retAdapter := newSessionClient("blocksyncer", cliCore)
 
 	retAdapter.setConnectMessage(&pb.OpenSession{
 		For: &pb.OpenSession_BlocksOrDelta{BlocksOrDelta: cliCore.startHeight},

@@ -106,17 +106,15 @@ func NewStateSyncClient(ctx context.Context, syncer stateSyncer) (*sessionCliAda
 	target := syncer.GetTarget()
 	ret := &stateSyncClient{syncer: syncer}
 
-	wctx, cf := context.WithCancel(ctx)
-	retAdapter := newSessionClient(wctx, "statesyncer", ret)
+	retAdapter := newSessionClient("statesyncer", ret)
 	retAdapter.setConnectMessage(&pb.OpenSession{
 		For: &pb.OpenSession_Fullstate{Fullstate: target},
 	})
 
-	ret.init(wctx)
+	ret.init(ctx)
 	clilogger.Infof("create new state sync client for target %X", target)
 
 	return retAdapter, func() {
-		cf()
 		for {
 			_, finished := <-ret.taskAssigned
 			//keep polling until channel is closed (so assigned thread quit)
@@ -237,7 +235,7 @@ type stateSyncDetector struct {
 	result       map[int]int
 }
 
-func NewStateSyncDetector(ctx context.Context, l *ledger.Ledger, stateRange int) *stateSyncDetector {
+func NewStateSyncDetector(l *ledger.Ledger, stateRange int) *stateSyncDetector {
 
 	if l.GetBlockchainSize() == 0 {
 		clilogger.Errorf("Create sync detector fail: empty blockchain")

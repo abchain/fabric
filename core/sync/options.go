@@ -1,8 +1,6 @@
 package sync
 
-import (
-	"golang.org/x/net/context"
-)
+import ()
 
 type syncOpt struct {
 	SyncMsgPrefilter
@@ -35,8 +33,6 @@ func DefaultSyncOption() *syncOpt {
 }
 
 type clientOpts struct {
-	//context of this task
-	context.Context
 	ConcurrentLimit int
 	//if we can not finish task when walk-through all streams,
 	//how many times we should retry, -1 indicate keep retring
@@ -49,12 +45,11 @@ type clientOpts struct {
 	RetryFail bool
 }
 
-func DefaultClientOption(ctx context.Context) *clientOpts {
+func DefaultClientOption() *clientOpts {
 
 	const defaultConcurrentLimit = 1
 
 	ret := new(clientOpts)
-	ret.Context = ctx
 	ret.ConcurrentLimit = defaultConcurrentLimit
 
 	return ret

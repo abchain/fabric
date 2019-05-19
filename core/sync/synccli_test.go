@@ -36,18 +36,18 @@ func (cf *testCliFactory) PreFilter(rledger *pb.LedgerState) bool {
 	return ret
 }
 
-func (cf *testCliFactory) AssignHandling() func(*pb.StreamHandler, *syncCore) error {
+func (cf *testCliFactory) AssignHandling() func(context.Context, *pb.StreamHandler, *syncCore) error {
 
 	ret := cf.workassign(cf.assignedCounter)
 	cf.assignedCounter++
 
 	if ret {
-		return func(*pb.StreamHandler, *syncCore) error {
+		return func(context.Context, *pb.StreamHandler, *syncCore) error {
 			time.Sleep(cf.doneLat)
 			return nil
 		}
 	} else {
-		return func(*pb.StreamHandler, *syncCore) error {
+		return func(context.Context, *pb.StreamHandler, *syncCore) error {
 			time.Sleep(cf.failLat)
 			return fmt.Errorf("just fail")
 		}
@@ -83,7 +83,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 	}
 	//first test, fail first some peer, all worker work, no retry
 
-	opt := DefaultClientOption(baseCtx)
+	opt := DefaultClientOption()
 	opt.ConcurrentLimit = 2
 	testCF.opt = opt
 	testCF.prefilter = func(counter int) bool {
@@ -99,7 +99,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 		return true
 	}
 
-	err1 := ExecuteSyncTask(testCF, sstub.StreamStub)
+	err1 := ExecuteSyncTask(baseCtx, testCF, sstub.StreamStub)
 
 	testutil.AssertNoError(t, err1, "schedule test 1")
 
@@ -119,7 +119,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 		return counter >= 1
 	}
 
-	err2 := ExecuteSyncTask(testCF, sstub.StreamStub)
+	err2 := ExecuteSyncTask(baseCtx, testCF, sstub.StreamStub)
 
 	testutil.AssertError(t, err2, "schedule test 2")
 
@@ -129,7 +129,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 	testCF.prefilter = func(counter int) bool {
 		return counter%dummyClis == 1
 	}
-	err3 := ExecuteSyncTask(testCF, sstub.StreamStub)
+	err3 := ExecuteSyncTask(baseCtx, testCF, sstub.StreamStub)
 
 	testutil.AssertNoError(t, err3, "schedule test 3")
 
@@ -146,7 +146,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 		return counter != 1
 	}
 
-	err4 := ExecuteSyncTask(testCF, sstub.StreamStub)
+	err4 := ExecuteSyncTask(baseCtx, testCF, sstub.StreamStub)
 
 	testutil.AssertNoError(t, err4, "schedule test 4")
 
@@ -164,7 +164,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 			return true
 		}
 	}
-	err5 := ExecuteSyncTask(testCF, sstub.StreamStub)
+	err5 := ExecuteSyncTask(baseCtx, testCF, sstub.StreamStub)
 
 	testutil.AssertNoError(t, err5, "schedule test 5")
 

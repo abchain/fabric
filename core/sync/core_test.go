@@ -181,6 +181,44 @@ func TestCoreSimpleQuery(t *testing.T) {
 
 }
 
+type dummyReceiver struct{}
+
+func (dummyReceiver) SendMessage(proto.Message) error {
+	return nil
+}
+
+func TestCoreCancelRequest(t *testing.T) {
+
+	core1 := newFsmHandler()
+	r := &pb.SimpleReq_Tx{Tx: &pb.TxQuery{Txid: []string{"aa", "bb", "cc"}}}
+
+	resp, err := core1.Request(dummyReceiver{}, &pb.SimpleReq{Req: r})
+	testutil.AssertNoError(t, err, "request")
+	testutil.AssertEquals(t, core1.IsIdle(), false)
+	testutil.AssertEquals(t, len(core1.client), 1)
+
+	err = core1.CancelRequest(resp)
+	testutil.AssertNoError(t, err, "cancel")
+	testutil.AssertEquals(t, core1.IsIdle(), true)
+	testutil.AssertEquals(t, len(core1.client), 0)
+
+	anychn := make(chan *pb.SyncMsg_Response)
+	resp, err = core1.Request(dummyReceiver{}, &pb.SimpleReq{Req: r})
+	testutil.AssertNoError(t, err, "request 2")
+	testutil.AssertEquals(t, core1.IsIdle(), false)
+	testutil.AssertEquals(t, len(core1.client), 1)
+
+	err = core1.CancelRequest(anychn)
+	testutil.AssertError(t, err, "wrong cancel 2")
+	testutil.AssertEquals(t, core1.IsIdle(), false)
+	testutil.AssertEquals(t, len(core1.client), 1)
+
+	err = core1.CancelRequest(resp)
+	testutil.AssertNoError(t, err, "cancel 2")
+	testutil.AssertEquals(t, core1.IsIdle(), true)
+	testutil.AssertEquals(t, len(core1.client), 0)
+}
+
 func extractMsg(t *testing.T, srv chan *pb.SyncMsg) *pb.SyncMsg {
 	select {
 	case msg := <-srv:

@@ -3,6 +3,8 @@ package sync
 import (
 	"fmt"
 	pb "github.com/abchain/fabric/protos"
+	"golang.org/x/net/context"
+	"time"
 )
 
 type StreamFilter struct {
@@ -22,7 +24,7 @@ func (self StreamFilter) QualitifiedPeer(ep *pb.PeerEndpoint) bool {
 
 type NewPeerHandshake struct{}
 
-func updateRemoteLedger(strm *pb.StreamHandler, h *syncHandler) error {
+func updateRemoteLedger(ctx context.Context, strm *pb.StreamHandler, h *syncHandler) error {
 
 	retC, err := h.core.Request(strm,
 		&pb.SimpleReq{
@@ -34,20 +36,26 @@ func updateRemoteLedger(strm *pb.StreamHandler, h *syncHandler) error {
 		return err
 	}
 
-	ret, ok := <-retC
-	if !ok {
-		return fmt.Errorf("channel fail")
-	} else if serr := ret.GetErr(); serr != nil {
-		return fmt.Errorf("response fail: %s", serr.GetErrorDetail())
-	} else if s := ret.GetSimple().GetState(); s == nil {
-		return fmt.Errorf("wrong payload on resp %v", ret)
-	} else {
-		h.rDataLock.Lock()
-		defer h.rDataLock.Unlock()
-		h.remoteLedgerState = s
-		logger.Infof("Get remote ledeger of peer <%v>: %v", h.remotePeerId, s)
+	select {
+	case ret, ok := <-retC:
+		if !ok {
+			return fmt.Errorf("channel fail")
+		} else if serr := ret.GetErr(); serr != nil {
+			return fmt.Errorf("response fail: %s", serr.GetErrorDetail())
+		} else if s := ret.GetSimple().GetState(); s == nil {
+			return fmt.Errorf("wrong payload on resp %v", ret)
+		} else {
+			h.rDataLock.Lock()
+			defer h.rDataLock.Unlock()
+			h.remoteLedgerState = s
+			logger.Infof("Get remote ledeger of peer <%v>: %v", h.remotePeerId, s)
+		}
+		return nil
+	case <-ctx.Done():
+		h.core.CancelRequest(retC)
+		return ctx.Err()
 	}
-	return nil
+
 }
 
 func (NewPeerHandshake) NotifyNewPeer(peer *pb.PeerID, stub *pb.StreamStub) {
@@ -56,9 +64,14 @@ func (NewPeerHandshake) NotifyNewPeer(peer *pb.PeerID, stub *pb.StreamStub) {
 	if strm != nil {
 		castedh := strm.Impl().(*syncHandler)
 		logger.Debugf("Start push/pull local ledeger status to <%v>", peer)
+		//TODO: where should we get the timeout?
+		ctx, endf := context.WithTimeout(castedh.handlerCtx, 5*time.Second)
+		go func() {
+			if err := updateRemoteLedger(ctx, strm, castedh); err != nil {
+				logger.Errorf("Push/Pull local ledeger status to <%v> failed: %s", peer, err)
+			}
+			endf()
+		}()
 
-		if err := updateRemoteLedger(strm, castedh); err != nil {
-			logger.Errorf("Push/Pull local ledeger status to <%v> failed: %s", peer, err)
-		}
 	}
 }

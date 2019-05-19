@@ -41,7 +41,7 @@ type syncCore struct {
 	msgId      uint64
 	sessionOpt sessionOptions
 
-	client map[uint64]chan<- *pb.SyncMsg_Response
+	client map[uint64]chan *pb.SyncMsg_Response
 	//we basically use this for tracing currently pending request
 	//and also record a message farend for easily using
 	waitForResp map[uint64]msgSender
@@ -61,7 +61,7 @@ type syncSession struct {
 	maxWindow   uint32
 }
 
-func (s *syncCore) Init(push chan<- *pb.SyncMsg_Response, srv chan<- *pb.SyncMsg) {
+func (s *syncCore) Init(push chan *pb.SyncMsg_Response, srv chan<- *pb.SyncMsg) {
 	s.client[0] = push
 	s.server = srv
 }
@@ -112,7 +112,7 @@ func (s *syncCore) onSendMessage(e *fsm.Event) {
 		farend := e.Args[1].(msgSender)
 		farend.SendMessage(msg)
 	case 3:
-		farend, chn := e.Args[1].(msgSender), e.Args[2].(chan<- *pb.SyncMsg_Response)
+		farend, chn := e.Args[1].(msgSender), e.Args[2].(chan *pb.SyncMsg_Response)
 		msg.CorrelationId = s.msgId
 		s.client[msg.CorrelationId] = chn
 		s.msgId++
@@ -294,6 +294,20 @@ var defaultClosedChan = func() <-chan struct{} {
 
 const setWriteNotify = "settingWriteNotify"
 const testIdle = "testingIdle"
+const cancelRequest = "cancelRequest"
+
+func (s *syncCore) onCancelRequest(e *fsm.Event) {
+	reqC := e.Args[0].(chan *pb.SyncMsg_Response)
+
+	for k, c := range s.client {
+		if c == reqC {
+			logger.Infof("Sync request [%d] has been cancelled", k)
+			delete(s.client, k)
+			return
+		}
+	}
+	e.Cancel(fmt.Errorf("No client entry"))
+}
 
 func (s *syncCore) onSettingWriteNotify(e *fsm.Event) {
 
@@ -387,17 +401,17 @@ func (s *syncCore) Push(sh msgSender, msg *pb.SimpleResp) error {
 	}, sh)
 }
 
-func (s *syncCore) Request(sh msgSender, msg *pb.SimpleReq) (<-chan *pb.SyncMsg_Response, error) {
+func (s *syncCore) Request(sh msgSender, msg *pb.SimpleReq) (chan *pb.SyncMsg_Response, error) {
 
 	chn := make(chan *pb.SyncMsg_Response, 1)
 
 	return chn, s.SendMessage(&pb.SyncMsg{
 		Type:    pb.SyncMsg_CLIENT_SIMPLE,
 		Request: &pb.SyncMsg_Request{Simple: msg},
-	}, sh, chan<- *pb.SyncMsg_Response(chn))
+	}, sh, chn)
 }
 
-func (s *syncCore) OpenSession(sh msgSender, req *pb.OpenSession) (<-chan *pb.SyncMsg_Response, error) {
+func (s *syncCore) OpenSession(sh msgSender, req *pb.OpenSession) (chan *pb.SyncMsg_Response, error) {
 
 	chn := make(chan *pb.SyncMsg_Response, s.sessionOpt.maxWindow+1)
 
@@ -411,7 +425,14 @@ func (s *syncCore) OpenSession(sh msgSender, req *pb.OpenSession) (<-chan *pb.Sy
 	return chn, s.SendMessage(&pb.SyncMsg{
 		Type:    pb.SyncMsg_CLIENT_SESSION_OPEN,
 		Request: &pb.SyncMsg_Request{Handshake: req},
-	}, sh, chan<- *pb.SyncMsg_Response(chn))
+	}, sh, chn)
+}
+
+//the input channel will be closed, no matter success or not
+func (s *syncCore) CancelRequest(rc chan *pb.SyncMsg_Response) error {
+	defer close(rc)
+	return filterError(s.Event(cancelRequest, rc))
+
 }
 
 func (s *syncCore) ResponseFailure(msgin *pb.SyncMsg, err error) error {
@@ -511,7 +532,7 @@ func newFsmHandler() *syncCore {
 	const session = fsm_state_session
 	var allstates = []string{idle, handshake, session}
 	core := &syncCore{
-		client:      make(map[uint64]chan<- *pb.SyncMsg_Response),
+		client:      make(map[uint64]chan *pb.SyncMsg_Response),
 		waitForResp: make(map[uint64]msgSender),
 		msgId:       1,
 	}
@@ -549,6 +570,7 @@ func newFsmHandler() *syncCore {
 
 		//special: write notify, idle test, exit dead
 		{Name: testIdle, Src: []string{idle}, Dst: idle},
+		{Name: cancelRequest, Src: []string{idle}, Dst: idle},
 		{Name: setWriteNotify, Src: []string{session}, Dst: session},
 		{Name: "fatal", Src: allstates, Dst: "dead"},
 	}
@@ -585,6 +607,7 @@ func newFsmHandler() *syncCore {
 		//inner methods
 		"before_" + setWriteNotify: core.onSettingWriteNotify,
 		"before_" + testIdle:       core.onIdleTesting,
+		"before_" + cancelRequest:  core.onCancelRequest,
 	}
 	//also add handler for every send event
 	for id, _ := range pb.SyncMsg_Type_name {

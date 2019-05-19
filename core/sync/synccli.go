@@ -20,15 +20,16 @@ type ClientFactory interface {
 	//handling function MUST return nil to incidate current task
 	//is finished and non-nil to indicate scheduler should retry
 	//another peer
-	AssignHandling() func(*pb.StreamHandler, *syncCore) error
+	AssignHandling() func(context.Context, *pb.StreamHandler, *syncCore) error
 }
 
 type syncTaskScheduler struct {
 	sync.Mutex
-	activedTasks    int
-	conCurrentLimit int
-	taskEndNotify   *sync.Cond
-	sstub           *pb.StreamStub
+	activedTasks     int
+	conCurrentLimit  int
+	excludeFatalOnly bool
+	taskEndNotify    *sync.Cond
+	sstub            *pb.StreamStub
 
 	//the peer which has been handled and finished, so we never
 	//retry on them when retry another traversing
@@ -45,13 +46,14 @@ type FatalEnd struct {
 
 var retryIntervalLimit = time.Second * 10
 
-func ExecuteSyncTask(cf ClientFactory, sstub *pb.StreamStub) error {
+func ExecuteSyncTask(ctx context.Context, cf ClientFactory, sstub *pb.StreamStub) error {
 
 	opts := cf.Opts()
 
 	rt := &syncTaskScheduler{
-		conCurrentLimit: opts.ConcurrentLimit,
-		excluedePeers:   make(map[pb.PeerID]bool),
+		conCurrentLimit:  opts.ConcurrentLimit,
+		excluedePeers:    make(map[pb.PeerID]bool),
+		excludeFatalOnly: opts.RetryFail,
 	}
 
 	//checking for correction
@@ -67,8 +69,8 @@ func ExecuteSyncTask(cf ClientFactory, sstub *pb.StreamStub) error {
 	for {
 		clilogger.Infof("start sync task [%s] (%d times)", cf.Tag(), retryCnt)
 
-		rt.innerSpawn(opts.Context, sstub, cf)
-		if err := rt.waitAll(opts.Context); err != nil {
+		rt.innerSpawn(ctx, sstub, cf)
+		if err := rt.waitAll(ctx); err != nil {
 			return err
 		}
 
@@ -88,8 +90,8 @@ func ExecuteSyncTask(cf ClientFactory, sstub *pb.StreamStub) error {
 		}
 
 		select {
-		case <-opts.Context.Done():
-			return opts.Context.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-time.NewTimer(retryTime).C:
 			//do retry
 		}
@@ -116,11 +118,15 @@ func (s *syncTaskScheduler) activeTaskExit(peer *pb.PeerID, err error) {
 		clilogger.Debugf("A task on peer [%s] has normally exited", peer.GetName())
 		s.conCurrentLimit--
 		delete(s.excluedePeers, *peer)
-	} else {
+	} else if _, ok := err.(FatalEnd); ok {
 		//exclude this peer
-		clilogger.Infof("task on peer [%s] fail: %s, exclude this peer", peer.GetName(), err)
+		clilogger.Infof("task on peer [%s] is FATAL fail: %s, exclude this peer", peer.GetName(), err)
+		s.excluedePeers[*peer] = false
+	} else if !s.excludeFatalOnly {
+		clilogger.Infof("task on peer [%s] is fail: %s, exclude this peer", peer.GetName(), err)
 		s.excluedePeers[*peer] = false
 	}
+
 	s.taskEndNotify.Signal()
 }
 
@@ -197,11 +203,8 @@ func (s *syncTaskScheduler) innerSpawn(ctx context.Context, sstub *pb.StreamStub
 
 		clilogger.Debugf("start syncing task on peer %s", strm.Id)
 		//spawn handling routine
-		go func(f func(*pb.StreamHandler, *syncCore) error, strm *pb.PickedStreamHandler, core *syncCore) {
-			err := f(strm.StreamHandler, core)
-			if ferr, ok := err.(FatalEnd); ok {
-				clilogger.Errorf("One worker for sync task [%s] is FATAL failed: %s", cf.Tag(), ferr)
-			}
+		go func(f func(context.Context, *pb.StreamHandler, *syncCore) error, strm *pb.PickedStreamHandler, core *syncCore) {
+			err := f(ctx, strm.StreamHandler, core)
 			s.activeTaskExit(strm.Id, err)
 
 		}(cf.AssignHandling(), strm, castedh.core.syncCore)
@@ -245,10 +248,10 @@ type sessionCliAdapter struct {
 	SessionClientImpl
 }
 
-func newSessionClient(ctx context.Context, tag string, impl SessionClientImpl) *sessionCliAdapter {
+func newSessionClient(tag string, impl SessionClientImpl) *sessionCliAdapter {
 	ret := new(sessionCliAdapter)
 	ret.tag = tag
-	ret.options = DefaultClientOption(ctx)
+	ret.options = DefaultClientOption()
 	ret.SessionClientImpl = impl
 	return ret
 }
@@ -257,18 +260,18 @@ func (sa *sessionCliAdapter) setConnectMessage(msg *pb.OpenSession) {
 	sa.conn = msg
 }
 
-func (sa *sessionCliAdapter) waitResp(c <-chan *pb.SyncMsg_Response) (*pb.SyncMsg_Response, error) {
+func (sa *sessionCliAdapter) waitResp(ctx context.Context, c <-chan *pb.SyncMsg_Response) (*pb.SyncMsg_Response, error) {
 
 	select {
-	case <-sa.options.Context.Done():
-		return nil, sa.options.Context.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case msg := <-c:
 		return msg, nil
 	}
 
 }
 
-func (sa *sessionCliAdapter) handlingFunc(tskId int, strm msgSender, c *syncCore) (err error) {
+func (sa *sessionCliAdapter) handlingFunc(ctx context.Context, tskId int, strm msgSender, c *syncCore) (err error) {
 
 	//a task is assigned first so we can fast end handling if no task
 	req, taskCustom := sa.Next(tskId)
@@ -287,16 +290,15 @@ func (sa *sessionCliAdapter) handlingFunc(tskId int, strm msgSender, c *syncCore
 		return NormalEnd{}
 	}
 
-	var respc <-chan *pb.SyncMsg_Response
-	respc, err = c.OpenSession(strm, sa.conn)
-
+	respc, err := c.OpenSession(strm, sa.conn)
 	//opensession fail
 	if err != nil {
 		return err
 	}
 
-	accept, err := sa.waitResp(respc)
+	accept, err := sa.waitResp(ctx, respc)
 	if err != nil {
+		c.CancelRequest(respc)
 		return err
 	} else if serr := accept.GetErr(); serr != nil {
 		return fmt.Errorf("open session fail <%d>: %s", serr.GetErrorCode(), serr.GetErrorDetail())
@@ -316,7 +318,7 @@ func (sa *sessionCliAdapter) handlingFunc(tskId int, strm msgSender, c *syncCore
 
 	for {
 		var msg *pb.SyncMsg_Response
-		msg, err = sa.waitResp(respc)
+		msg, err = sa.waitResp(ctx, respc)
 		if err != nil {
 			return err
 		}
@@ -364,7 +366,7 @@ func (sa *sessionCliAdapter) handlingFunc(tskId int, strm msgSender, c *syncCore
 
 func (sa *sessionCliAdapter) Tag() string       { return sa.tag }
 func (sa *sessionCliAdapter) Opts() *clientOpts { return sa.options }
-func (sa *sessionCliAdapter) AssignHandling() func(*pb.StreamHandler, *syncCore) error {
+func (sa *sessionCliAdapter) AssignHandling() func(context.Context, *pb.StreamHandler, *syncCore) error {
 
 	if sa.conn == nil {
 		panic("Connect message is not set")
@@ -373,8 +375,8 @@ func (sa *sessionCliAdapter) AssignHandling() func(*pb.StreamHandler, *syncCore)
 	tskId := sa.taskIdCnt
 	sa.taskIdCnt++
 
-	return func(strm *pb.StreamHandler, c *syncCore) error {
-		return sa.handlingFunc(tskId, strm, c)
+	return func(ctx context.Context, strm *pb.StreamHandler, c *syncCore) error {
+		return sa.handlingFunc(ctx, tskId, strm, c)
 	}
 
 }

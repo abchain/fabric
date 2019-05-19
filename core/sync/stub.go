@@ -10,6 +10,13 @@ import (
 var logger = logging.MustGetLogger("sync")
 var clilogger = logging.MustGetLogger("sync/cli")
 
+//different from gossip, syncstub is just a lite wrapper for ledger and
+//option templates, responding to create handler for remote peer and
+//act as a partial stack for factory of streamhandler, that is because
+//sync never trigger a broadcast to each neighbours like gossip and
+//any broadcast action can be treated by a sync-client. The later is
+//handle in sync/strategy module
+
 type SyncStub struct {
 	ctx            context.Context
 	localLedger    *ledger.Ledger

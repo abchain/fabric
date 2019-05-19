@@ -33,7 +33,7 @@ logging:
   #
   # Developers: Please see fabric/docs/Setup/logging-control.md for more
   # options.
-  test: info:statesync,statesync/cli,indexes=debug
+  test: info:sync,sync/cli,indexes=debug
 #  output:
 #    file: "test.log"
 #    postfix: false
