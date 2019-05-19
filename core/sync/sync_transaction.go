@@ -1,14 +1,31 @@
-package syncstrategy
+package sync
 
 import (
 	"fmt"
-	"github.com/abchain/fabric/core/ledger"
-	"github.com/abchain/fabric/core/sync"
 	pb "github.com/abchain/fabric/protos"
 	"golang.org/x/net/context"
 	"sync"
-	"time"
 )
+
+func NewTxSyncClient(opt *clientOpts, txids []string) *txCliFactory {
+
+	if opt == nil {
+		opt = DefaultClientOption()
+	}
+
+	assign := len(txids) / opt.ConcurrentLimit
+	if assign*opt.ConcurrentLimit < len(txids) {
+		assign++
+	}
+
+	clilogger.Debugf("create client for sync %d txs, assign %d on each worker", len(txids), assign)
+
+	return &txCliFactory{
+		opt:         opt,
+		assignedCnt: assign,
+		target:      txids,
+	}
+}
 
 type txCliFactory struct {
 	opt         *clientOpts
@@ -18,7 +35,21 @@ type txCliFactory struct {
 	txout  []*pb.Transaction
 }
 
-func (cf *txCliFactory) Tag() string { return "testTxClis" }
+func (cf *txCliFactory) ReAssign() {
+	assign := len(cf.target) / cf.opt.ConcurrentLimit
+	if assign*cf.opt.ConcurrentLimit < len(cf.target) {
+		assign++
+	}
+	clilogger.Debugf("reassign client for sync %d txs, assign %d on each worker", len(cf.target), assign)
+
+	cf.assignedCnt = assign
+}
+
+func (cf *txCliFactory) Result() ([]*pb.Transaction, []string) {
+	return cf.txout, cf.target
+}
+
+func (cf *txCliFactory) Tag() string { return "txClient" }
 func (cf *txCliFactory) Opts() *clientOpts {
 	return cf.opt
 }
@@ -31,7 +62,7 @@ func (cf *txCliFactory) AssignHandling() func(context.Context, *pb.StreamHandler
 	defer cf.Unlock()
 	if len(cf.target) == 0 {
 		//done, just assign a empty function
-		return func(*pb.StreamHandler, *syncCore) error {
+		return func(context.Context, *pb.StreamHandler, *syncCore) error {
 			return NormalEnd{}
 		}
 	}
@@ -95,7 +126,7 @@ func (cf *txCliFactory) AssignHandling() func(context.Context, *pb.StreamHandler
 			}
 
 		case <-ctx.Done():
-			c.CancelRequst(chn)
+			c.CancelRequest(chn)
 			return ctx.Err()
 		}
 	}
