@@ -143,6 +143,8 @@ message ChaincodeMessage {
         RANGE_QUERY_STATE_NEXT = 18;
         RANGE_QUERY_STATE_CLOSE = 19;
         KEEPALIVE = 20;
+        //new register, using a extended struct instead of chaincodeID
+        REGISTER2 = 21;
     }
 
     Type type = 1;
@@ -158,6 +160,12 @@ message ChaincodeMessage {
 
     //Extended chaincodeEvent 
     repeated ChaincodeEvent chaincodeEvents = 7;
+}
+
+message CCRegister {
+    ChaincodeID ccID = 1;
+    string networkID = 2;
+    string nodeID = 3;
 }
 
 message PutStateInfo {

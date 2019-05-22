@@ -2,89 +2,65 @@ package embedded_chaincode
 
 import (
 	"fmt"
-
 	"github.com/abchain/fabric/core/chaincode"
-	"github.com/abchain/fabric/core/embedded_chaincode/api"
-	"github.com/abchain/fabric/core/ledger"
-	"github.com/abchain/fabric/protos"
-	"github.com/op/go-logging"
+	"github.com/abchain/fabric/core/chaincode/container/inproccontroller"
+	"github.com/abchain/fabric/core/chaincode/shim"
 	"github.com/spf13/viper"
-	"golang.org/x/net/context"
 )
 
-var sysccLogger = logging.MustGetLogger("sysccapi")
+var wlchaincodes map[string]string
 
-func verifySysCC() ([]*api.SystemChaincode, error) {
+func RegisterSysCC(name string, cc shim.Chaincode, chains ...chaincode.ChainName) (string, error) {
 
-	wlchaincodes := viper.GetStringMapString("chaincode.system")
+	if wlchaincodes == nil {
+		wlchaincodes = viper.GetStringMapString("chaincode.system")
+	}
 
-	var vcc []*api.SystemChaincode
-	for _, syscc := range api.ListSysCC() {
-		if val, ok := wlchaincodes[syscc.Name]; ok && (val == "enable" || val == "true" || val == "yes") {
-
-			if err := api.RegisterECC(&api.EmbeddedChaincode{syscc.Name, syscc.Chaincode}); err != nil {
-				sysccLogger.Warningf("Can not register syscc %s as embedded cc: %s", syscc.Name, err)
-				if syscc.Enforced {
-					return nil, fmt.Errorf("system chaincode <%s> require to be launched but fail: %s", syscc.Name, err)
-				}
-			} else {
-				vcc = append(vcc, syscc)
-			}
-		} else {
-			if syscc.Enforced {
-				return nil, fmt.Errorf("system chaincode <%s> require to be launched but not on whitelist", syscc.Name)
-			}
-
+	//notice if chaincode.system is not specified, it was consider as no restriction
+	//on syscc
+	if len(wlchaincodes) > 0 {
+		if val, ok := wlchaincodes[name]; !ok || !(val == "enable" || val == "true" || val == "yes") {
+			return "", fmt.Errorf("can not register system chaincode <%s>", name)
 		}
 	}
 
-	return vcc, nil
+	regPath := Embedded_Dummy_Path + name
+	var pfname []string
+	for _, cn := range chains {
+		pfname = append(pfname, string(cn))
+	}
 
+	return regPath, inproccontroller.RegisterOnPlatform(regPath, cc, pfname)
 }
 
-func RegisterSysCCs(ledger *ledger.Ledger, chain *chaincode.ChaincodeSupport) error {
+// func sysccInit(ctxt context.Context, l *ledger.Ledger, chain *chaincode.ChaincodeSupport, syscc *api.SystemChaincode) error {
+// 	// First build and get the deployment spec
+// 	chaincodeID := &protos.ChaincodeID{Path: syscc.Path, Name: syscc.Name}
+// 	spec := protos.ChaincodeSpec{Type: protos.ChaincodeSpec_Type(protos.ChaincodeSpec_Type_value["GOLANG"]), ChaincodeID: chaincodeID, CtorMsg: &protos.ChaincodeInput{Args: syscc.InitArgs}}
 
-	sysccs, err := verifySysCC()
-	if err != nil {
-		return err
-	}
+// 	chaincodeDeploymentSpec, err := api.BuildEmbeddedCC(ctxt, &spec)
 
-	for _, sysCC := range sysccs {
-		if err = sysccInit(context.Background(), ledger, chain, sysCC); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// 	if err != nil {
+// 		return fmt.Errorf("Error deploying chaincode spec (%s): %s", syscc.Name, err)
+// 	}
 
-func sysccInit(ctxt context.Context, l *ledger.Ledger, chain *chaincode.ChaincodeSupport, syscc *api.SystemChaincode) error {
-	// First build and get the deployment spec
-	chaincodeID := &protos.ChaincodeID{Path: syscc.Path, Name: syscc.Name}
-	spec := protos.ChaincodeSpec{Type: protos.ChaincodeSpec_Type(protos.ChaincodeSpec_Type_value["GOLANG"]), ChaincodeID: chaincodeID, CtorMsg: &protos.ChaincodeInput{Args: syscc.InitArgs}}
+// 	err, chrte := chain.Launch(ctxt, l, chaincodeID, chaincodeDeploymentSpec)
+// 	if err != nil {
+// 		return fmt.Errorf("Failed to launch chaincode spec (%s): %s", syscc.Name, err)
+// 	}
 
-	chaincodeDeploymentSpec, err := api.BuildEmbeddedCC(ctxt, &spec)
+// 	dummyout := ledger.TxExecStates{}
+// 	dummyout.InitForInvoking(l)
+// 	//here we never mark ledger into tx status, so init in syscc NEVER write state
+// 	_, err = chain.ExecuteLite(ctxt, chrte, protos.Transaction_CHAINCODE_DEPLOY, spec.CtorMsg, dummyout)
+// 	if err != nil {
+// 		return fmt.Errorf("Failed to init chaincode spec(%s): %s", syscc.Name, err)
+// 	}
 
-	if err != nil {
-		return fmt.Errorf("Error deploying chaincode spec (%s): %s", syscc.Name, err)
-	}
+// 	if !dummyout.IsEmpty() {
+// 		sysccLogger.Warning("system chaincode [%s] set states in init, which will be just discarded", syscc.Name)
+// 	}
 
-	err, chrte := chain.Launch(ctxt, l, chaincodeID, chaincodeDeploymentSpec)
-	if err != nil {
-		return fmt.Errorf("Failed to launch chaincode spec (%s): %s", syscc.Name, err)
-	}
-
-	dummyout := ledger.TxExecStates{}
-	dummyout.InitForInvoking(l)
-	//here we never mark ledger into tx status, so init in syscc NEVER write state
-	_, err = chain.ExecuteLite(ctxt, chrte, protos.Transaction_CHAINCODE_DEPLOY, spec.CtorMsg, dummyout)
-	if err != nil {
-		return fmt.Errorf("Failed to init chaincode spec(%s): %s", syscc.Name, err)
-	}
-
-	if !dummyout.IsEmpty() {
-		sysccLogger.Warning("system chaincode [%s] set states in init, which will be just discarded", syscc.Name)
-	}
-
-	sysccLogger.Infof("system chaincode [%s] is launched for ledger <%p>", syscc.Name, l)
-	return nil
-}
+// 	sysccLogger.Infof("system chaincode [%s] is launched for ledger <%p>", syscc.Name, l)
+// 	return nil
+// }

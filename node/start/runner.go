@@ -39,6 +39,7 @@ func (ncfg *NodeConfig) PreConfig() error {
 //mimic peer.main()
 func RunNode(ncfg *NodeConfig) {
 
+	defer Final()
 	logger.Info("YA-fabric node runner start ...")
 
 	if ncfg.precfg == nil {
@@ -52,8 +53,11 @@ func RunNode(ncfg *NodeConfig) {
 		panic(fmt.Errorf("Failed to initialize the crypto layer: %s", err))
 	}
 
-	defer Final()
-	PreInitFabricNode("Default")
+	mainctx, doomF := context.WithCancel(context.Background())
+	defer doomF()
+
+	PreInitFabricNode(mainctx, "Default")
+
 	if ncfg.Schemes != nil {
 		ncfg.Schemes(theNode)
 	}
@@ -69,28 +73,30 @@ func RunNode(ncfg *NodeConfig) {
 		}
 	}
 
+	guardctx, endguard := context.WithCancel(context.Background())
+	defer endguard()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		select {
+		case <-c:
+			doomF()
+			logger.Info("Get ctrl-c and exit")
+		case <-guardctx.Done():
+		}
+	}()
+
 	if err, guardf := RunFabricNode(); err != nil {
 		panic(fmt.Errorf("Fail to run node: %s", err))
 	} else if ncfg.TaskRun == nil {
-		gctx, endf := context.WithCancel(context.Background())
-
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		go func() {
-
-			<-c
-			endf()
-			logger.Info("Get ctrl-c and exit")
-
-		}()
-
 		//block here
-		guardf(gctx)
+		guardf(mainctx)
 	} else {
 		logger.Info("start running user specified process ...")
 		ncfg.TaskRun()
+		doomF()
 		logger.Info("user specified process end and node exit ...")
-		guardf(nil)
+		guardf(mainctx)
 	}
 
 	logger.Info("YA-fabric node normally exit ...")

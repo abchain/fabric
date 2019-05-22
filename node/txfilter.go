@@ -112,7 +112,7 @@ type txPoolHandler struct {
 }
 
 func (t txPoolHandler) Handle(txe *pb.TransactionHandlingContext) (*pb.TransactionHandlingContext, error) {
-	t.l.PoolTransactions([]*pb.Transaction{txe.Transaction})
+	t.l.PoolTransaction(txe)
 	txlogger.Debugf("tx [%s] has been pooled to ledger <%p>", txe.GetTxid(), t.l)
 	return txe, nil
 }

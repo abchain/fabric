@@ -1,24 +1,32 @@
 package main
 
 import (
+	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/core/embedded_chaincode/api"
 	cc "github.com/abchain/fabric/examples/txnetwork/chaincode"
 	node "github.com/abchain/fabric/node/start"
+	"golang.org/x/net/context"
 )
 
-var ccConf = &api.SystemChaincode{
-	Enabled:   true,
+var ccConf = &api.EmbeddedChaincode{
 	Name:      "txnetwork",
 	Chaincode: new(cc.SimpleChaincode),
 }
 
 func main() {
 
-	api.RegisterSysCC(ccConf)
-	nullf := func() error {
+	pf := func() error {
+		if err := api.RegisterECC(ccConf); err != nil {
+			return nil
+		}
+
+		if err := api.LaunchEmbeddedCC(context.Background(), ccConf.Name,
+			string(chaincode.DefaultChain), nil, node.GetNode().DefaultLedger()); err != nil {
+			return err
+		}
 		return nil
 	}
 
-	node.RunNode(&node.NodeConfig{PostRun: nullf})
+	node.RunNode(&node.NodeConfig{PostRun: pf})
 
 }

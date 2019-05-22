@@ -79,7 +79,7 @@ func MakeGenesisForLedger(l *ledger.Ledger, chaincode string, initValue map[stri
 
 		commitAgent.MergeExec(s)
 
-		err = commitAgent.FullCommit([]byte("genesis"))
+		err = commitAgent.FullCommit([]byte("genesis"), nil)
 		if err != nil {
 			return err
 		}

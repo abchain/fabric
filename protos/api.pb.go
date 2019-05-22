@@ -25,6 +25,7 @@ It has these top-level messages:
 	ChaincodeInvocationSpec
 	ChaincodeSecurityContext
 	ChaincodeMessage
+	CCRegister
 	PutStateInfo
 	RangeQueryState
 	RangeQueryStateNext

@@ -135,11 +135,36 @@ func WriteRunTime(spec *pb.ChaincodeSpec, clispec *config.ClientSpec, tw *tar.Wr
 	return nil
 }
 
-func GetArgsAndEnv(spec *pb.ChaincodeSpec, clispec *config.ClientSpec) (args []string, envs []string, err error) {
+func GetSystemEnvArgsAndEnv(spec *pb.ChaincodeSpec) (args []string) {
 	cID := spec.ChaincodeID
 	cLang := spec.Type
 
-	envs = []string{"CORE_CHAINCODE_ID_NAME=" + cID.Name}
+	switch cLang {
+	case pb.ChaincodeSpec_GOLANG, pb.ChaincodeSpec_CAR:
+		args = []string{"bin/" + cID.Name}
+	case pb.ChaincodeSpec_JAVA:
+		args = []string{"java",
+			"-jar chaincode.jar",
+			fmt.Sprintf("-i %s", cID.Name),
+		}
+	default:
+	}
+	return
+
+}
+
+func GetArgsAndEnv(spec *pb.ChaincodeSpec, netID string, clispec *config.ClientSpec) (args []string, envs []string, err error) {
+	if clispec == nil {
+		err = fmt.Errorf("network spec is not avaliable")
+		return
+	}
+
+	cID := spec.ChaincodeID
+	cLang := spec.Type
+
+	envs = []string{"CORE_CHAINCODE_ID_NAME=" + cID.Name,
+		"CORE_CHAINCODE_NETWORK_ID=" + netID,
+	}
 	if clispec.EnableTLS {
 		envs = append(envs, "CORE_PEER_TLS_ENABLED=true")
 		envs = append(envs, "CORE_PEER_TLS_ROOTCERT_FILE=ca.crt")

@@ -17,11 +17,16 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
+	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/core/chaincode/shim"
+	embedded "github.com/abchain/fabric/core/embedded_chaincode"
+	"github.com/abchain/fabric/core/ledger"
+	"github.com/abchain/fabric/protos"
+	"golang.org/x/net/context"
 )
 
 //we devided embedded chaincode into system and embedded
-var systemChaincodes = []*SystemChaincode{}
 
 // SystemChaincode defines the metadata needed to initialize system chaincode
 // when the fabric comes up. SystemChaincodes are installed by adding an
@@ -41,22 +46,44 @@ type SystemChaincode struct {
 	//Path to the system chaincode; currently not used
 	Path string
 
-	//InitArgs initialization arguments to startup the system chaincode
+	//InitArgs initialization arguments to startup the system chaincode,
+	//notice this should include the function name as the first arg
 	InitArgs [][]byte
 
 	// Chaincode is the actual chaincode object
 	Chaincode shim.Chaincode
 }
 
-func ListSysCC() []*SystemChaincode { return systemChaincodes }
-
 // RegisterSysCC registers the given system chaincode with the peer
-func RegisterSysCC(syscc *SystemChaincode) {
+func RegisterAndLaunchSysCC(ctx context.Context, syscc *SystemChaincode, ledger ...*ledger.Ledger) error {
 
-	//just silently exit
-	if !syscc.Enabled {
-		return
+	syschain := chaincode.SystemChain
+	chainplatform := chaincode.GetChain(syschain)
+	if chainplatform == nil {
+		return fmt.Errorf("system chain platform is not ready")
 	}
 
-	systemChaincodes = append(systemChaincodes, syscc)
+	regpath, err := embedded.RegisterSysCC(syscc.Name, syscc.Chaincode, syschain)
+	if err != nil {
+		return err
+	}
+
+	deployspec := &protos.ChaincodeSpec{
+		Type:        protos.ChaincodeSpec_Type(protos.ChaincodeSpec_Type_value["GOLANG"]),
+		ChaincodeID: &protos.ChaincodeID{Path: regpath, Name: syscc.Name},
+		CtorMsg:     &protos.ChaincodeInput{Args: syscc.InitArgs},
+	}
+
+	for _, l := range ledger {
+		if err := embedded.DeployEcc(ctx, l, chainplatform,
+			&protos.ChaincodeDeploymentSpec{
+				ExecEnv:       protos.ChaincodeDeploymentSpec_SYSTEM,
+				ChaincodeSpec: deployspec,
+			}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
 }

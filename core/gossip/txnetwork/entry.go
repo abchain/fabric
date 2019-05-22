@@ -23,13 +23,29 @@ type TxNetworkEntry struct {
 func (e *TxNetworkEntry) InitLedger(l *ledger.Ledger) {
 	logger.Debugf("txnetwork has set new ledger %v", l)
 	e.net.txPool.ledger = l
+
+	defer func() {
+
+		l.SubScribeNewState(e.net.txPool.SetEpoch)
+
+	}()
+
+	linfo, err := l.GetLedgerInfo()
+	if err != nil {
+		logger.Infof("Can not get ledger info: %s, we have no epoch yet", err)
+	} else {
+		e.net.txPool.SetEpoch(linfo.Persisted.States, linfo.States.AvaliableHash)
+		logger.Infof("Init epoch to %X", linfo.States.AvaliableHash)
+	}
 }
 
+//[optional] set the credential for peer in txnetwork
 func (e *TxNetworkEntry) InitCred(v cred.TxHandlerFactory) {
 	logger.Debugf("txnetwork has set new txhandler %v(%T)", v, v)
 	e.net.peers.peerHandler = v
 }
 
+//set the output for tx received in txnetwork
 func (e *TxNetworkEntry) InitTerminal(t pb.TxPreHandler) {
 	logger.Debugf("txnetwork has set new tx terminal %v(%T)", t, t)
 	e.net.txPool.txTerminal = t
@@ -142,10 +158,6 @@ func (e *TxNetworkEntry) UpdateLocalPeer(s *pb.PeerTxState) error {
 
 func (e *TxNetworkEntry) UpdateLocalHotTx(txs *pb.HotTransactionBlock) error {
 	return e.catalogHandlerUpdateLocal(hotTxCatName, txPeerUpdate{txs}, nil)
-}
-
-func (e *TxNetworkEntry) RequestTx(ids []string) error {
-	return e.catalogHandlerUpdate(syncTxCatName, taskList(ids))
 }
 
 func (e *TxNetworkEntry) GetPeerStatus() (*pb.PeerTxState, string) {

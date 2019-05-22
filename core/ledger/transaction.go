@@ -9,44 +9,66 @@ import (
 )
 
 // Transaction work for get/put transaction and holds "unconfirmed" transaction
+// (with the handling context)
 type transactionPool struct {
 	sync.RWMutex
-	txPool map[string]*pb.Transaction
+	txPool map[string]*pb.TransactionHandlingContext
 	//use for temporary reading in a long-journey
-	txPoolSnapshot map[string]*pb.Transaction
+	txPoolSnapshot map[string]*pb.TransactionHandlingContext
 
 	commitHooks []func([]string, uint64)
+
+	//TODO: should we add cache for reading transaction (especially for which
+	//is commited recently)
 }
 
 func newTxPool() (*transactionPool, error) {
 
 	txpool := &transactionPool{}
 
-	txpool.txPool = make(map[string]*pb.Transaction)
-
+	txpool.txPool = make(map[string]*pb.TransactionHandlingContext)
 	return txpool, nil
 }
 
-func (tp *transactionPool) poolTransaction(txs []*pb.Transaction) {
+//deprecated: this entry is only for test purposed
+func (tp *transactionPool) poolTransaction(preh pb.TxPreHandler, txs []*pb.Transaction) {
 
 	tp.Lock()
 	defer tp.Unlock()
 
 	for _, tx := range txs {
-		tp.txPool[tx.GetTxid()] = tx
+		te, err := preh.Handle(pb.NewTransactionHandlingContext(tx))
+		if err != nil {
+			ledgerLogger.Debug("create txe fail:", err)
+			continue
+		}
+		tp.txPool[tx.GetTxid()] = te
 		ledgerLogger.Debugf("pool tx [%s:%p]", tx.GetTxid(), tx)
 	}
 	ledgerLogger.Debugf("currently %d txs is pooled", len(tp.txPool)+len(tp.txPoolSnapshot))
 }
 
-func (tp *transactionPool) putTransaction(txs []*pb.Transaction) error {
+func (tp *transactionPool) poolTxe(txe *pb.TransactionHandlingContext) {
 
-	err := db.GetGlobalDBHandle().PutTransactions(txs)
-	if err != nil {
-		return err
+	tp.Lock()
+	defer tp.Unlock()
+
+	if txe, existed := tp.txPool[txe.GetTxid()]; existed {
+		//it is possible that tx is pooled from different txnetwork, the counter is
+		//used for tracing that
+		txe.PoolCount++
+	} else {
+		tp.txPool[txe.GetTxid()] = txe
 	}
+	ledgerLogger.Debugf("pool tx [%s], currently %d txs is pooled", txe.GetTxid(), len(tp.txPool)+len(tp.txPoolSnapshot))
+}
 
-	return nil
+func removeOneTx(pool map[string]*pb.TransactionHandlingContext, id string) {
+	if txe, existed := pool[id]; existed && txe.PoolCount == 0 {
+		delete(pool, id)
+	} else if existed {
+		txe.PoolCount--
+	}
 }
 
 func (tp *transactionPool) cleanTransaction(txs []*pb.Transaction) {
@@ -54,7 +76,7 @@ func (tp *transactionPool) cleanTransaction(txs []*pb.Transaction) {
 	defer tp.Unlock()
 	if tp.txPoolSnapshot == nil {
 		for _, tx := range txs {
-			delete(tp.txPool, tx.GetTxid())
+			removeOneTx(tp.txPool, tx.GetTxid())
 		}
 		ledgerLogger.Debugf("%d txs has been pruned from pool later, currently %d txs left", len(txs), len(tp.txPool)+len(tp.txPoolSnapshot))
 	} else {
@@ -79,8 +101,8 @@ func (tp *transactionPool) commitTransaction(txids []string, blockNum uint64) er
 	if tp.txPoolSnapshot == nil {
 		for _, id := range txids {
 			if tx, ok := tp.txPool[id]; ok {
-				pendingTxs = append(pendingTxs, tx)
-				delete(tp.txPool, id)
+				pendingTxs = append(pendingTxs, tx.Transaction)
+				removeOneTx(tp.txPool, id)
 			}
 			ledgerLogger.Debugf("%d txs will be commited, currently %d txs left", len(pendingTxs), len(tp.txPool)+len(tp.txPoolSnapshot))
 		}
@@ -97,50 +119,30 @@ func (tp *transactionPool) commitTransaction(txids []string, blockNum uint64) er
 			} else {
 				delete(tp.txPool, id)
 			}
-			pendingTxs = append(pendingTxs, tx)
+			pendingTxs = append(pendingTxs, tx.Transaction)
 			ledgerLogger.Debugf("%d txs will be commited, currently %d(+%d snapshotted) txs left ", len(pendingTxs), len(tp.txPool), len(tp.txPoolSnapshot))
 		}
 	}
 
 	tp.Unlock()
-	return tp.putTransaction(pendingTxs)
+	return db.GetGlobalDBHandle().PutTransactions(pendingTxs)
 }
 
 func (tp *transactionPool) getConfirmedTransaction(txID string) (*pb.Transaction, error) {
 	return fetchTxFromDB(txID)
 }
 
-func (tp *transactionPool) getTransaction(txID string) (*pb.Transaction, error) {
-
-	tx := tp.getPooledTx(txID)
-	if tx == nil {
-
-		tx, err := fetchTxFromDB(txID)
-		if err != nil {
-			return nil, err
-		}
-
-		if tx != nil {
-			return tx, nil
-		}
-
-		return nil, ErrResourceNotFound
-	}
-
-	return tx, nil
-}
-
-func (tp *transactionPool) finishIteration(out chan *pb.Transaction) {
+func (tp *transactionPool) finishIteration(out chan *pb.TransactionHandlingContext) {
 	defer close(out)
 	tp.Lock()
 	defer tp.Unlock()
 
 	//we suppose the snapshot is larger than the (temporary generated) txPool
-	for id, tx := range tp.txPool {
-		if tx != nil {
-			tp.txPoolSnapshot[id] = tx
+	for id, txe := range tp.txPool {
+		if txe != nil {
+			tp.txPoolSnapshot[id] = txe
 		} else {
-			delete(tp.txPoolSnapshot, id)
+			removeOneTx(tp.txPoolSnapshot, id)
 		}
 	}
 
@@ -158,30 +160,30 @@ func (tp *transactionPool) getPooledTxCount() int {
 	return len(tp.txPool) + len(tp.txPoolSnapshot)
 }
 
-func (tp *transactionPool) getPooledTx(txid string) *pb.Transaction {
+func (tp *transactionPool) getPooledTx(txid string) *pb.TransactionHandlingContext {
 	return tp.getPooledTxs([]string{txid})[0]
 }
 
 //take pooled txs, ensure each request has corresponding entry (maybe nil)
 //in the response array
-func (tp *transactionPool) getPooledTxs(txids []string) (ret []*pb.Transaction) {
+func (tp *transactionPool) getPooledTxs(txids []string) (ret []*pb.TransactionHandlingContext) {
 	tp.RLock()
 	defer tp.RUnlock()
 
 	for _, txid := range txids {
-		tx, ok := tp.txPool[txid]
+		txe, ok := tp.txPool[txid]
 		if !ok && tp.txPoolSnapshot != nil {
-			tx = tp.txPoolSnapshot[txid]
+			txe = tp.txPoolSnapshot[txid]
 		}
 
-		ret = append(ret, tx)
+		ret = append(ret, txe)
 	}
 
 	return
 }
 
 //only one long-journey read is allowed once
-func (tp *transactionPool) iteratePooledTx(ctx context.Context) (chan *pb.Transaction, error) {
+func (tp *transactionPool) iteratePooledTx(ctx context.Context) (chan *pb.TransactionHandlingContext, error) {
 
 	tp.Lock()
 	defer tp.Unlock()
@@ -191,10 +193,10 @@ func (tp *transactionPool) iteratePooledTx(ctx context.Context) (chan *pb.Transa
 	}
 
 	tp.txPoolSnapshot = tp.txPool
-	tp.txPool = make(map[string]*pb.Transaction)
+	tp.txPool = make(map[string]*pb.TransactionHandlingContext)
 
-	out := make(chan *pb.Transaction)
-	go func(pool map[string]*pb.Transaction) {
+	out := make(chan *pb.TransactionHandlingContext)
+	go func(pool map[string]*pb.TransactionHandlingContext) {
 		defer tp.finishIteration(out)
 		for _, tx := range pool {
 			select {
@@ -215,4 +217,8 @@ func fetchTxFromDB(txID string) (*pb.Transaction, error) {
 
 func fetchTxsFromDB(txIDs []string) []*pb.Transaction {
 	return db.GetGlobalDBHandle().GetTransactions(txIDs)
+}
+
+func putTxsToDB(txs []*pb.Transaction) error {
+	return db.GetGlobalDBHandle().PutTransactions(txs)
 }

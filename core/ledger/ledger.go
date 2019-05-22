@@ -43,6 +43,9 @@ const (
 	ErrorTypeResourceNotFound = ErrorType("ResourceNotFound")
 	//ErrorTypeBlockNotFound used to indicate if a block is not found when looked up by it's hash
 	ErrorTypeBlockNotFound = ErrorType("ErrorTypeBlockNotFound")
+	//ErrorTypeFatalCommit used to indicate fatal error in commit: we obtain unexpected different
+	//result (hashes) from different source (e.g.: by local execution and incoming block)
+	ErrorTypeFatalCommit = ErrorType("ErrorTypeFatalError")
 )
 
 //Error can be used for throwing an error from ledger code.
@@ -154,6 +157,7 @@ func GetNewLedger(db *db.OpenchainDB, config *ledgerConfig) (*Ledger, error) {
 	}
 
 	sns := initNewLedgerSnapshotManager(db, st, config)
+	st.updatesubscriptions = append(st.updatesubscriptions, sns.UpdateR)
 
 	return &Ledger{
 		LedgerGlobal: gledger,
@@ -434,7 +438,7 @@ func (ledger *Ledger) GetBlockNumberByState(hash []byte) (uint64, error) {
 
 func (ledger *Ledger) GetBlockNumberByTxid(txID string) (uint64, uint64, error) {
 	//TODO: cache?
-	if tx := ledger.txpool.getPooledTx(txID); tx != nil {
+	if txe := ledger.txpool.getPooledTx(txID); txe != nil {
 		return 0, 0, ErrResourceNotFound
 	}
 

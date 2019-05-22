@@ -34,15 +34,51 @@ type LedgerInfo struct {
 	States struct {
 		//can query state current
 		Avaliable bool
-		//states we can query by specified height
-		AvaliableTill uint64
-		//if not nil, Avaliable is false and this specified
-		//the target of state syncing
-		Syncing *protos.BlockchainInfo
+		//states's most available hash, if avaliable is false, it shows the
+		//targethash it is syncing to, or it has the persisted statehash
+		AvaliableHash []byte
 	}
 }
 
+func (ledger *Ledger) Tag() string {
+	t := ledger.blockchain.GetDBTag()
+	if t == "" {
+		return "default"
+	}
+	return t
+}
+
 func (ledger *Ledger) GetLedgerInfo() (*LedgerInfo, error) {
-	return nil, ErrResourceNotFound
+
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
+
+	baseinfo, err := ledger.blockchain.getBlockchainInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	ret := &LedgerInfo{BlockchainInfo: baseinfo}
+	//fill other fields
+	if baseinfo.Height > 0 {
+		ret.Persisted.Blocks = ledger.blockchain.continuousTo.GetProgress() + 1
+		ret.Persisted.Indexes = ledger.index.cache.indexedTo.GetProgress() + 1
+	}
+	ret.Persisted.States = ledger.state.cache.refHeight
+
+	if h := baseinfo.GetHeight(); h > 0 {
+		ret.Avaliable.Blocks = h - 1
+	}
+	ret.Avaliable.States = ledger.state.cache.curHeight
+	ret.Avaliable.Indexes = ledger.index.cache.indexedTo.GetTop()
+
+	if b := ledger.state.isSyncing(); b {
+		ret.States.Avaliable = b
+		ret.States.AvaliableHash = ledger.state.buildingState.statehash
+	} else {
+		ret.States.Avaliable = b
+		ret.States.AvaliableHash = ledger.state.cache.refHash
+	}
+	return ret, nil
 
 }

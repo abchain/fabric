@@ -93,14 +93,13 @@ func (ledger *Ledger) CommitTxBatch(id interface{}, transactions []*protos.Trans
 		return err
 	}
 
-	ledger.txpool.poolTransaction(transactions)
+	ledger.txpool.poolTransaction(protos.NilValidator, transactions)
 	hashBefore := ledger.state.getHash()
 
 	tmpCommiter := &TxEvaluateAndCommit{ledger: ledger}
 	tmpCommiter.accumulatedDeltas = ledger.state.GetStateDelta()
 	//ledgerLogger.Debugf("use commit delta %v", tmpCommiter.accumulatedDeltas)
 	tmpCommiter.transactionResults = transactionResults
-	tmpCommiter.transactions = transactions
 
 	//simply force the state to change its height, made some test pass
 	curHeight := ledger.blockchain.size
@@ -110,7 +109,7 @@ func (ledger *Ledger) CommitTxBatch(id interface{}, transactions []*protos.Trans
 	}
 
 	defer ledger.resetForNextTxGroup(false)
-	if err := tmpCommiter.FullCommit(metadata); err != nil {
+	if err := tmpCommiter.FullCommit(metadata, transactions); err != nil {
 		ledgerLogger.Error("Full CommitTx fail:", err)
 		return err
 	}
@@ -362,7 +361,7 @@ func (ledger *Ledger) PutBlock(blockNumber uint64, block *protos.Block) error {
 
 	//for old styple block, we prepare for that the tx may not be pooled yet
 	if len(block.GetTransactions()) > 0 {
-		ledger.txpool.poolTransaction(block.Transactions)
+		ledger.txpool.poolTransaction(protos.NilValidator, block.Transactions)
 	}
 
 	if err := ledger.PutRawBlock(block, blockNumber); err != nil {

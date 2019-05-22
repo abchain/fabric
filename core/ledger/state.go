@@ -16,11 +16,13 @@ type TxExecStates struct {
 
 //----------- leagacy API following ------------
 func (s *TxExecStates) InitForInvoking(l *Ledger) {
-	s.TxExecStates = state.NewExecStatesFromState(l.state.Wrapper())
+	s.TxExecStates = state.NewExecStatesFromState(l.state.Wrapper(), l.state.cache.deltas...)
 }
 
 func (s *TxExecStates) InitForQuerying(l *Ledger) {
-	s.TxExecStates = state.NewExecStates()
+	l.readCache.RLock()
+	defer l.readCache.RUnlock()
+	s.TxExecStates = state.NewExecStates(l.state.cache.deltas...)
 }
 
 func (s TxExecStates) AppyInvokingResult(l *Ledger) {
@@ -56,7 +58,8 @@ var genesisHash = []byte("YAFABRIC09_GENSISHASH")
 //and left the old state object for some dirty implements
 type stateWrapper struct {
 	*state.State
-	configCached state.StateConfig
+	configCached        state.StateConfig
+	updatesubscriptions []LedgerNewStateNotify
 	//notice the implement of hashablestate has a opposite nature against block-building:
 	//in most time its in-memory states is different from the db state (by appling
 	//PrepareWorkingSet and ComputeCryptoHash), obtain a new in-memory state is costful
@@ -336,6 +339,9 @@ func (s *stateWrapper) persistentStateDone() {
 	s.cache.refHeight++
 	s.cache.deltas = s.cache.deltas[1:]
 
+	for _, f := range s.updatesubscriptions {
+		f(s.cache.refHeight-1, s.cache.refHash)
+	}
 }
 
 func (s *stateWrapper) updatePersistentStateTo(height uint64) {
@@ -405,6 +411,10 @@ func (s *stateWrapper) persistentSyncDone() {
 		s.cache.lastWorkSet = s.buildingState.blockN
 		s.cache.refHash = s.buildingState.statehash
 		s.cache.refHeight = s.buildingState.blockN + 1
+
+		for _, f := range s.updatesubscriptions {
+			f(s.cache.refHeight-1, s.cache.refHash)
+		}
 	}
 }
 

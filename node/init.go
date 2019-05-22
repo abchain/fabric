@@ -43,6 +43,12 @@ func (ne *NodeEngine) addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, er
 	if err != nil {
 		return nil, fmt.Errorf("Try to create ledger fail: %s", err)
 	}
+	//sanity check ...
+	if lt := l.Tag(); lt != tag {
+		panic(fmt.Errorf("some implement has made the tag (%s) obtained in ledger changed to %s?",
+			tag, lt))
+	}
+
 	//a legacy progress...
 	if ne.Options.MakeGenesisForLedger {
 		err = genesis.MakeGenesisForLedger(l, "", nil)
@@ -174,6 +180,7 @@ func (ne *NodeEngine) ExecInit() error {
 	//TODO: create endorsers
 
 	//init peers
+	defaultTag = ""
 	for tag, p := range ne.Peers {
 
 		vp := config.SubViper(tag)

@@ -131,6 +131,7 @@ func (openchainDB *ocDB) open(dbpath string, cfopts []*gorocksdb.Options) error 
 }
 
 func (openchainDB *OpenchainDB) GetDBPath() string { return openchainDB.db.dbName }
+func (openchainDB *OpenchainDB) GetDBTag() string  { return openchainDB.dbTag }
 
 func (openchainDB *OpenchainDB) getDBKey(kc string) []string {
 	return []string{openchainDB.dbTag, kc}

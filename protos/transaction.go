@@ -271,7 +271,8 @@ type TransactionHandlingContext struct {
 	//fields will be tagged from outside, if PeerID is not set,
 	//it will be considered as "self peer" in network
 	NetworkID, PeerID string
-	*Transaction      //the original transaction
+	*Transaction          //the original transaction
+	PoolCount         int //used by txpool
 	//every fields can be readout from transaction (may covered by the confidentiality)
 	ChaincodeSpec       *ChaincodeSpec
 	ChaincodeDeploySpec *ChaincodeDeploymentSpec

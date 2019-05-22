@@ -64,8 +64,8 @@ type topicUnit struct {
 	conf        *topicConfiguration
 	data        *list.List
 	dryRun      bool
-	passed      *readerPos
-	start       *readerPos
+	passed      *readerPos //no reader is behind this position
+	start       *readerPos //new reader is adviced to start at this position
 	clients     clientReg
 	batchSignal *sync.Cond
 }

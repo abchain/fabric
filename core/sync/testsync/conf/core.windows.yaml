@@ -404,6 +404,7 @@ chaincode:
 ###############################################################################
 ledger:
 
+  sanitycheck: false
   blockchain:
 
   state:

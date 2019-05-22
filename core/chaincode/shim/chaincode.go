@@ -108,31 +108,24 @@ func Start(cc Chaincode) error {
 	if chaincodename == "" {
 		return fmt.Errorf("Error chaincode id not provided")
 	}
-	err = chatWithPeer(chaincodename, stream, cc)
+	netID := viper.GetString("chaincode.network.id")
+
+	err = chatWithPeer(chaincodename, netID, stream, cc)
 
 	return err
 }
 
 // StartInProc is an entry point for system chaincodes bootstrap. It is not an
 // API for chaincodes.
-func StartInProc(env []string, args []string, cc Chaincode, recv <-chan *pb.ChaincodeMessage, send chan<- *pb.ChaincodeMessage) error {
+func StartInProc(chaincodename, networkid string, args []string, cc Chaincode, recv <-chan *pb.ChaincodeMessage, send chan<- *pb.ChaincodeMessage) error {
 	//	logging.SetLevel(logging.DEBUG, "chaincode")
 	chaincodeLogger.Debugf("in proc %v", args)
-
-	var chaincodename string
-	for _, v := range env {
-		if strings.Index(v, "CORE_CHAINCODE_ID_NAME=") == 0 {
-			p := strings.SplitAfter(v, "CORE_CHAINCODE_ID_NAME=")
-			chaincodename = p[1]
-			break
-		}
-	}
 	if chaincodename == "" {
 		return fmt.Errorf("Error chaincode id not provided")
 	}
 	chaincodeLogger.Debugf("starting chat with peer using name=%s", chaincodename)
 	stream := newInProcStream(recv, send)
-	err := chatWithPeer(chaincodename, stream, cc)
+	err := chatWithPeer(chaincodename, networkid, stream, cc)
 	return err
 }
 
@@ -156,22 +149,25 @@ func newPeerClientConnection() (*grpc.ClientConn, error) {
 	return comm.NewClientConnectionWithAddress(peerAddress, true, false, nil)
 }
 
-func chatWithPeer(chaincodename string, stream PeerChaincodeStream, cc Chaincode) error {
+func chatWithPeer(chaincodename string, netID string, stream PeerChaincodeStream, cc Chaincode) error {
 
 	// Create the shim handler responsible for all control logic
 	handler := newChaincodeHandler(stream, cc)
 
 	defer stream.CloseSend()
 	// Send the ChaincodeID during register.
-	chaincodeID := &pb.ChaincodeID{Name: chaincodename}
-	payload, err := proto.Marshal(chaincodeID)
+	payload, err := proto.Marshal(&pb.CCRegister{
+		CcID:      &pb.ChaincodeID{Name: chaincodename},
+		NetworkID: netID,
+	})
 	if err != nil {
 		return fmt.Errorf("Error marshalling chaincodeID during chaincode registration: %s", err)
 	}
+
 	// Register on the stream
 	chaincodeLogger.Debugf("[%s] Registering.. sending %s",
-		chaincodename, pb.ChaincodeMessage_REGISTER)
-	err = stream.Send(&pb.ChaincodeMessage{Type: pb.ChaincodeMessage_REGISTER, Payload: payload})
+		chaincodename, pb.ChaincodeMessage_REGISTER2)
+	err = stream.Send(&pb.ChaincodeMessage{Type: pb.ChaincodeMessage_REGISTER2, Payload: payload})
 	if err != nil {
 		return fmt.Errorf("First send of REGISTER fail: %s", err)
 	}

@@ -44,7 +44,6 @@ func (syncer PartialSync) FinishTask() error {
 	}
 
 	ledger.state.buildingState.syncing = nil
-	ledger.snapshots.UpdateFromState(ledger.state)
 	return nil
 }
 
@@ -73,9 +72,5 @@ func (syncer PartialSync) ApplySyncData(data *protos.SyncStateChunk) error {
 	defer ledger.readCache.Unlock()
 
 	ledger.state.persistentSyncDone()
-	if !ledger.state.isSyncing() {
-		ledger.snapshots.UpdateFromState(ledger.state)
-		return nil
-	}
 	return nil
 }

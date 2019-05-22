@@ -96,9 +96,9 @@ func (*Devops) getChaincodeBytes(context context.Context, spec *pb.ChaincodeSpec
 		return nil, fmt.Errorf("No corresponding chain:", chainName)
 	}
 
-	//handling embedded chaincode
-	if ecc.IsEmbedded(spec.ChaincodeID.Name) {
-		return ecc.BuildEmbeddedCC(context, spec)
+	//test embedded chaincode first
+	if ret, err := ecc.BuildEmbeddedCC(spec); err != nil {
+		return ret, nil
 	}
 
 	var codePackageBytes []byte

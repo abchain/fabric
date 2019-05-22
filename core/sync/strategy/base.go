@@ -11,11 +11,11 @@ import (
 
 var logger = logging.MustGetLogger("syncstrategy")
 
-//any strategy has two simple entrances: one for blocks only and another for blocks and the full
+//any strategy applier has two simple entrances: one for blocks only and another for blocks and the full
 //world-state, by anymeans except for executing txs in blocks (e.g. sync state directly or statedelta)
 //each method will just block until the process finish
 //strategy may left partial syncing results after encounter any error
-type SyncStrategy interface {
+type Applier interface {
 	Blocks(context.Context) error
 	Full(context.Context) error
 }

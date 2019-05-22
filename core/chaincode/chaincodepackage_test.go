@@ -80,7 +80,7 @@ func TestChaincodeImage(t *testing.T) {
 		t.Fatal("Load spec fail:", err)
 	}
 
-	args, envs, err := platforms.GetArgsAndEnv(spec, cli)
+	args, envs, err := platforms.GetArgsAndEnv(spec, "testnet", cli)
 	if err != nil {
 		t.Fatal("args fail:", err)
 	}

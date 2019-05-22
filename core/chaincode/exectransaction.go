@@ -36,7 +36,7 @@ type ExecuteResult struct {
 
 //Execute2 - like legacy execute, but not relay the global ledger object and supposed the transaction has
 //be make pre-exec
-func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSupport, te *pb.TransactionHandlingContext) (*ExecuteResult, error) {
+func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSupport, te *pb.TransactionHandlingContext, tout ledger.TxExecStates) (*ExecuteResult, error) {
 
 	if te.ChaincodeSpec == nil {
 		return nil, fmt.Errorf("Tx handling context has not enough information yet")
@@ -69,18 +69,15 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 
 		if !txSuccess {
 			chaincodeLogger.Infof("stopping due to error while final deploy tx")
-			errIgnore := chain.Stop(ctxt, te.ChaincodeDeploySpec)
+			errIgnore := chain.Stop(ctxt, ledgerObj.Tag(), te.ChaincodeDeploySpec)
 			if errIgnore != nil {
 				chaincodeLogger.Debugf("error on stop %s", errIgnore)
 			}
 		}
 	}()
 
-	outstate := ledger.TxExecStates{}
-	outstate.InitForInvoking(ledgerObj)
-
 	if te.Type == pb.Transaction_CHAINCODE_DEPLOY {
-		err = chain.FinalDeploy(chrte, te, outstate)
+		err = chain.FinalDeploy(chrte, te, tout)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to final deployment tx (%s)", err)
 		}
@@ -88,7 +85,7 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 
 	//this should work because it worked above...
 	chaincode := cID.Name
-	resp, err := chain.Execute(ctxt, chrte, te, outstate)
+	resp, err := chain.Execute(ctxt, chrte, te, tout)
 
 	if err != nil {
 		return nil, fmt.Errorf("Failed to execute transaction or query(%s)", err)
@@ -112,10 +109,10 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 		}
 
 		//		chaincodeLogger.Debugf("tx %s exec done: %x, %v", shorttxid(t.Txid), resp.Payload, resp.ChaincodeEvent)
-		return &ExecuteResult{outstate, evnts, resp.Payload}, nil
+		return &ExecuteResult{tout, evnts, resp.Payload}, nil
 	} else if resp.Type == pb.ChaincodeMessage_ERROR || resp.Type == pb.ChaincodeMessage_QUERY_ERROR {
 		// Rollback transaction
-		return &ExecuteResult{outstate, nil, resp.Payload}, fmt.Errorf("Transaction or query returned with failure: %s", string(resp.Payload))
+		return &ExecuteResult{tout, nil, resp.Payload}, fmt.Errorf("Transaction or query returned with failure: %s", string(resp.Payload))
 	}
 	return nil, fmt.Errorf("receive a response for (%s) but in invalid state(%d)", te.Txid, resp.Type)
 
@@ -127,6 +124,7 @@ var legacyHandler = pb.DefaultTxHandler
 func Execute(ctxt context.Context, chain *ChaincodeSupport, t *pb.Transaction) ([]byte, []*pb.ChaincodeEvent, error) {
 
 	// get a handle to ledger to mark the begin/finish of a tx
+	outstate := ledger.TxExecStates{}
 	ledger, ledgerErr := ledger.GetLedger()
 	if ledgerErr != nil {
 		return nil, nil, fmt.Errorf("Failed to get handle to ledger (%s)", ledgerErr)
@@ -138,8 +136,10 @@ func Execute(ctxt context.Context, chain *ChaincodeSupport, t *pb.Transaction) (
 		return nil, nil, err
 	}
 
+	outstate.InitForInvoking(ledger)
+
 	markTxBegin(ledger, te.Transaction)
-	result, err := Execute2(ctxt, ledger, chain, te)
+	result, err := Execute2(ctxt, ledger, chain, te, outstate)
 
 	defer func(err error) {
 
@@ -158,6 +158,48 @@ func Execute(ctxt context.Context, chain *ChaincodeSupport, t *pb.Transaction) (
 }
 
 var emptyEvent = new(pb.ChaincodeEvent)
+
+//The new exec entry for YA-fabric, which evaluating a series of txs (with handling context)
+//in sequence and prepare for a TxEvaluateAndCommit,
+//the success tx will be returned, respecting the expected behavior in ledger's commitTxBatch
+func ExecuteTransactions2(ctxt context.Context, cname ChainName, xacts []*pb.TransactionHandlingContext, agent *ledger.TxEvaluateAndCommit) (succeededTXs []*pb.Transaction, err error) {
+	var chain = GetChain(cname)
+	if chain == nil {
+		// TODO: We should never get here, but otherwise a good reminder to better handle
+		panic(fmt.Sprintf("[ExecuteTransactions]Chain %s not found\n", cname))
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("encounter fatal error in exec tx: %v", r)
+		}
+	}()
+
+	for _, t := range xacts {
+		outstate := agent.AssignExecRT()
+		result, err := Execute2(ctxt, agent.Ledger(), chain, t, outstate)
+		//
+		var txResult *pb.TransactionResult
+		if err != nil {
+			txResult = &pb.TransactionResult{
+				Txid:      t.GetTxid(),
+				Error:     err.Error(),
+				ErrorCode: 1,
+			}
+		} else {
+			txResult = &pb.TransactionResult{
+				Txid:            t.GetTxid(),
+				Result:          result.Resp,
+				ChaincodeEvents: result.Events,
+			}
+			succeededTXs = append(succeededTXs, t.Transaction)
+		}
+
+		agent.AddExecResult(outstate, txResult)
+	}
+
+	return
+}
 
 //ExecuteTransactions - will execute transactions on the array one by one
 //will return an array of errors one for each transaction. If the execution

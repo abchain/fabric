@@ -42,6 +42,7 @@ type ChainName string
 const (
 	// DefaultChain is the name of the default chain.
 	DefaultChain ChainName = "default"
+	SystemChain  ChainName = "syscc"
 	// DevModeUserRunsChaincode property allows user to run chaincode in development environment
 	DevModeUserRunsChaincode       string = "dev"
 	NetworkModeChaincode           string = "net"
@@ -204,9 +205,38 @@ func (chaincodeSupport *ChaincodeSupport) chaincodeHasBeenLaunched(l *ledger.Led
 	if ml, ledgerExist := chaincodeSupport.runningChaincodes.chaincodeMap[chaincode]; !ledgerExist {
 		return
 	} else {
+		chaincodeLogger.Debugf("test for cc[%s]'s map %v", chaincode, ml)
 		chrte, hasbeenlaunched = ml[l]
+		chaincodeLogger.Debugf("found %v for ledger %p", hasbeenlaunched, l)
 		return
 	}
+}
+
+func NewSystemChaincodeSupport(nodeName string) *ChaincodeSupport {
+
+	_, registed := chains[SystemChain]
+	if registed {
+		panic("Duplicated registing chaincode")
+	}
+
+	s := &ChaincodeSupport{name: SystemChain,
+		runningChaincodes: &runningChaincodes{
+			chaincodeMap: make(map[string]map[*ledger.Ledger]*chaincodeRTEnv),
+		},
+		nodeID:           nodeName,
+		ccStartupTimeout: 3 * time.Second,
+		ccDeployTimeout:  3 * time.Second,
+	}
+
+	chains[SystemChain] = s
+
+	//we only respect exec timeout
+	tOut, err := strconv.Atoi(viper.GetString("chaincode.scc.exectimeout"))
+	if err != nil {
+		tOut = chaincodeExecTimeoutDefault
+	}
+	s.ccExecTimeout = time.Duration(tOut) * time.Millisecond
+	return s
 }
 
 // NewChaincodeSupport creates a new ChaincodeSupport instance
@@ -302,7 +332,7 @@ func (chaincodeSupport *ChaincodeSupport) UserRunsCC() bool {
 	return chaincodeSupport.userRunsCC
 }
 
-func (chaincodeSupport *ChaincodeSupport) registerHandler(cID *pb.ChaincodeID, stream ccintf.ChaincodeStream) (*Handler, *workingStream, error) {
+func (chaincodeSupport *ChaincodeSupport) registerHandler(cID *pb.ChaincodeID, ledgerTag string, stream ccintf.ChaincodeStream) (*Handler, *workingStream, error) {
 
 	key := cID.Name
 	chaincodeSupport.runningChaincodes.Lock()
@@ -310,13 +340,12 @@ func (chaincodeSupport *ChaincodeSupport) registerHandler(cID *pb.ChaincodeID, s
 
 	var handler *Handler
 	var err error
-	//TODO: handling mutiple stream in one handler
 	for l, chrte := range chaincodeSupport.runningChaincodes.chaincodeMap[key] {
 
 		//so it was a pending runtime (just launched) and can be use
 		//(all cc just created is equivalence for pending launching instance
 		//and we can assigned to any one of them)
-		if chrte.handler == nil {
+		if chrte.handler == nil && (ledgerTag == "" || l.Tag() == ledgerTag) {
 			handler = newChaincodeSupportHandler(chaincodeSupport)
 			handler.ChaincodeID = cID
 			handler.Ledger = l
@@ -398,21 +427,27 @@ func (chaincodeSupport *ChaincodeSupport) deregisterHandler(chaincodehandler *Ha
 }
 
 // launchAndWaitForRegister will launch container if not already running. Use the targz to create the image if not found
-func (chaincodeSupport *ChaincodeSupport) launchAndWaitForRegister(ctxt context.Context, cds *pb.ChaincodeDeploymentSpec, cID *pb.ChaincodeID, cLang pb.ChaincodeSpec_Type, targz io.Reader) error {
+func (chaincodeSupport *ChaincodeSupport) launchAndWaitForRegister(ctxt context.Context, netTag string, cds *pb.ChaincodeDeploymentSpec, cLang pb.ChaincodeSpec_Type, targz io.Reader) error {
 
 	if chaincodeSupport.userRunsCC && cds.GetExecEnv() != pb.ChaincodeDeploymentSpec_SYSTEM {
 		return fmt.Errorf("chaincode is user-running and no need to launch")
 	}
 
-	chaincode := cID.Name
+	chaincode := cds.GetChaincodeSpec().GetChaincodeID().GetName()
 	if chaincode == "" {
 		return fmt.Errorf("chaincode name not set")
 	}
 
+	var args, env []string
+	var err error
 	//launch the chaincode
-	args, env, err := platforms.GetArgsAndEnv(cds.ChaincodeSpec, chaincodeSupport.clientGuide)
-	if err != nil {
-		return err
+	if cds.GetExecEnv() != pb.ChaincodeDeploymentSpec_SYSTEM {
+		args, env, err = platforms.GetArgsAndEnv(cds.ChaincodeSpec, netTag, chaincodeSupport.clientGuide)
+		if err != nil {
+			return err
+		}
+	} else {
+		args = platforms.GetSystemEnvArgsAndEnv(cds.ChaincodeSpec)
 	}
 
 	chaincodeLogger.Debugf("start container: %s(chain:%s,nodeid:%s)", chaincode, chaincodeSupport.name, chaincodeSupport.nodeID)
@@ -420,7 +455,7 @@ func (chaincodeSupport *ChaincodeSupport) launchAndWaitForRegister(ctxt context.
 
 	vmtype, _ := chaincodeSupport.getVMType(cds)
 
-	sir := container.StartImageReq{CCID: ccintf.CCID{ChaincodeSpec: cds.ChaincodeSpec, NetworkID: string(chaincodeSupport.name), PeerID: chaincodeSupport.nodeID}, Reader: targz, Args: args, Env: env}
+	sir := container.StartImageReq{CCID: ccintf.CCID{ChaincodeSpec: cds.ChaincodeSpec, NetworkID: netTag, PeerID: chaincodeSupport.nodeID}, Reader: targz, Args: args, Env: env}
 
 	ipcCtxt := context.WithValue(ctxt, ccintf.GetCCHandlerKey(), chaincodeSupport)
 
@@ -471,7 +506,7 @@ func (chaincodeSupport *ChaincodeSupport) finishLaunching(l *ledger.Ledger, chai
 }
 
 //Stop stops a chaincode if running
-func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, cds *pb.ChaincodeDeploymentSpec) error {
+func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, netTag string, cds *pb.ChaincodeDeploymentSpec) error {
 
 	if chaincodeSupport.userRunsCC && cds.GetExecEnv() != pb.ChaincodeDeploymentSpec_SYSTEM {
 		return fmt.Errorf("chaincode is user-running and no need to stop")
@@ -484,7 +519,7 @@ func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, cds *pb.
 
 	//stop the chaincode
 	sir := container.StopImageReq{
-		CCID:       ccintf.CCID{ChaincodeSpec: cds.ChaincodeSpec, NetworkID: string(chaincodeSupport.name), PeerID: chaincodeSupport.nodeID},
+		CCID:       ccintf.CCID{ChaincodeSpec: cds.ChaincodeSpec, NetworkID: netTag, PeerID: chaincodeSupport.nodeID},
 		Timeout:    0,
 		Dontremove: chaincodeSupport.debugCC,
 	}
@@ -578,7 +613,7 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 		wctx, wctxend := context.WithTimeout(ctx, chaincodeSupport.ccDeployTimeout)
 		defer wctxend()
 
-		err = chaincodeSupport.launchAndWaitForRegister(wctx, cds, cID, cLang, packrd)
+		err = chaincodeSupport.launchAndWaitForRegister(wctx, ledger.Tag(), cds, cLang, packrd)
 		//first finish and trace the real reason in runtime reading
 		if omiterr := packrd.Finish(); omiterr != nil {
 			chaincodeLogger.Errorf("WriteRuntimePackage failed, reason was %s", omiterr)
@@ -592,8 +627,8 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 		//from here on : if we launch the container and get an error, we need to stop the container
 		defer func() {
 			if err != nil {
-				chaincodeLogger.Infof("stopping due to error while launching %s", err)
-				errIgnore := chaincodeSupport.Stop(ctx, cds)
+				chaincodeLogger.Infof("stopping due to error while launching: %s", err)
+				errIgnore := chaincodeSupport.Stop(ctx, ledger.Tag(), cds)
 				if errIgnore != nil {
 					chaincodeLogger.Debugf("error on stop %s(%s)", errIgnore, err)
 				}
@@ -644,27 +679,43 @@ func (chaincodeSupport *ChaincodeSupport) Register(stream pb.ChaincodeSupport_Re
 	return chaincodeSupport.HandleChaincodeStream(stream.Context(), stream)
 }
 
+func (chaincodeSupport *ChaincodeSupport) Name() string { return string(chaincodeSupport.name) }
+
 func (chaincodeSupport *ChaincodeSupport) HandleChaincodeStream(ctx context.Context, stream ccintf.ChaincodeStream) error {
 	msg, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("Error in recv [%s]", err)
-	} else if msg.Type != pb.ChaincodeMessage_REGISTER {
+	}
+	var chaincodeID *pb.ChaincodeID
+	var ledgerTag string
+
+	switch msg.Type {
+	case pb.ChaincodeMessage_REGISTER:
+		chaincodeID = new(pb.ChaincodeID)
+		err = proto.Unmarshal(msg.Payload, chaincodeID)
+	case pb.ChaincodeMessage_REGISTER2:
+		regmsg := new(pb.CCRegister)
+		err = proto.Unmarshal(msg.Payload, regmsg)
+		ledgerTag = regmsg.GetNetworkID()
+		chaincodeID = regmsg.GetCcID()
+	default:
 		return fmt.Errorf("Recv unexpected message type [%s] at the beginning of ccstream", msg.ChaincodeEvent)
 	}
-	chaincodeID := &pb.ChaincodeID{}
-	err = proto.Unmarshal(msg.Payload, chaincodeID)
+
 	if err != nil {
-		return fmt.Errorf("Error in received [%s], could NOT unmarshal registration info: %s", pb.ChaincodeMessage_REGISTER, err)
+		return fmt.Errorf("Error in received [%s], could NOT unmarshal registration info: %s", msg.Type, err)
 	}
 
-	handler, ws, err := chaincodeSupport.registerHandler(chaincodeID, stream)
+	chaincodeLogger.Debugf("Recv register msg %v, reg [%v]@%s", msg, chaincodeID, ledgerTag)
+
+	handler, ws, err := chaincodeSupport.registerHandler(chaincodeID, ledgerTag, stream)
 	if err != nil {
 		return fmt.Errorf("Register handler fail: %s", err)
 	}
 
 	deadline, ok := ctx.Deadline()
 	chaincodeLogger.Debugf("Current context deadline = %s, ok = %v", deadline, ok)
-	return ws.processStream(handler)
+	return ws.processStream(ctx, handler)
 }
 
 // Execute executes a transaction and waits for it to complete until a timeout value.

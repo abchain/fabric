@@ -33,7 +33,9 @@ func (ne *NodeEngine) QueryTransaction(ctx context.Context,
 	var ret *chaincode.ExecuteResult
 	var txe *pb.TransactionHandlingContext
 	txe, err = pb.NewPlainTxHandlingContext(tx)
-	ret, err = chaincode.Execute2(ctx, l, chaincode.GetDefaultChain(), txe)
+	tout := ledger.TxExecStates{}
+	tout.InitForQuerying(l)
+	ret, err = chaincode.Execute2(ctx, l, chaincode.GetDefaultChain(), txe, tout)
 	if err == nil {
 		resp = &pb.Response{pb.Response_SUCCESS, []byte(ret.Resp)}
 		return

@@ -39,22 +39,20 @@ func TestMain(m *testing.M) {
 type blockchainTestWrapper struct {
 	t          *testing.T
 	blockchain *blockchain
-	txpool     *transactionPool
 }
 
 func newTestBlockchainWrapper(t *testing.T) *blockchainTestWrapper {
 	blockchain, err := newBlockchain(testDBWrapper.GetDB())
 	testutil.AssertNoError(t, err, "Error while getting handle to chain")
-	txpool, _ := newTxPool()
 	testutil.AssertNoError(t, err, "Error while getting handle to chain")
 
-	return &blockchainTestWrapper{t, blockchain, txpool}
+	return &blockchainTestWrapper{t, blockchain}
 }
 
 func (testWrapper *blockchainTestWrapper) addNewBlock(block *protos.Block, stateHash []byte) uint64 {
 	writeBatch := testDBWrapper.NewWriteBatch()
 	defer writeBatch.Destroy()
-	err := testWrapper.txpool.putTransaction(block.GetTransactions())
+	err := putTxsToDB(block.GetTransactions())
 	testutil.AssertNoError(testWrapper.t, err, "Error while adding txs from a new block")
 	newBlockNumber := testWrapper.blockchain.getSize()
 	block = testWrapper.blockchain.buildBlock(block, stateHash)
@@ -111,7 +109,7 @@ func (testWrapper *blockchainTestWrapper) getTransactionByBlockHash(blockHash []
 }
 
 func (testWrapper *blockchainTestWrapper) getTransactionByID(txID string) *protos.Transaction {
-	tx, err := testWrapper.txpool.getTransaction(txID)
+	tx, err := fetchTxFromDB(txID)
 	testutil.AssertNoError(testWrapper.t, err, "Error while getting tx from blockchain")
 	return tx
 }

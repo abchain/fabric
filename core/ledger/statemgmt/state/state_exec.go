@@ -37,8 +37,8 @@ func NewExecStates(baseSets ...*statemgmt.StateDelta) *TxExecStates {
 }
 
 //legacy API
-func NewExecStatesFromState(s *State) *TxExecStates {
-	return NewExecStates(s.stateDelta)
+func NewExecStatesFromState(s *State, morebaseSets ...*statemgmt.StateDelta) *TxExecStates {
+	return NewExecStates(append(morebaseSets, s.stateDelta)...)
 }
 
 //caller MUST response for releasing the snapshot

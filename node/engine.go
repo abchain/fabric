@@ -96,8 +96,28 @@ func (ne *NodeEngine) DefaultLedger() *ledger.Ledger {
 	return ne.Ledgers[""]
 }
 
+func (ne *NodeEngine) LedgersList() (ret []*ledger.Ledger) {
+	for k, l := range ne.Ledgers {
+		if k == "" {
+			continue
+		}
+		ret = append(ret, l)
+	}
+	return
+}
+
 func (ne *NodeEngine) DefaultPeer() *PeerEngine {
 	return ne.Peers[""]
+}
+
+func (ne *NodeEngine) PeersList() (ret []*PeerEngine) {
+	for k, p := range ne.Peers {
+		if k == "" {
+			continue
+		}
+		ret = append(ret, p)
+	}
+	return
 }
 
 func (ne *NodeEngine) SelectEndorser(name string) (cred.TxEndorserFactory, error) {
@@ -232,6 +252,10 @@ func (ne *NodeEngine) StopServices(notify <-chan ServicePoint) {
 }
 
 func (ne *NodeEngine) FinalRelease() {
+
+	if ne == nil {
+		return
+	}
 
 	for _, p := range ne.srvPoints {
 		if p.lPort != nil {

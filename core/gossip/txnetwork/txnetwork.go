@@ -331,6 +331,10 @@ type transactionPool struct {
 	cCaches       map[string]commitData
 	cPendingTxs   map[string]bool
 	selfTxProcess func() (uint64, []byte)
+	currentEpoch  struct {
+		height uint64
+		hash   []byte
+	}
 }
 
 func newTransactionPool(ledger *ledger.Ledger) *transactionPool {
@@ -424,6 +428,19 @@ func (tp *transactionPool) buildCompleteTxHandler() pb.TxPreHandler {
 	return pb.TxFuncAsTxPreHandler(func(tx *pb.Transaction) (*pb.Transaction, error) {
 		return tp.completeTx(tx)
 	})
+}
+
+func (tp *transactionPool) SetEpoch(h uint64, hh []byte) {
+	tp.Lock()
+	defer tp.Unlock()
+
+	tp.currentEpoch.height, tp.currentEpoch.hash = h, hh
+}
+
+func (tp *transactionPool) CurrentEpoch() (uint64, []byte) {
+	tp.RLock()
+	defer tp.RUnlock()
+	return tp.currentEpoch.height, tp.currentEpoch.hash
 }
 
 func (tp *transactionPool) AcquireCachesRead(peer string) txCacheRead {

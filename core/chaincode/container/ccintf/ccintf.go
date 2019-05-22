@@ -34,6 +34,7 @@ type ChaincodeStream interface {
 // CCSupport must be implemented by the chaincode support side in peer
 // (such as chaincode_support)
 type CCSupport interface {
+	Name() string
 	HandleChaincodeStream(context.Context, ChaincodeStream) error
 }
 

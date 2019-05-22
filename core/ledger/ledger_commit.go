@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"bytes"
 	"github.com/abchain/fabric/core/ledger/statemgmt"
 	"github.com/abchain/fabric/core/ledger/statemgmt/state"
 	"github.com/abchain/fabric/protos"
@@ -11,7 +12,6 @@ import (
 type TxEvaluateAndCommit struct {
 	ledger             *Ledger
 	accumulatedDeltas  *statemgmt.StateDelta
-	transactions       []*protos.Transaction
 	transactionResults []*protos.TransactionResult
 }
 
@@ -28,15 +28,64 @@ func NewTxEvaluatingAgent(ledger *Ledger) (*TxEvaluateAndCommit, error) {
 }
 
 func (tec *TxEvaluateAndCommit) AssignExecRT() TxExecStates {
-	return TxExecStates{state.NewExecStates(tec.accumulatedDeltas)}
+	return TxExecStates{state.NewExecStates(append(tec.ledger.state.cache.deltas, tec.accumulatedDeltas)...)}
 }
 
 func (tec *TxEvaluateAndCommit) MergeExec(s TxExecStates) {
 	tec.accumulatedDeltas.ApplyChanges(s.DeRef())
 }
 
+func (tec *TxEvaluateAndCommit) AddExecResult(s TxExecStates, txRes *protos.TransactionResult) {
+	tec.accumulatedDeltas.ApplyChanges(s.DeRef())
+	tec.transactionResults = append(tec.transactionResults)
+}
+
+func (tec *TxEvaluateAndCommit) Ledger() *Ledger {
+	return tec.ledger
+}
+
+//push state forward one
+func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *protos.Block) error {
+	ledger := tec.ledger
+	var err error
+	ledgerLogger.Infof("Start state commit txbatch to block %d", refBlockNumber)
+
+	if refBlock == nil {
+		refBlock, err = ledger.blockchain.getRawBlock(refBlockNumber)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = ledger.state.prepareState(refBlockNumber, tec.accumulatedDeltas)
+	if err != nil {
+		return err
+	}
+	stateHash := ledger.state.getBuildingHash()
+
+	if bytes.Compare(stateHash, refBlock.GetStateHash()) != 0 {
+		return newLedgerError(ErrorTypeFatalCommit, "local delta not match reference block")
+	}
+
+	writeBatch := ledger.blockchain.NewWriteBatch()
+	defer writeBatch.Destroy()
+
+	err = ledger.state.persistentState(writeBatch)
+	if err != nil {
+		return err
+	}
+
+	ledger.readCache.Lock()
+	defer ledger.readCache.Unlock()
+
+	ledger.state.commitState()
+	ledger.state.persistentStateDone()
+
+	return nil
+}
+
 //commit current results and persist them
-func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte) error {
+func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte, transactions []*protos.Transaction) error {
 
 	ledger := tec.ledger
 
@@ -49,7 +98,7 @@ func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte) error {
 	}
 	stateHash := ledger.state.getBuildingHash()
 
-	block := buildBlock(stateHash, metadata, tec.transactions)
+	block := buildBlock(stateHash, metadata, transactions)
 	buildExecResults(block, tec.transactionResults)
 	err = ledger.blockchain.prepareNewBlock(newBlockNumber, block, nil)
 	if err != nil {
@@ -95,7 +144,6 @@ func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte) error {
 	ledger.blockchain.blockPersisted(newBlockNumber)
 	ledger.state.persistentStateDone()
 	ledger.index.persistDone(newBlockNumber)
-	ledger.snapshots.UpdateFromState(ledger.state)
 
 	return nil
 

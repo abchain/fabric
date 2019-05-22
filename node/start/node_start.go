@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/embedded_chaincode"
 	"github.com/abchain/fabric/core/peer"
 	"github.com/abchain/fabric/events/producer"
 	"github.com/abchain/fabric/node"
@@ -20,6 +19,8 @@ import (
 //* Pre-init (call PreInitFabricNode), which will create the global node
 //  object and execute PreInit in the node, and init other required
 //  variables
+//  the context passed in PreInitFabricNode will act as a "final switch"
+//  which will close all running routine inside the node
 
 //* Init (call InitFabricNode), init the node object, all of the
 //  rpc services is ready now
@@ -40,12 +41,11 @@ import (
 var (
 	logger  = logging.MustGetLogger("engine")
 	theNode *node.NodeEngine
-	theDoom context.CancelFunc //use to cancel all ops in the node
 )
 
 func GetNode() *node.NodeEngine { return theNode }
 
-func PreInitFabricNode(name string) {
+func PreInitFabricNode(ctx context.Context, name string) {
 	if theNode != nil {
 		panic("Doudble call of init")
 	}
@@ -53,15 +53,12 @@ func PreInitFabricNode(name string) {
 	theNode.Name = name
 	theNode.PreInit()
 
-	peer.PeerGlobalParentCtx, theDoom = context.WithCancel(context.Background())
+	peer.PeerGlobalParentCtx = ctx
 }
 
 func Final() {
 
-	if theDoom != nil {
-		theDoom()
-		theNode.FinalRelease()
-	}
+	theNode.FinalRelease()
 
 }
 
@@ -74,9 +71,6 @@ func RunFabricNode() (error, func(ctx context.Context)) {
 	return nil, func(ctx context.Context) {
 
 		defer theNode.StopServices(status)
-		if ctx == nil {
-			return
-		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -114,14 +108,9 @@ func InitFabricNode() error {
 		userRunsCC = true
 	}
 
+	chaincode.NewSystemChaincodeSupport(theNode.Name)
 	ccplatform := chaincode.NewChaincodeSupport(chaincode.DefaultChain, theNode.Name, ccsrv.Spec(), userRunsCC)
 	pb.RegisterChaincodeSupportServer(ccsrv.Server, ccplatform)
-
-	//TODO: now we just launch system chaincode for default ledger
-	err = embedded_chaincode.RegisterSysCCs(theNode.DefaultLedger(), ccplatform)
-	if err != nil {
-		return fmt.Errorf("launch system chaincode fail: %s", err)
-	}
 
 	var apisrv, evtsrv node.ServicePoint
 	var evtConf *viper.Viper

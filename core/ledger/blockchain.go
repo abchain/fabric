@@ -32,8 +32,9 @@ type blockchain struct {
 	sync.RWMutex
 	*db.OpenchainDB
 
-	size         uint64
-	continuousTo indexProgress
+	size                uint64
+	continuousTo        indexProgress
+	updatesubscriptions []LedgerNewBlockNotify
 
 	//we save all blocks that is not persisted yet
 	blockCached struct {
@@ -360,6 +361,10 @@ func (blockchain *blockchain) commitBuilding() {
 
 func (blockchain *blockchain) blockPersisted(blkn uint64) {
 	blockchain.continuousTo.FinishBlock(blkn)
+	theblk, _ := blockchain.getRawBlock(blkn)
+	for _, f := range blockchain.updatesubscriptions {
+		f(blkn, theblk)
+	}
 }
 
 // --- Deprecated following ----

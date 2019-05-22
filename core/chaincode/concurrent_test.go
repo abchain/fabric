@@ -40,7 +40,13 @@ func concurrentInvoke(ctxt context.Context, invtx []*pb.Transaction, querytx []*
 		lock.Unlock()
 
 		txe, _ := pb.NewPlainTxHandlingContext(tx)
-		res, err := Execute2(ctxt, l, GetChain(DefaultChain), txe)
+		tout := ledger.TxExecStates{}
+		if isquery {
+			tout.InitForQuerying(l)
+		} else {
+			tout.InitForInvoking(l)
+		}
+		res, err := Execute2(ctxt, l, GetChain(DefaultChain), txe, tout)
 
 		lock.Lock()
 		wg.Done()
@@ -400,7 +406,7 @@ func TestConcurrentExecuteInvokeTransaction(t *testing.T) {
 		t.Logf("Invoke test 3.2 passed")
 	}
 
-	GetChain(DefaultChain).Stop(ctxt, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: &pb.ChaincodeSpec{ChaincodeID: cID}})
+	StopChain(ctxt, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: &pb.ChaincodeSpec{ChaincodeID: cID}})
 
 }
 
@@ -448,6 +454,6 @@ func TestConcurrentExecuteInvokeLongTransaction(t *testing.T) {
 		t.Logf("Invoke test 2 passed")
 	}
 
-	GetChain(DefaultChain).Stop(ctxt, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: &pb.ChaincodeSpec{ChaincodeID: cID}})
+	StopChain(ctxt, &pb.ChaincodeDeploymentSpec{ChaincodeSpec: &pb.ChaincodeSpec{ChaincodeID: cID}})
 
 }

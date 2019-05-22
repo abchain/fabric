@@ -260,7 +260,7 @@ func (ws *workingStream) handleMessage(msg *pb.ChaincodeMessage, tctx *transacti
 	}
 }
 
-func (ws *workingStream) processStream(handler *Handler) (err error) {
+func (ws *workingStream) processStream(ctx context.Context, handler *Handler) (err error) {
 	msgAvail := make(chan *pb.ChaincodeMessage)
 	ws.exitNotify = make(chan interface{})
 
@@ -284,6 +284,9 @@ func (ws *workingStream) processStream(handler *Handler) (err error) {
 
 	for {
 		select {
+		case <-ctx.Done():
+			chaincodeLogger.Debugf("External signal ending of chaincode support stream")
+			return ctx.Err()
 		case in := <-msgAvail:
 			if ioerr == io.EOF {
 				chaincodeLogger.Debugf("Received EOF, ending chaincode support stream")

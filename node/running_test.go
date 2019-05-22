@@ -34,7 +34,7 @@ func buildLegacyNode(t *testing.T) *NodeEngine {
 
 }
 
-func compareTx(t *testing.T, origin, delivered *pb.Transaction) {
+func compareTx(t *testing.T, origin *pb.Transaction, delivered *pb.TransactionHandlingContext) {
 
 	if delivered == nil {
 		t.Fatal("No tx is found to compare with", origin)
@@ -103,7 +103,7 @@ func TestTxNetwork(t *testing.T) {
 		if topictx.ChaincodeSpec == nil {
 			t.Fatalf("wrong exec context: %v", topictx)
 		}
-		compareTx(t, tx1, topictx.Transaction)
+		compareTx(t, tx1, topictx)
 	}
 
 	thepeer.Stop()
@@ -160,7 +160,7 @@ func TestTxNetwork(t *testing.T) {
 			t.Fatalf("wrong exec context for tx2: %v", topictx)
 		}
 
-		compareTx(t, tx2, topictx.Transaction)
+		compareTx(t, tx2, topictx)
 		compareTx(t, tx2, thenode.DefaultLedger().GetPooledTransaction(topictx.Transaction.GetTxid()))
 	}
 

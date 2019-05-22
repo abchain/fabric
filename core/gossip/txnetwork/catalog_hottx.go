@@ -197,11 +197,7 @@ type txPoolGlobalDigest struct {
 
 func (g *txPoolGlobal) GenDigest() model.Digest {
 
-	epoch, err := g.ledger.GetCurrentStateHash()
-	if err != nil {
-		logger.Errorf("Could not get epoch: %s", err)
-		return nil
-	}
+	_, epoch := g.CurrentEpoch()
 
 	return txPoolGlobalDigest{epoch}
 }

@@ -98,24 +98,31 @@ func (ledger *LedgerGlobal) PruneTransactions(txs []*protos.Transaction) {
 	ledger.txpool.cleanTransaction(txs)
 }
 
-func (ledger *LedgerGlobal) PoolTransactions(txs []*protos.Transaction) {
-	ledger.txpool.poolTransaction(txs)
+func (ledger *LedgerGlobal) PoolTransaction(txe *protos.TransactionHandlingContext) {
+	ledger.txpool.poolTxe(txe)
 }
 
-func (ledger *LedgerGlobal) IteratePooledTransactions(ctx context.Context) (chan *protos.Transaction, error) {
+func (ledger *LedgerGlobal) IteratePooledTransactions(ctx context.Context) (chan *protos.TransactionHandlingContext, error) {
 	return ledger.txpool.iteratePooledTx(ctx)
 }
 
-func (ledger *LedgerGlobal) PutTransactions(txs []*protos.Transaction) error {
-	return ledger.txpool.putTransaction(txs)
+func (ledger *LedgerGlobal) GetPooledTxsAligned(txIDs []string) []*protos.TransactionHandlingContext {
+	return ledger.txpool.getPooledTxs(txIDs)
 }
 
-// GetTransactionByID return transaction by it's txId
-func (ledger *LedgerGlobal) GetTransactionByID(txID string) (*protos.Transaction, error) {
-	return ledger.txpool.getTransaction(txID)
+func (ledger *LedgerGlobal) GetPooledTransactions(txIDs []string) []*protos.TransactionHandlingContext {
+	fastret := ledger.txpool.getPooledTxs(txIDs)
+	cnt := 0
+	for _, ret := range fastret {
+		if ret != nil {
+			fastret[cnt] = ret
+			cnt++
+		}
+	}
+	return fastret[:cnt]
 }
 
-func (ledger *LedgerGlobal) GetPooledTransaction(txID string) *protos.Transaction {
+func (ledger *LedgerGlobal) GetPooledTransaction(txID string) *protos.TransactionHandlingContext {
 	return ledger.txpool.getPooledTx(txID)
 }
 
@@ -123,25 +130,47 @@ func (ledger *LedgerGlobal) GetPooledTxCount() int {
 	return ledger.txpool.getPooledTxCount()
 }
 
-//we have a mroe sophisticated way to obtain a bunch of transactions
-func (ledger *LedgerGlobal) GetTransactionsByID(txIDs []string) []*protos.Transaction {
-	txs := ledger.txpool.getPooledTxs(txIDs)
+func (ledger *LedgerGlobal) PutTransactions(txs []*protos.Transaction) error {
+	return putTxsToDB(txs)
+}
 
-	var cnt int
-	var err error
-	for i, ret := range txs {
+// GetTransactionByID return transaction by it's txId
+func (ledger *LedgerGlobal) GetTransactionByID(txID string) (*protos.Transaction, error) {
+	txe := ledger.txpool.getPooledTx(txID)
+	if txe == nil {
+
+		tx, err := fetchTxFromDB(txID)
+		if err != nil {
+			return nil, err
+		}
+
+		if tx != nil {
+			return tx, nil
+		}
+
+		return nil, ErrResourceNotFound
+	}
+
+	return txe.Transaction, nil
+}
+
+//we have a more sophisticated way to obtain a bunch of transactions
+func (ledger *LedgerGlobal) GetTransactionsByID(txIDs []string) []*protos.Transaction {
+	txes := ledger.txpool.getPooledTxs(txIDs)
+	txs := make([]*protos.Transaction, 0, len(txes))
+
+	for i, ret := range txes {
 		if ret == nil {
-			ret, err = fetchTxFromDB(txIDs[i])
+			tx, err := fetchTxFromDB(txIDs[i])
 			if err != nil {
 				ledgerLogger.Errorf("Fail to obtain tx from db: %s, give up", err)
 				break
 			}
-		}
-		if ret != nil {
-			txs[cnt] = ret
-			cnt++
+			txs = append(txs, tx)
+		} else {
+			txs = append(txs, ret.Transaction)
 		}
 	}
 
-	return txs[:cnt]
+	return txs
 }

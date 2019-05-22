@@ -329,12 +329,8 @@ func (lh *ledgerHistory) snapshotCurrent(shash []byte) {
 	lh.stableStatus.Add(shash)
 }
 
-func (lh *ledgerHistory) UpdateFromState(s *stateWrapper) {
-	if s.cache.refHeight == 0 || len(s.cache.refHash) == 0 {
-		ledgerLogger.Errorf("Update with invalid (empty) state")
-		return
-	}
-	lh.Update(s.cache.refHash, s.cache.refHeight-1)
+func (lh *ledgerHistory) UpdateR(blknum uint64, shash []byte) {
+	lh.Update(shash, blknum)
 }
 
 func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {

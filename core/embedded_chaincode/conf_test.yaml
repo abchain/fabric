@@ -1,0 +1,585 @@
+###############################################################################
+#
+#    Node section
+#
+###############################################################################
+node:
+
+    # Path on the file system where peer will store data
+    fileSystemPath: /var/hyperledger/production
+
+    # list available configs in ledgers block
+    ledgers:
+      - base
+      - additional
+      - more
+
+    peers:
+      - network3
+
+    # the API of node
+    api:
+        # The address that the api service will listen on
+        address: 127.0.0.1:7051
+        events:
+            # total number of events that could be buffered without blocking the
+            # validator sends
+            buffersize: 100
+
+            # milliseconds timeout for producer to send an event.
+            # if < 0, if buffer full, unblocks immediately and not send
+            # if 0, if buffer full, will block and guarantee the event will be sent out
+            # if > 0, if buffer full, blocks till timeout
+            timeout: 10        
+
+    # custom the global db's configuration, and is also serviced as the conf.
+    # for any ledgers whose db block is not provided
+    db:
+        # 10485760 = 10M
+        maxLogFileSize: 10485760
+        keepLogFileNum: 10
+        logLevel: "warn"
+
+###############################################################################
+#
+#    ledgers section
+#
+###############################################################################
+ledgers:
+    base:
+      # mark this ledger is default
+      default: true
+      currentDbVersion: 1
+      # state manager configurations
+      state:
+
+        # Control the number state deltas that are maintained. This takes additional
+        # disk space, but allow the state to be rolled backwards and forwards
+        # without the need to replay transactions.
+        deltaHistorySize: 500
+
+        # The data structure in which the state will be stored. Different data
+        # structures may offer different performance characteristics.
+        # Options are 'buckettree', 'trie' and 'raw'.
+        # ( Note:'raw' is experimental and incomplete. )
+        # If not set, the default data structure is the 'buckettree'.
+        # This CANNOT be changed after the DB has been created.
+        dataStructure:
+          # The name of the data structure is for storing the state
+          name: buckettree
+          # The data structure specific configurations
+          configs:
+            # configurations for 'bucketree'. These CANNOT be changed after the DB
+            # has been created. 'numBuckets' defines the number of bins that the
+            # state key-values are to be divided
+            numBuckets: 1000003
+            # 'maxGroupingAtEachLevel' defines the number of bins that are grouped
+            #together to construct next level of the merkle-tree (this is applied
+            # repeatedly for constructing the entire tree).
+            maxGroupingAtEachLevel: 5
+            # 'bucketCacheSize' defines the size (in MBs) of the cache that is used to keep
+            # the buckets (from root upto secondlast level) in memory. This cache helps
+            # in making state hash computation faster. A value less than or equals to zero
+            # leads to disabling this caching. This caching helps more if transactions
+            # perform significant writes.
+            bucketCacheSize: 100
+
+            # configurations for 'trie'
+            # 'tire' has no additional configurations exposed as yet      
+      # rocksdb configurations
+      db:
+          # 10485760 = 10M
+          maxLogFileSize: 10485760
+          keepLogFileNum: 10
+          logLevel: "warn"
+          #version: 0        
+# there can be mutiple blocks for ledger
+    additional:
+      db:
+          keepLogFileNum: 5
+          logLevel: "warn"
+      state:
+        deltaHistorySize: 500
+        dataStructure:
+          name: buckettree      
+          maxGroupingAtEachLevel: 3   
+          numBuckets: 100 
+    more:
+        #you MUST put something in the block or things will go wrong
+      default: false
+# this ledger setting is not used      
+    notrefered:
+      db:
+          keepLogFileNum: 7
+          logLevel: "error"
+      dataStructure:
+          name: not-exist-one      
+
+###############################################################################
+#
+#    peers section: (CAUTION: all peers block is top-level)
+#
+###############################################################################
+#
+network1:
+    # mark this peer is default
+    default: true
+    # The Peer id is used for identifying this Peer instance.
+    id: vp0
+
+    # The networkId allows for logical seperation of networks, if not set, peer name will be used
+    # networkId: dev
+    # networkId: test
+    networkId: dev
+
+    # Validator defines whether this peer is a validating peer or not
+    # this is NOT A STABLE setting
+    validator:
+        enabled: true
+
+    # ------------------- server spec block --------------------- #
+    # The Address this Peer will listen on
+    listenAddress: 127.0.0.1:7055
+
+    # The Address expose to other peers
+    address: 127.0.0.1:7055
+
+    # Whether the Peer should programmatically determine the address to bind to.
+    # This case is useful for docker containers.
+    addressAutoDetect: false
+    # TLS Settings for peer server
+    tls:
+        # enable tls for p2p
+        enabled: true
+        file:
+            cert: testdata/server1.pem
+            key: testdata/server1.key
+        # The server name use to verify the hostname returned by TLS handshake
+        serverhostoverride: dummy
+    # ------------------- server spec block over --------------------- #
+
+    # peer can has additional credential settings
+    pki:
+        #if this flag is set, the cred setting in node will not be inherited
+        # noinherit: true    
+        file: 
+          #cert can be root or intermediate certificate
+          cert: testdata/server1.pem
+          key: testdata/server1.key
+          #ca and ica can be list
+          ca: testdata/server1.pem    
+          #immediate CA
+          ica:
+          #if not specified, and cert is a immediate CA, cred module will create
+          #a temporary certificate for tx endorsing
+          #txclient:
+          #  cert:
+          #  key:
+
+    # Sync related configuration
+    sync:
+        blocks:
+            # Channel size for readonly SyncBlocks messages channel for receiving
+            # blocks from oppositie Peer Endpoints.
+            # NOTE: currently messages are not stored and forwarded, but rather
+            # lost if the channel write blocks.
+            channelSize: 10
+        state:
+            snapshot:
+                # Channel size for readonly syncStateSnapshot messages channel
+                # for receiving state deltas for snapshot from oppositie Peer Endpoints.
+                # NOTE: when the channel is exhausted, the writes block for up to the
+                # writeTimeout specified below
+                channelSize: 50
+                # Write timeout for the syncStateSnapshot messages
+                # When the channel above is exhausted, messages block before being
+                # discarded for this amount of time
+                writeTimeout: 60s
+            deltas:
+                # Channel size for readonly syncStateDeltas messages channel for
+                # receiving state deltas for a syncBlockRange from oppositie
+                # Peer Endpoints.
+                # NOTE: currently messages are not stored and forwarded,
+                # but rather lost if the channel write blocks.
+                channelSize: 20
+
+    # Peer discovery settings.  Controls how this peer discovers other peers
+    discovery:
+
+        # The root nodes are used for bootstrapping purposes, and generally
+        # supplied through ENV variables
+        # It can be either a single host or a comma separated list of hosts.
+        rootnode:
+
+        # The duration of time between attempts to asks peers for their connected peers
+        period:  5s
+
+        ## leaving this in for example of sub map entry
+        # testNodes:
+        #    - node   : 1
+        #      ip     : 127.0.0.1
+        #      port   : 7051
+        #    - node   : 2
+        #      ip     : 127.0.0.1
+        #      port   : 7051
+
+        # Should the discovered nodes and their reputations
+        # be stored in DB and persisted between restarts
+        persist:    true
+
+        # the period in seconds with which the discovery
+        # tries to reconnect to successful nodes
+        # 0 means the nodes are not reconnected
+        touchPeriod: 6s
+
+        # the maximum nuber of nodes to reconnect to
+        # -1 for unlimited
+        touchMaxNodes: 100
+
+        # Running in hidden mode for node discovery
+        # Node will connect to root nodes only
+        hidden: false
+
+        #Abolished the discovered function of the node and retained the function of detecting other nodes
+        disable: false
+
+network2:
+    id: vp0
+    # The Address this Peer will listen on can be omitted
+    # listenAddress: 127.0.0.1:8055
+    # The Address expose to other peers
+    address: 127.0.0.1:8055
+    addressAutoDetect: false
+    validator:
+        enabled: true
+    tls:
+        enabled: true
+        file:
+            cert: testdata/server1.pem
+            key: testdata/server1.key
+        serverhostoverride: dummy
+    pki:
+    # use old fasion (0.6) CA service
+        eca:
+            paddr: localhost:7054
+        tca:
+            paddr: localhost:7054
+        tls:
+            enabled: false
+            # notice: it is not same as the fabric 0.6 (roocert.file vs file.rootcert)
+            file:
+              rootcert: tlsca.cert
+            # The server name use to verify the hostname returned by TLS handshake
+            serverhostoverride:
+    sync:
+        blocks:
+            channelSize: 10
+        state:
+            snapshot:
+                channelSize: 50
+                writeTimeout: 60s
+            deltas:
+                channelSize: 20
+
+    discovery:
+        rootnode:
+        period:  5s
+        persist:    false
+        touchPeriod: 6s
+        touchMaxNodes: 100
+        hidden: false
+        disable: true  
+network3:
+    id: vp0
+    address: 127.0.0.1:9055
+    addressAutoDetect: false
+    #validator:
+    #    enabled: true
+    tls:
+        enabled: false
+    # peer derive node's credentials
+    pki:
+        enabled: false
+    sync:
+        blocks:
+            channelSize: 10
+        state:
+            snapshot:
+                channelSize: 50
+                writeTimeout: 60s
+            deltas:
+                channelSize: 20
+    discovery:
+        rootnode:
+        period:  5s
+        persist:    false
+        touchPeriod: 6s
+        touchMaxNodes: 100
+        hidden: true
+        disable: false  
+
+###############################################################################
+#
+#    REST section
+#
+###############################################################################
+rest:
+
+    # Enable/disable setting for the REST service. It is recommended to disable
+    # REST service on validators in production deployment and use non-validating
+    # nodes to host REST service
+    enabled: false
+
+    # The address that the REST service will listen on for incoming requests.
+    address: 0.0.0.0:7050
+
+    validPatterns:
+
+        # Valid enrollment ID pattern in URLs: At least one character long, and
+        # all characters are A-Z, a-z, 0-9 or _.
+        enrollmentID: '^\w+$'
+
+###############################################################################
+#
+#    LOGGING section
+#
+###############################################################################
+logging:
+
+    # Default logging levels are specified here for each of the three peer
+    # commands 'node', 'network' and 'chaincode'. For commands that have
+    # subcommands, the defaults also apply to all subcommands of the command.
+    # Valid logging levels are case-insensitive strings chosen from
+
+    #     CRITICAL | ERROR | WARNING | NOTICE | INFO | DEBUG
+
+    # The logging levels specified here can be overridden in various ways,
+    # listed below from strongest to weakest:
+    #
+    # 1. The --logging-level=<level> command line option overrides all other
+    #    specifications.
+    #
+    # 2. The environment variable CORE_LOGGING_LEVEL otherwise applies to
+    #    all peer commands if defined as a non-empty string.
+    #
+    # 3. The environment variables CORE_LOGGING_[NODE|NETWORK|CHAINCODE]
+    #    otherwise apply to the respective peer commands if defined as non-empty
+    #    strings.
+    #
+    # 4. Otherwise, the specifications below apply.
+    #
+    # Developers: Please see fabric/docs/Setup/logging-control.md for more
+    # options.
+    level: debug
+    test: info:embedded_chaincode,chaincode,inproccontroller=debug
+
+###############################################################################
+#
+#    VM section
+#
+###############################################################################
+vm:
+
+    # Endpoint of the vm management system.  For docker can be one of the following in general
+    # unix:///var/run/docker.sock
+    # http://localhost:2375
+    # https://localhost:2376
+    endpoint: unix:///var/run/docker.sock
+
+    # settings for docker vms
+    docker:
+        tls:
+            enabled: false
+            cert:
+                file: /path/to/server.pem
+            ca:
+                file: /path/to/ca.pem
+            key:
+                file: /path/to/server-key.pem
+        # Parameters of docker container creating. For docker can created by custom parameters
+        # If you have your own ipam & dns-server for cluster you can use them to create container efficient.
+        # NetworkMode Sets the networking mode for the container. Supported standard values are: `host`(default),`bridge`,`ipvlan`,`none`
+        # dns A list of DNS servers for the container to use.
+        # note: not support customize for `Privileged` `Binds` `Links` `PortBindings`
+        # not support set LogConfig using Environment Variables
+        # LogConfig sets the logging driver (Type) and related options (Config) for Docker
+        # you can refer https://docs.docker.com/engine/admin/logging/overview/ for more detail configruation.
+        hostConfig:
+            NetworkMode: host
+            Dns:
+               # - 192.168.0.1
+            LogConfig:
+                Type: json-file
+                Config:
+                    max-size: "50m"
+                    max-file: "5"
+            Memory: 2147483648
+###############################################################################
+#
+#    Chaincode section
+#
+###############################################################################
+chaincode:
+
+    # if spec, chaincode supporting will use sole port
+    # ipaddress: 127.0.0.1:7061
+
+    # The id is used by the Chaincode stub to register the executing Chaincode
+    # ID with the Peerand is generally supplied through ENV variables
+    # the Path form of ID is provided when deploying the chaincode. The name is
+    # used for all other requests. The name is really a hashcode
+    # returned by the system in response to the deploy transaction. In
+    # development mode where user runs the chaincode, the name can be any string
+    id:
+        path:
+        name:
+
+    golang:
+
+        # This is the basis for the Golang Dockerfile.  Additional commands will
+        # be appended depedendent upon the chaincode specification.
+        Dockerfile:  |
+            from hyperledger/fabric-baseimage
+            #from utxo:0.1.0
+            COPY src $GOPATH/src
+            WORKDIR $GOPATH
+
+    car:
+
+        # This is the basis for the CAR Dockerfile.  Additional commands will
+        # be appended depedendent upon the chaincode specification.
+        Dockerfile:  |
+            FROM hyperledger/fabric-ccenv:$(ARCH)-$(PROJECT_VERSION)
+
+    java:
+        # This is an image based on java:openjdk-8 with addition compiler
+        # tools added for java shim layer packaging.
+        # This image is packed with shim layer libraries that are necessary
+        # for Java chaincode runtime.
+        Dockerfile:  |
+            from hyperledger/fabric-javaenv:$(ARCH)-$(PROJECT_VERSION)
+
+    # timeout in millisecs for starting up a container and waiting for Register
+    # to come through. 1sec should be plenty for chaincode unit tests
+    startuptimeout: 300000
+
+    # timeout in millisecs for deploying chaincode from a remote repository.
+    deploytimeout: 30000
+    exectimeout: 30000
+
+    # mode - options are "dev", "net"
+    # dev - in dev mode, user runs the chaincode after starting validator from
+    # command line on local machine
+    # net - in net mode validator will run chaincode in a docker container
+    mode: net
+    # mode: net
+
+    # keepalive in seconds. In situations where the communiction goes through a
+    # proxy that does not support keep-alive, this parameter will maintain connection
+    # between peer and chaincode.
+    # A value <= 0 turns keepalive off
+    keepalive: 0
+
+
+###############################################################################
+#
+#    Security section - legacy block
+#
+###############################################################################
+security:
+    # Enable security will force every entity on the network to enroll with obc-ca
+    # and maintain a valid set of certificates in order to communicate with
+    # other peers
+    enabled: false
+    # Specify a ID which will endorse all transactions for a peer
+    endorseID: client    
+    # To enroll NVP or VP with membersrvc. These parameters are for 1 time use.
+    # They will not be valid on subsequent times without un-enroll first.
+    # The values come from off-line registration with obc-ca. For testing, make
+    # sure the values are in membersrvc/membersrvc.yaml file eca.users
+    enrollID: vp
+    enrollSecret: f3489fy98ghf
+    # To enable privacy of transactions (requires security to be enabled). This
+    # encrypts the transaction content during transit and at rest. The state
+    # data is also encrypted
+    privacy: false
+
+    # Can be 256 or 384. If you change here, you have to change also
+    # the same property in membersrvc.yaml to the same value
+    level: 256
+
+    # Can be SHA2 or SHA3. If you change here, you have to change also
+    # the same property in membersrvc.yaml to the same value
+    hashAlgorithm: SHA3
+
+    # TCerts related configuration
+    tcert:
+      batch:
+        # The size of the batch of TCerts
+        size: 200
+      # tcert.reused for one tCertificate by many transication
+      reused: 
+        enabled: true
+        # expired is second from tcert create for update it, default mean oneweek before expired time and 1/3 before expired time
+        expired: 0
+        # batch is the max times limit one tcert to use
+        batch: 64
+        # round_robin set crypto loop the tcert pool to get reuseable tcert, 0,1,2,3,0,1,2..., default 0 mean disable
+        round_robin: 0
+
+    # Enable the release of keys needed to decrypt attributes from TCerts in
+    # the chaincode using the metadata field of the transaction (requires
+    # security to be enabled).
+    attributes:
+      enabled: false
+
+    # TCerts pool configuration.  Multi-thread pool can also be configured
+    # by multichannel option switching concurrency in communication with TCA. 
+    multithreading:
+      enabled: false
+      multichannel: false
+
+    # Confidentiality protocol versions supported: 1.2
+    confidentialityProtocolVersion: 1.2
+
+################################################################################
+#
+#   SECTION: STATETRANSFER
+#
+#   - This applies to recovery behavior when the replica has detected
+#     a state transfer is required
+#
+#   - This might happen:
+#     - During a view change in response to a faulty primary
+#     - After a network outage which has isolated the replica
+#     - If the current blockchain/state is determined to be corrupt
+#
+################################################################################
+statetransfer:
+
+    # Should a replica attempt to fix damaged blocks?
+    # In general, this should be set to true, setting to false will cause
+    # the replica to panic, and require a human's intervention to intervene
+    # and fix the corruption
+    recoverdamage: true
+
+    # The number of blocks to retrieve per sync request
+    blocksperrequest: 20
+
+    # The maximum number of state deltas to attempt to retrieve
+    # If more than this number of deltas is required to play the state up to date
+    # then instead the state will be flagged as invalid, and a full copy of the state
+    # will be retrieved instead
+    maxdeltas: 200
+
+    # Timeouts
+    timeout:
+
+        # How long may returning a single block take
+        singleblock: 2s
+
+        # How long may returning a single state delta take
+        singlestatedelta: 2s
+
+        # How long may transferring the complete state take
+        fullstate: 60s
