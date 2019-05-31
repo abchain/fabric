@@ -17,6 +17,7 @@ limitations under the License.
 package protos
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/abchain/fabric/core/util"
@@ -78,6 +79,62 @@ func (block *Block) GetBlockBytes() ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+//include all bytes (embedded transactions)
+func (block *Block) FullBytes() ([]byte, error) {
+
+	if block == nil {
+		return nil, fmt.Errorf("Block is nil")
+	}
+
+	if len(block.GetTxids()) > len(block.GetTransactions()) {
+		return nil, fmt.Errorf("Block is not full (missing transactions)")
+	}
+
+	data, err := proto.Marshal(block)
+
+	if err != nil {
+		return nil, fmt.Errorf("Could not marshal block: %s", err)
+	}
+
+	return data, nil
+}
+
+func (block *Block) VerifyRaw(expectedhash []byte) error {
+
+	h, err := block.GetHash()
+	if err != nil {
+		return err
+	} else if bytes.Compare(h, expectedhash) != 0 {
+		return fmt.Errorf("hash is not matched to expected")
+	}
+
+	return nil
+
+}
+
+func (block *Block) Verify(expectedhash []byte) error {
+
+	err := block.VerifyRaw(expectedhash)
+	if err != nil {
+		return err
+	}
+	//also verify each tx it carried
+	if block.GetVersion() > 0 {
+
+		if len(block.GetTransactions()) != len(block.GetTxids()) {
+			return fmt.Errorf("Block carry wrong transactions inside it")
+		}
+
+		for i, txid := range block.GetTxids() {
+			if tx := block.Transactions[i]; !tx.IsValid() || tx.GetTxid() != txid {
+				return fmt.Errorf("Wrong tx [%s] in %d!", txid, i)
+			}
+		}
+	}
+
+	return nil
 }
 
 var defaultBlockVersion uint32 = 1
@@ -178,9 +235,17 @@ func (block *Block) hashV1() ([]byte, error) {
 		return nil, err
 	}
 
+	//like transaction, we do not digest nano part
+	if block.Timestamp != nil {
+		err = binary.Write(h, binary.BigEndian, block.Timestamp.GetSeconds())
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	hw := util.NewHashWriter(h)
 
-	err = hw.Write(block.PreviousBlockHash).Write(block.ConsensusMetadata).Error()
+	err = hw.Write(block.StateHash).Write(block.PreviousBlockHash).Write(block.ConsensusMetadata).Error()
 	if err != nil {
 		return nil, err
 	}

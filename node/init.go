@@ -325,6 +325,7 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	pe.TxHandlerOpts.ccSpecValidator = NewCCSpecValidator(node.Cred.ccSpecValidator)
 	//construct txhandler groups:
 	/*
+		yfcc name parser,
 		ccspec (custom cert),
 		tx validator (tx security context),
 		plain tx parsing,
@@ -336,10 +337,10 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 		topic recording,
 	*/
 	handlerArray := []pb.TxPreHandler{
+		pb.YFCCNameHandler,
 		pe.TxHandlerOpts.ccSpecValidator,
 		validatorToHandler(credrv.TxValidator),
 		pb.PlainTxHandler,
-		pb.YFCCNameHandler,
 	}
 
 	//TODO: handling confidentiality

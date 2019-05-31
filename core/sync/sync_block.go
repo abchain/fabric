@@ -61,7 +61,7 @@ func (h *blockSyncHandler) testRange(rge *pb.SyncBlockRange) error {
 	}
 	if len(rge.FirstHash) == 0 {
 		return nil
-	} else if blk, err := h.ledgerSN.GetBlockByNumber(rge.Start); err != nil {
+	} else if blk, err := h.ledgerSN.GetRawBlockByNumber(rge.Start); err != nil {
 		return err
 	} else if blkhash, err := blk.GetHash(); err != nil {
 		return err

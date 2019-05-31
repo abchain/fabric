@@ -66,12 +66,6 @@ func (e parentNotExistError) Error() string {
 
 func (ledger *LedgerGlobal) AddGlobalState(parent []byte, state []byte) error {
 
-	s := db.GetGlobalDBHandle().GetGlobalState(parent)
-
-	if s == nil {
-		return parentNotExistError{parent}
-	}
-
 	err := db.GetGlobalDBHandle().AddGlobalState(parent, state)
 
 	if err != nil {
@@ -81,10 +75,10 @@ func (ledger *LedgerGlobal) AddGlobalState(parent []byte, state []byte) error {
 			return err
 		}
 
-		ledgerLogger.Warningf("Try to add existed globalstate: %x", state)
+		ledgerLogger.Warningf("Try to add existed globalstate: %.16X", state)
 	}
 
-	ledgerLogger.Infof("Add globalstate [%x] on parent [%x]", state, parent)
+	ledgerLogger.Infof("Add globalstate [%.12X] on parent [%.12X]", state, parent)
 	return nil
 }
 
@@ -104,26 +98,6 @@ func (ledger *LedgerGlobal) PoolTransaction(txe *protos.TransactionHandlingConte
 
 func (ledger *LedgerGlobal) IteratePooledTransactions(ctx context.Context) (chan *protos.TransactionHandlingContext, error) {
 	return ledger.txpool.iteratePooledTx(ctx)
-}
-
-func (ledger *LedgerGlobal) GetPooledTxsAligned(txIDs []string) []*protos.TransactionHandlingContext {
-	return ledger.txpool.getPooledTxs(txIDs)
-}
-
-func (ledger *LedgerGlobal) GetPooledTransactions(txIDs []string) []*protos.TransactionHandlingContext {
-	fastret := ledger.txpool.getPooledTxs(txIDs)
-	cnt := 0
-	for _, ret := range fastret {
-		if ret != nil {
-			fastret[cnt] = ret
-			cnt++
-		}
-	}
-	return fastret[:cnt]
-}
-
-func (ledger *LedgerGlobal) GetPooledTransaction(txID string) *protos.TransactionHandlingContext {
-	return ledger.txpool.getPooledTx(txID)
 }
 
 func (ledger *LedgerGlobal) GetPooledTxCount() int {
@@ -154,23 +128,65 @@ func (ledger *LedgerGlobal) GetTransactionByID(txID string) (*protos.Transaction
 	return txe.Transaction, nil
 }
 
-//we have a more sophisticated way to obtain a bunch of transactions
-func (ledger *LedgerGlobal) GetTransactionsByID(txIDs []string) []*protos.Transaction {
+func (ledger *LedgerGlobal) MustGetTransactionByID(txID string) *protos.Transaction {
+	tx, err := ledger.GetTransactionByID(txID)
+	if err != nil {
+		return nil
+	}
+	return tx
+}
+
+//return tx arrays, has same lens of the incoming txIDs, for any id unavaliable, nil
+//is returned
+func (ledger *LedgerGlobal) GetTxForExecution(txIDs []string, preh protos.TxPreHandler) ([]*protos.TransactionHandlingContext, []string) {
+
 	txes := ledger.txpool.getPooledTxs(txIDs)
-	txs := make([]*protos.Transaction, 0, len(txes))
+	var leftTxs []string
 
 	for i, ret := range txes {
 		if ret == nil {
 			tx, err := fetchTxFromDB(txIDs[i])
 			if err != nil {
 				ledgerLogger.Errorf("Fail to obtain tx from db: %s, give up", err)
-				break
+				leftTxs = append(leftTxs, txIDs[i])
+			} else if tx != nil {
+				txes[i], err = preh.Handle(protos.NewTransactionHandlingContext(tx))
 			}
-			txs = append(txs, tx)
+
+			if tx == nil || err != nil {
+				leftTxs = append(leftTxs, txIDs[i])
+			}
+		}
+	}
+
+	return txes, leftTxs
+}
+
+func (ledger *LedgerGlobal) GetTransactionsByIDAligned(txIDs []string) []*protos.Transaction {
+
+	txs := make([]*protos.Transaction, len(txIDs))
+
+	for i, ret := range ledger.txpool.getPooledTxs(txIDs) {
+		if ret == nil {
+			txs[i], _ = fetchTxFromDB(txIDs[i])
 		} else {
-			txs = append(txs, ret.Transaction)
+			txs[i] = ret.Transaction
 		}
 	}
 
 	return txs
+}
+
+//only return array of avaliable txs
+func (ledger *LedgerGlobal) GetTransactionsByID(txIDs []string) []*protos.Transaction {
+	ret := ledger.GetTransactionsByIDAligned(txIDs)
+	var endpos int
+	for _, t := range ret {
+		if t != nil {
+			ret[endpos] = t
+			endpos++
+		}
+	}
+
+	return ret[:endpos]
 }

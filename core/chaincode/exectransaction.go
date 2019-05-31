@@ -42,7 +42,6 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 		return nil, fmt.Errorf("Tx handling context has not enough information yet")
 	}
 
-	cID := te.ChaincodeSpec.ChaincodeID
 	cds := te.ChaincodeDeploySpec
 
 	// YA-fabric: the condition on container side is complex enough so we could not make any assurance for creating image
@@ -55,7 +54,7 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 	// }
 
 	//will launch if necessary (and wait for ready)
-	err, chrte := chain.Launch(ctxt, ledgerObj, cID, cds)
+	err, chrte := chain.Launch(ctxt, ledgerObj, te.ChaincodeName, cds)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to launch chaincode spec(%s)", err)
 	}
@@ -84,7 +83,6 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 	}
 
 	//this should work because it worked above...
-	chaincode := cID.Name
 	resp, err := chain.Execute(ctxt, chrte, te, texec)
 
 	if err != nil {
@@ -104,7 +102,7 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 		}
 
 		for i, _ := range evnts {
-			evnts[i].ChaincodeID = chaincode
+			evnts[i].ChaincodeID = te.ChaincodeName
 			evnts[i].TxID = te.Txid
 		}
 

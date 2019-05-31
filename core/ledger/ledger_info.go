@@ -10,6 +10,8 @@ type LedgerInfo struct {
 	//base info
 	*protos.BlockchainInfo
 
+	//NOTICE following integer fields are all "HEIGHT" of
+	//the chain, that is, the final block number PLUS 1
 	//the queryable height for main modules,
 	//the height of states decide the height
 	//in base info
@@ -48,6 +50,16 @@ func (ledger *Ledger) Tag() string {
 	return t
 }
 
+func (ledger *Ledger) LedgerStateInfo() (height uint64, hash []byte, avaliable bool) {
+
+	ledger.readCache.RLock()
+	defer ledger.readCache.RUnlock()
+
+	height, hash, avaliable = ledger.state.cache.curHeight,
+		ledger.state.cache.currentHash, ledger.state.isSyncing()
+	return
+}
+
 func (ledger *Ledger) GetLedgerInfo() (*LedgerInfo, error) {
 
 	ledger.readCache.RLock()
@@ -58,6 +70,11 @@ func (ledger *Ledger) GetLedgerInfo() (*LedgerInfo, error) {
 		return nil, err
 	}
 
+	//consider if block do not include state
+	if len(baseinfo.GetCurrentStateHash()) == 0 {
+		baseinfo.CurrentStateHash = ledger.state.cache.currentHash
+	}
+
 	ret := &LedgerInfo{BlockchainInfo: baseinfo}
 	//fill other fields
 	if baseinfo.Height > 0 {
@@ -66,17 +83,15 @@ func (ledger *Ledger) GetLedgerInfo() (*LedgerInfo, error) {
 	}
 	ret.Persisted.States = ledger.state.cache.refHeight
 
-	if h := baseinfo.GetHeight(); h > 0 {
-		ret.Avaliable.Blocks = h - 1
-	}
+	ret.Avaliable.Blocks = baseinfo.GetHeight()
 	ret.Avaliable.States = ledger.state.cache.curHeight
-	ret.Avaliable.Indexes = ledger.index.cache.indexedTo.GetTop()
+	ret.Avaliable.Indexes = ledger.index.cache.indexedTo.GetTop() + 1
 
 	if b := ledger.state.isSyncing(); b {
-		ret.States.Avaliable = b
+		ret.States.Avaliable = false
 		ret.States.AvaliableHash = ledger.state.buildingState.statehash
 	} else {
-		ret.States.Avaliable = b
+		ret.States.Avaliable = true
 		ret.States.AvaliableHash = ledger.state.cache.refHash
 	}
 	return ret, nil

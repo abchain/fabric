@@ -33,14 +33,13 @@ type SyncEntry struct {
 }
 
 func GetSyncStrategyEntry(sstub *pb.StreamStub) *SyncEntry {
-	return &SyncEntry{sstub: sstub}
+	const defaultTimeout = 30
+	ret := &SyncEntry{sstub: sstub}
+	ret.options.defaultTimeout = defaultTimeout
+	return ret
 }
 
 func (se *SyncEntry) Configure(vp *viper.Viper) error {
-
-	const defaultTimeout = 30
-
-	se.options.defaultTimeout = defaultTimeout
 	return nil
 }
 
@@ -56,8 +55,10 @@ func (se *SyncEntry) SyncTransactions(ctx context.Context, txids []string) ([]*p
 	outtx, outreside := cli.Result()
 
 	if err != nil {
-		logger.Errorf("sync transaction fail: %s (%d done in %d)", err, len(txids), outtx)
+		logger.Errorf("sync transaction fail: %s (%d done in %d)", err, len(txids), len(outtx))
 	}
+
+	logger.Info("sync transaction finished for %d txs", len(outtx))
 
 	return outtx, outreside
 }

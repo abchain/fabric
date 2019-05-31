@@ -245,7 +245,7 @@ func NewStateSyncDetector(l *ledger.Ledger, stateRange int) *stateSyncDetector {
 	var stateCol [][]byte
 
 	for i := l.GetBlockchainSize() - 1; i > 0 && len(stateCol) < stateRange; i-- {
-		blk, err := l.GetBlockByNumber(i)
+		blk, err := l.GetRawBlockByNumber(i)
 		if err != nil {
 			clilogger.Errorf("get block %d fail for state detection: %s", i, err)
 		} else if blk == nil {

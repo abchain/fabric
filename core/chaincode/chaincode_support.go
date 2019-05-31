@@ -90,6 +90,10 @@ func GetDefaultChain() *ChaincodeSupport {
 	return chains[DefaultChain]
 }
 
+func GetSystemChain() *ChaincodeSupport {
+	return chains[SystemChain]
+}
+
 //call this under lock
 func (chaincodeSupport *ChaincodeSupport) preLaunchSetup(l *ledger.Ledger, chaincode string) *chaincodeRTEnv {
 	//register placeholder Handler.
@@ -212,14 +216,31 @@ func (chaincodeSupport *ChaincodeSupport) chaincodeHasBeenLaunched(l *ledger.Led
 	}
 }
 
-func NewSystemChaincodeSupport(nodeName string) *ChaincodeSupport {
+func RemoveChaincodeSupport(cName ChainName) {
+	delete(chains, cName)
+}
 
-	_, registed := chains[SystemChain]
+func SetChaincodeSupport(cName ChainName, ccsp *ChaincodeSupport) {
+	_, registed := chains[cName]
+	if registed {
+		panic("Duplicated registing chaincode")
+	}
+	chains[cName] = ccsp
+}
+
+func NewSystemChaincodeSupport(nodeName string, chainName ...ChainName) *ChaincodeSupport {
+
+	sysccName := SystemChain
+	if len(chainName) > 0 {
+		sysccName = chainName[0]
+	}
+
+	_, registed := chains[sysccName]
 	if registed {
 		panic("Duplicated registing chaincode")
 	}
 
-	s := &ChaincodeSupport{name: SystemChain,
+	s := &ChaincodeSupport{name: sysccName,
 		runningChaincodes: &runningChaincodes{
 			chaincodeMap: make(map[string]map[*ledger.Ledger]*chaincodeRTEnv),
 		},
@@ -228,7 +249,7 @@ func NewSystemChaincodeSupport(nodeName string) *ChaincodeSupport {
 		ccDeployTimeout:  3 * time.Second,
 	}
 
-	chains[SystemChain] = s
+	chains[sysccName] = s
 
 	//we only respect exec timeout
 	tOut, err := strconv.Atoi(viper.GetString("chaincode.scc.exectimeout"))
@@ -536,9 +557,8 @@ func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, netTag s
 }
 
 // Launch will launch the chaincode if not running (if running return nil) and will wait for handler of the chaincode to get into FSM ready state.
-func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *ledger.Ledger, cID *pb.ChaincodeID, cds *pb.ChaincodeDeploymentSpec) (error, *chaincodeRTEnv) {
+func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *ledger.Ledger, chaincode string, cds *pb.ChaincodeDeploymentSpec) (error, *chaincodeRTEnv) {
 
-	chaincode := cID.Name
 	chaincodeSupport.runningChaincodes.Lock()
 
 	//the first tx touch the corresponding run-time object is response for the actually

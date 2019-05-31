@@ -13,6 +13,12 @@ type TxEvaluateAndCommit struct {
 	ledger             *Ledger
 	accumulatedDeltas  *statemgmt.StateDelta
 	transactionResults []*protos.TransactionResult
+
+	lastResult struct {
+		position uint64
+		block    []byte
+		state    []byte
+	}
 }
 
 func NewTxEvaluatingAgent(ledger *Ledger) (*TxEvaluateAndCommit, error) {
@@ -44,18 +50,14 @@ func (tec *TxEvaluateAndCommit) Ledger() *Ledger {
 	return tec.ledger
 }
 
-//push state forward one
+func (tec *TxEvaluateAndCommit) LastCommitState() []byte    { return tec.lastResult.state }
+func (tec *TxEvaluateAndCommit) LastCommitPosition() uint64 { return tec.lastResult.position }
+
+//push state forward one, refblock can be used for verify the expected state
 func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *protos.Block) error {
 	ledger := tec.ledger
 	var err error
 	ledgerLogger.Infof("Start state commit txbatch to block %d", refBlockNumber)
-
-	if refBlock == nil {
-		refBlock, err = ledger.blockchain.getRawBlock(refBlockNumber)
-		if err != nil {
-			return err
-		}
-	}
 
 	err = ledger.state.prepareState(refBlockNumber, tec.accumulatedDeltas)
 	if err != nil {
@@ -63,14 +65,24 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 	}
 	stateHash := ledger.state.getBuildingHash()
 
-	if bytes.Compare(stateHash, refBlock.GetStateHash()) != 0 {
-		return newLedgerError(ErrorTypeFatalCommit, "local delta not match reference block")
+	tec.lastResult.position = refBlockNumber
+	tec.lastResult.state = stateHash
+
+	if refshash := refBlock.GetStateHash(); refshash != nil {
+		if bytes.Compare(stateHash, refshash) != 0 {
+			return newLedgerError(ErrorTypeFatalCommit, "local delta not match reference block")
+		}
 	}
 
 	writeBatch := ledger.blockchain.NewWriteBatch()
 	defer writeBatch.Destroy()
 
 	err = ledger.state.persistentState(writeBatch)
+	if err != nil {
+		return err
+	}
+
+	err = writeBatch.BatchCommit()
 	if err != nil {
 		return err
 	}
@@ -84,36 +96,66 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 	return nil
 }
 
-//commit current results and persist them
-func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte, transactions []*protos.Transaction) error {
+//export the build block function
+var BuildPreviewBlock = buildBlock
+
+//preview build required part of a block for commiting
+func (tec *TxEvaluateAndCommit) PreviewBlock(position uint64, blk *protos.Block) (*protos.Block, error) {
 
 	ledger := tec.ledger
 
-	newBlockNumber := ledger.blockchain.getSize()
-	ledgerLogger.Infof("Start full commit txbatch to block %d", newBlockNumber)
-
-	err := ledger.state.prepareState(newBlockNumber, tec.accumulatedDeltas)
+	err := ledger.state.prepareState(position, tec.accumulatedDeltas)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	stateHash := ledger.state.getBuildingHash()
 
-	block := buildBlock(stateHash, metadata, transactions)
-	buildExecResults(block, tec.transactionResults)
-	err = ledger.blockchain.prepareNewBlock(newBlockNumber, block, nil)
+	blk.StateHash = ledger.state.getBuildingHash()
+	buildExecResults(blk, tec.transactionResults)
+
+	tec.lastResult.position = position
+	tec.lastResult.state = blk.StateHash
+
+	err = ledger.blockchain.prepareNewBlock(position, blk, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return blk, nil
+}
+
+//commit the preview block built before, no overhead
+func (tec *TxEvaluateAndCommit) CommitBlock(position uint64, blk *protos.Block) error {
+
+	ledger := tec.ledger
+
+	if bytes.Compare(blk.GetStateHash(), ledger.state.getBuildingHash()) != 0 {
+		//state workspace used, need redo
+		err := ledger.state.prepareState(position, tec.accumulatedDeltas)
+		if err != nil {
+			return err
+		}
+
+		tec.lastResult.position = position
+		tec.lastResult.state = ledger.state.getBuildingHash()
+	}
+
+	err := ledger.blockchain.prepareBlock(position, blk)
 	if err != nil {
 		return err
 	}
 
 	blkInfo := ledger.blockchain.getBuildingBlockchainInfo()
-	err = ledger.index.prepareIndexes(block, newBlockNumber, blkInfo.GetCurrentBlockHash())
+
+	tec.lastResult.block = blkInfo.GetCurrentBlockHash()
+
+	err = ledger.index.prepareIndexes(blk, position, blkInfo.GetCurrentBlockHash())
 	if err != nil {
 		return err
 	}
 
 	writeBatch := ledger.blockchain.NewWriteBatch()
 	defer writeBatch.Destroy()
-	err = ledger.index.persistIndexes(writeBatch, newBlockNumber)
+	err = ledger.index.persistIndexes(writeBatch, position)
 	if err != nil {
 		return err
 	}
@@ -141,28 +183,45 @@ func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte, transactions []*prot
 	ledger.state.commitState()
 	ledger.index.commitIndex()
 
-	ledger.blockchain.blockPersisted(newBlockNumber)
+	ledger.blockchain.blockPersisted(position)
 	ledger.state.persistentStateDone()
-	ledger.index.persistDone(newBlockNumber)
+	ledger.index.persistDone(position)
 
 	return nil
 
 }
 
+//commit current results and persist them
+func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte, transactions []*protos.Transaction) error {
+
+	newBlockNumber := tec.ledger.blockchain.getSize()
+	ledgerLogger.Infof("Start full commit txbatch to block %d", newBlockNumber)
+
+	blk, err := tec.PreviewBlock(newBlockNumber, buildBlock(metadata, transactions))
+	if err != nil {
+		return err
+	}
+
+	return tec.CommitBlock(newBlockNumber, blk)
+}
+
 //commit blocks, can work concurrent with mutiple block commiter, or state commiter
 type BlockCommit struct {
-	ledger *Ledger
+	ledger        *Ledger
+	lastBlockHash []byte
 }
 
-func NewBlockAgent(ledger *Ledger) BlockCommit {
+func NewBlockAgent(ledger *Ledger) *BlockCommit {
 
-	return BlockCommit{ledger}
+	return &BlockCommit{ledger, nil}
 }
+
+func (blkc BlockCommit) LastCommit() []byte { return blkc.lastBlockHash }
 
 //commit a block in specified position, it make a "full" commit (including persistent
-//and index), notice it can not be concurrent with mutiple block commitings becasue
+//index and transactions), notice it can not be concurrent with mutiple block commitings becasue
 //the db written must be in sequence
-func (blkc BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err error) {
+func (blkc *BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err error) {
 	ledger := blkc.ledger
 
 	writeBatch := ledger.blockchain.NewWriteBatch()
@@ -188,6 +247,13 @@ func (blkc BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err e
 	}
 
 	blkInfo := ledger.blockchain.getBuildingBlockchainInfo()
+	defer func(bkhash []byte) {
+
+		if err == nil {
+			blkc.lastBlockHash = bkhash
+		}
+
+	}(blkInfo.GetCurrentBlockHash())
 	err = ledger.index.prepareIndexes(block, blkn, blkInfo.GetCurrentBlockHash())
 	if err != nil {
 		return
@@ -205,5 +271,5 @@ func (blkc BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err e
 	ledger.blockchain.commitBuilding()
 	ledger.index.commitIndex()
 
-	return nil
+	return ledger.PutTransactions(block.GetTransactions())
 }

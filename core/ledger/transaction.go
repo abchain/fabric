@@ -53,22 +53,12 @@ func (tp *transactionPool) poolTxe(txe *pb.TransactionHandlingContext) {
 	tp.Lock()
 	defer tp.Unlock()
 
-	if txe, existed := tp.txPool[txe.GetTxid()]; existed {
-		//it is possible that tx is pooled from different txnetwork, the counter is
-		//used for tracing that
-		txe.PoolCount++
-	} else {
-		tp.txPool[txe.GetTxid()] = txe
-	}
+	tp.txPool[txe.GetTxid()] = txe
 	ledgerLogger.Debugf("pool tx [%s], currently %d txs is pooled", txe.GetTxid(), len(tp.txPool)+len(tp.txPoolSnapshot))
 }
 
 func removeOneTx(pool map[string]*pb.TransactionHandlingContext, id string) {
-	if txe, existed := pool[id]; existed && txe.PoolCount == 0 {
-		delete(pool, id)
-	} else if existed {
-		txe.PoolCount--
-	}
+	delete(pool, id)
 }
 
 func (tp *transactionPool) cleanTransaction(txs []*pb.Transaction) {

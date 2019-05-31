@@ -14,6 +14,10 @@ type TxExecStates struct {
 	*state.TxExecStates
 }
 
+func NewQueryExecState(l *Ledger) TxExecStates {
+	return TxExecStates{state.NewExecStates(l.state.cache.deltas...)}
+}
+
 //----------- leagacy API following ------------
 func (s *TxExecStates) InitForInvoking(l *Ledger) {
 	s.TxExecStates = state.NewExecStatesFromState(l.state.Wrapper(), l.state.cache.deltas...)
@@ -411,6 +415,8 @@ func (s *stateWrapper) persistentSyncDone() {
 		s.cache.lastWorkSet = s.buildingState.blockN
 		s.cache.refHash = s.buildingState.statehash
 		s.cache.refHeight = s.buildingState.blockN + 1
+		s.cache.curHeight = s.cache.refHeight
+		s.cache.currentHash = s.cache.refHash
 
 		for _, f := range s.updatesubscriptions {
 			f(s.cache.refHeight-1, s.cache.refHash)

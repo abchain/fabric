@@ -254,20 +254,6 @@ func (ledger *Ledger) AddGlobalState(parent []byte, state []byte) error {
 		return nil
 	}
 
-	if ret := ledger.LedgerGlobal.AddGlobalState(parent, state); ret == nil {
-		return nil
-	} else {
-		//TODO: we should not need this sanitycheck here?
-		if _, ok := ret.(parentNotExistError); ok {
-			err := sanityCheck(ledger.blockchain.OpenchainDB)
-			if err != nil {
-				return err
-			}
-		} else {
-			return ret
-		}
-	}
-
 	return ledger.LedgerGlobal.AddGlobalState(parent, state)
 }
 
@@ -325,6 +311,10 @@ func (ledger *Ledger) DeleteALLStateKeysAndValues() error {
 
 /////////////////// transaction related methods /////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////
+
+func (ledger *Ledger) CommitTransactions(txids []string, blockNum uint64) error {
+	return ledger.txpool.commitTransaction(txids, blockNum)
+}
 
 func (ledger *Ledger) GetCommitedTransaction(txID string) (*protos.Transaction, error) {
 	ledger.readCache.RLock()
@@ -398,7 +388,8 @@ func (ledger *Ledger) TestExistedBlockRange(blockNumber uint64) uint64 {
 	return ret
 }
 
-//test how height the blocks we have obtained continuously
+//test how height the blocks we have obtained continuously, return the FINAL block number
+//(not the height)
 func (ledger *Ledger) TestContinuouslBlockRange() (ret uint64) {
 
 	ledger.readCache.RLock()
@@ -437,10 +428,6 @@ func (ledger *Ledger) GetBlockNumberByState(hash []byte) (uint64, error) {
 }
 
 func (ledger *Ledger) GetBlockNumberByTxid(txID string) (uint64, uint64, error) {
-	//TODO: cache?
-	if txe := ledger.txpool.getPooledTx(txID); txe != nil {
-		return 0, 0, ErrResourceNotFound
-	}
 
 	ledger.readCache.RLock()
 	defer ledger.readCache.RUnlock()

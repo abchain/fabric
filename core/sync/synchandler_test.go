@@ -5,37 +5,17 @@ import (
 	"github.com/abchain/fabric/core/ledger/testutil"
 	pb "github.com/abchain/fabric/protos"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"testing"
 	"time"
 )
 
-type testFactory struct {
-	tb  testing.TB
-	ctx context.Context
-	l   *ledger.Ledger
-	opt *syncOpt
-}
-
-func (f *testFactory) NewClientStream(*grpc.ClientConn) (grpc.ClientStream, error) {
-	f.tb.Fatal("can not called this")
-	return nil, nil
-}
-func (f *testFactory) NewStreamHandlerImpl(id *pb.PeerID, _ *pb.StreamStub, _ bool) (pb.StreamHandlerImpl, error) {
-	return newSyncHandler(f.ctx, id, f.l, f.opt), nil
-}
-
-func (f *testFactory) preparePeer(tag string) *pb.SimuPeerStub {
-	return pb.NewSimuPeerStub2(pb.NewStreamStub(f, &pb.PeerID{Name: tag}))
-}
-
-func (f *testFactory) prepareServerPeers(cli *pb.SimuPeerStub, cnt int) []*pb.SimuPeerStub {
+func (f *testFactory) prepareServerPeers(tb testing.TB, cli *pb.SimuPeerStub, cnt int) []*pb.SimuPeerStub {
 	var ret []*pb.SimuPeerStub
 	for i := 0; i < cnt; i++ {
 		ret = append(ret, pb.NewSimuPeerStub2(pb.NewStreamStub(f,
-			&pb.PeerID{Name: testutil.GenerateID(f.tb)})))
+			&pb.PeerID{Name: testutil.GenerateID(tb)})))
 		err, runf := cli.ConnectTo(f.ctx, ret[i])
-		testutil.AssertNoError(f.tb, err, "run simu peer")
+		testutil.AssertNoError(tb, err, "run simu peer")
 		go func() {
 			for f.ctx.Err() == nil {
 				runf()
@@ -57,10 +37,10 @@ func TestTxSync_Basic(t *testing.T) {
 	baseOpt := DefaultSyncOption()
 	baseOpt.txOption.maxSyncTxCount = 1
 
-	testBase := &testFactory{t, baseCtx, testLedger, baseOpt}
+	testBase := &testFactory{baseCtx, testLedger, baseOpt}
 
 	targetStub := testBase.preparePeer("target")
-	testBase.prepareServerPeers(targetStub, 5)
+	testBase.prepareServerPeers(t, targetStub, 5)
 
 	testutil.AssertEquals(t, targetStub.HandlerCount(), 5)
 

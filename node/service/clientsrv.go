@@ -27,9 +27,10 @@ import (
 	"github.com/abchain/fabric/core/chaincode/platforms"
 	"github.com/abchain/fabric/core/config"
 	ecc "github.com/abchain/fabric/core/embedded_chaincode/api"
-	"github.com/abchain/fabric/core/util"
+	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/node"
 	pb "github.com/abchain/fabric/protos"
+	"github.com/golang/protobuf/proto"
 )
 
 var clisrvLogger = logging.MustGetLogger("server")
@@ -134,7 +135,7 @@ func (d *Devops) Deploy(ctx context.Context, spec *pb.ChaincodeSpec) (*pb.Chainc
 		return nil, fmt.Errorf("Error deploying chaincode: %s ", err)
 	}
 
-	resp, err := d.deliverTx(ctx, tx, spec, true)
+	resp, err := d.deliverTx(ctx, tx, spec)
 	if err != nil {
 		return nil, err
 	}
@@ -144,11 +145,17 @@ func (d *Devops) Deploy(ctx context.Context, spec *pb.ChaincodeSpec) (*pb.Chainc
 
 }
 
-func (d *Devops) deliverTx(ctx context.Context, tx *pb.Transaction, spec *pb.ChaincodeSpec, invoke bool) (*pb.Response, error) {
+func (d *Devops) deliverTx(ctx context.Context, tx *pb.Transaction, spec *pb.ChaincodeSpec) (*pb.Response, error) {
 
 	//Notice: YA-fabric enforce a deploy name is also specified
 	if spec.ChaincodeID.Name == "" {
 		return nil, fmt.Errorf("name not given")
+	}
+
+	//current we just deliver to default peer
+	targetPeer := d.node.DefaultPeer()
+	if targetPeer == nil {
+		return nil, fmt.Errorf("No target to deliver")
 	}
 
 	clisrvLogger.Debugf("Sending [%s] transaction with sec [%s %v] to txnetwork", tx.Type, spec.SecureContext, spec.Attributes)
@@ -166,19 +173,11 @@ func (d *Devops) deliverTx(ctx context.Context, tx *pb.Transaction, spec *pb.Cha
 			return nil, fmt.Errorf("Create tx endorser failure: %s", err)
 		}
 
-		if invoke {
-			resp = d.node.ExecuteTransaction(ctx, tx, txed, d.node.DefaultPeer())[0]
-		} else {
-			resp = d.node.QueryTransaction(ctx, tx, txed, d.node.DefaultLedger(), d.node.DefaultPeer())
-		}
+		resp = targetPeer.TxNetwork().ExecuteTransaction(ctx, tx, txed)
 
 	} else {
 		//we simply omit securecontext even it was specified
-		if invoke {
-			resp = d.node.ExecuteTransaction(ctx, tx, nil, d.node.DefaultPeer())[0]
-		} else {
-			resp = d.node.QueryTransaction(ctx, tx, nil, d.node.DefaultLedger(), d.node.DefaultPeer())
-		}
+		resp = targetPeer.TxNetwork().ExecuteTransaction(ctx, tx, nil)
 	}
 
 	if resp.Status == pb.Response_FAILURE {
@@ -196,19 +195,107 @@ func (d *Devops) Invoke(ctx context.Context, chaincodeInvocationSpec *pb.Chainco
 		return nil, fmt.Errorf("Error invoking chaincode: %s ", err)
 	}
 
-	return d.deliverTx(ctx, tx, chaincodeInvocationSpec.ChaincodeSpec, true)
+	return d.deliverTx(ctx, tx, chaincodeInvocationSpec.ChaincodeSpec)
 }
 
-// Query performs the supplied query on the specified chaincode through a transaction
+// Current query only do query in local and do not really gen a query tx
 func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.ChaincodeInvocationSpec) (*pb.Response, error) {
 
-	tx, err := pb.NewChaincodeExecute(chaincodeInvocationSpec, util.GenerateUUID(), pb.Transaction_CHAINCODE_QUERY)
-	if nil != err {
-		return nil, fmt.Errorf("Error query chaincode: %s ", err)
+	spec := chaincodeInvocationSpec.GetChaincodeSpec()
+	if spec == nil {
+		return nil, fmt.Errorf("No spec data")
+	}
+	ccname, _, _ := pb.ParseYFCCName(spec.GetChaincodeID().GetName())
+	//TODO: how to select a chaincode platform?
+	chain := chaincode.GetDefaultChain()
+
+	//TODO: we should select ledger from cc name of query
+	l := d.node.DefaultLedger()
+
+	//TODO: now we can specified block height, snapshot, etc
+	querystate := ledger.NewQueryExecState(l)
+
+	err, chrte := chain.Launch(ctx, l, ccname, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to launch chaincode (%s): %s", ccname, err)
 	}
 
-	return d.deliverTx(ctx, tx, chaincodeInvocationSpec.ChaincodeSpec, false)
+	resp, err := chain.ExecuteLite(ctx, chrte,
+		pb.Transaction_CHAINCODE_QUERY, spec.GetCtorMsg(), querystate)
+
+	//always wrap executing error
+	if err != nil {
+		return nil, err
+	}
+
+	//it is just the simplized post-handling of execute2 ...
+	switch resp.GetType() {
+	case pb.ChaincodeMessage_QUERY_COMPLETED:
+		return &pb.Response{Status: pb.Response_SUCCESS, Msg: resp.GetPayload()}, nil
+	case pb.ChaincodeMessage_QUERY_ERROR:
+		return &pb.Response{Status: pb.Response_FAILURE, Msg: resp.GetPayload()}, nil
+	default:
+		return nil, fmt.Errorf("Unexpected msg type %s", resp.GetType())
+	}
+
 }
+
+func (d *Devops) LocalDeploy(ctx context.Context, ccSpec []byte) error {
+
+	msg := new(pb.ChaincodeSpec)
+	if err := proto.Unmarshal(ccSpec, msg); err != nil {
+		return err
+	}
+
+	_, err := d.Deploy(ctx, msg)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (d *Devops) LocalInvoke(ctx context.Context, ccInvocationSpec []byte) ([]byte, error) {
+	msg := new(pb.ChaincodeInvocationSpec)
+	if err := proto.Unmarshal(ccInvocationSpec, msg); err != nil {
+		return nil, err
+	}
+
+	ret, err := d.Invoke(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.Msg, nil
+}
+
+func (d *Devops) LocalQuery(ctx context.Context, ccInvocationSpec []byte) ([]byte, error) {
+
+	msg := new(pb.ChaincodeInvocationSpec)
+	if err := proto.Unmarshal(ccInvocationSpec, msg); err != nil {
+		return nil, err
+	}
+
+	ret, err := d.Query(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.Msg, nil
+
+}
+
+//TODO: gen a tx and deliver it to remote peer ...
+// func (d *Devops) RemoteQuery(ctx context.Context, chaincodeInvocationSpec *pb.ChaincodeInvocationSpec) (*pb.Response, error) {
+
+// 	tx, err := pb.NewChaincodeExecute(chaincodeInvocationSpec, util.GenerateUUID(), pb.Transaction_CHAINCODE_QUERY)
+// 	if nil != err {
+// 		return nil, fmt.Errorf("Error query chaincode: %s ", err)
+// 	}
+
+// 	return d.deliverTx(ctx, tx, chaincodeInvocationSpec.ChaincodeSpec, false)
+// }
 
 // CheckSpec to see if chaincode resides within current package capture for language.
 func CheckSpec(spec *pb.ChaincodeSpec) error {

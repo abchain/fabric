@@ -1,0 +1,57 @@
+syntax = "proto3";
+package csprotos;
+
+import "fabric.proto";
+import "google/protobuf/empty.proto";
+
+message ConsensusPurpose {
+    oneof out{
+        protos.TransactionBlock txs = 1;
+        //nothing: just consume some input tx but have no output
+        google.protobuf.Empty nothing = 2;
+        //in error, all input tx MUST be redrawed for next try
+        string error = 3;
+    }
+
+}
+
+message PurposeBlock {
+    uint64 n = 1;
+    protos.Block b = 2;
+}
+
+message PurposeTransactions {
+    repeated string ids = 1;
+}
+
+message ConsensusOutput {
+
+    //indicate the position the consensus tx corresponding to in
+    //the whole chain (history), it may be an estimated value
+    //unless out is block or blockhash (in that case, it is precise)
+    //if out is error, this value MUST NOT be considered
+    uint64 position = 1;
+
+    oneof out{
+        //consensus want more tx to draw a conclusion, input
+        //consensus tx is NOT consumed and should be handle again
+        //after ALL of the tx in more has been obtained and 
+        //evaluated
+        //more can be nil, which just indicate we should wait
+        //for a while
+        PurposeTransactions  more = 2;
+        //tx has been changed into a validated history, and the
+        //input tx can be commited now
+        protos.Block block = 3;
+        //tx has indicated another history by its blockhash,
+        //input tx can be commited, and node should try to sync
+        //state by this tip
+        bytes blockhash = 4;
+        //tx is consumed and nothing is output, input tx should
+        //be commited
+        google.protobuf.Empty nothing = 8;
+        string error = 9;
+    }
+    
+    
+}

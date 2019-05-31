@@ -75,6 +75,8 @@ func RegisterAndLaunchSysCC(ctx context.Context, syscc *SystemChaincode, ledger 
 	}
 
 	for _, l := range ledger {
+		//system chaincode should not change state in deploy entry
+		//so SuccessWithOutput is consider as error
 		if err := embedded.DeployEcc(ctx, l, chainplatform,
 			&protos.ChaincodeDeploymentSpec{
 				ExecEnv:       protos.ChaincodeDeploymentSpec_SYSTEM,

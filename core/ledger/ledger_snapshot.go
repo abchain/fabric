@@ -57,11 +57,10 @@ func (sledger *LedgerSnapshot) GetBlockByNumber(blockNumber uint64) (*protos.Blo
 
 	if err != nil {
 		return nil, err
+	} else if blk == nil {
+		return nil, nil
 	}
-
-	blk = finishFetchedBlock(blk)
-
-	return blk, nil
+	return finishFetchedBlock(blk)
 }
 
 // TODO: make the snapshot version for testBlockExistedRangeSafe

@@ -60,7 +60,7 @@ func MakeTestLedgerGenesis(t *testing.T) {
 
 var dbNameCanUsed = []string{"Alice", "Bob", "Clarol", "David", "Emma", "Flora", "Geoge", "Henry", "Ive", "Jack", "Klark"}
 
-func InitSecondaryTestLedger(t *testing.T) (*Ledger, func()) {
+func InitSoleTestLedger(t *testing.T) (*Ledger, func()) {
 
 	//so if we used up all names, here will be complain
 	var tag string
@@ -70,6 +70,18 @@ func InitSecondaryTestLedger(t *testing.T) (*Ledger, func()) {
 	newLedger, err := GetNewLedger(newdb, nil)
 	testutil.AssertNoError(t, err, "Error while constructing secondary ledger")
 
+	return newLedger, func() {
+		db.StopDB(newdb)
+		err := db.DropDB(newdb.GetDBPath())
+		testutil.AssertNoError(t, err, "Drop db "+newdb.GetDBPath())
+		dbNameCanUsed = append(dbNameCanUsed, tag)
+	}
+}
+
+func InitSecondaryTestLedger(t *testing.T) (*Ledger, func()) {
+
+	newLedger, rf := InitSoleTestLedger(t)
+
 	gblk, err := ledger.GetBlockByNumber(0)
 	testutil.AssertNoError(t, err, "Error while obtain genesis block")
 	testutil.AssertNotNil(t, gblk)
@@ -77,10 +89,5 @@ func InitSecondaryTestLedger(t *testing.T) (*Ledger, func()) {
 	err = newLedger.PutRawBlock(gblk, 0)
 	testutil.AssertNoError(t, err, "Error while adding a new block")
 
-	return newLedger, func() {
-		db.StopDB(newdb)
-		err := db.DropDB(newdb.GetDBPath())
-		testutil.AssertNoError(t, err, "Drop db "+newdb.GetDBPath())
-		dbNameCanUsed = append(dbNameCanUsed, tag)
-	}
+	return newLedger, rf
 }

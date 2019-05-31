@@ -535,9 +535,9 @@ func newChaincodeSupportHandler(chaincodeSupport *ChaincodeSupport) *Handler {
 			{Name: pb.ChaincodeMessage_QUERY_ERROR.String(), Src: []string{readystate}, Dst: readystate},
 		},
 		fsm.Callbacks{
-		// "before_" + pb.ChaincodeMessage_REGISTER.String():               func(e *fsm.Event) { v.beforeRegisterEvent(e, v.FSM.Current()) },
-		// "after_" + pb.ChaincodeMessage_INVOKE_CHAINCODE.String():        func(e *fsm.Event) { v.afterInvokeChaincode(e, v.FSM.Current()) },
-		// "enter_" + establishedstate:                                     func(e *fsm.Event) { v.enterEstablishedState(e, v.FSM.Current()) },
+			// "before_" + pb.ChaincodeMessage_REGISTER.String():               func(e *fsm.Event) { v.beforeRegisterEvent(e, v.FSM.Current()) },
+			// "after_" + pb.ChaincodeMessage_INVOKE_CHAINCODE.String():        func(e *fsm.Event) { v.afterInvokeChaincode(e, v.FSM.Current()) },
+			// "enter_" + establishedstate:                                     func(e *fsm.Event) { v.enterEstablishedState(e, v.FSM.Current()) },
 		},
 	)
 
@@ -822,8 +822,13 @@ func (handler *Handler) handleInvokeChaincode(msg *pb.ChaincodeMessage, tctx *tr
 		return nil, unmarshalErr
 	}
 
+	// Launch the new chaincode if not already running
+	// TODO: we should support the inter-ledger invoking
+	_, ccname, _ := pb.ParseYFCCName(chaincodeSpec.ChaincodeID.GetName())
+	ledgerObj := handler.Ledger
+
 	// never allow invoking itself!
-	if chaincodeSpec.ChaincodeID.GetName() == handler.ChaincodeID.GetName() {
+	if ccname == handler.ChaincodeID.GetName() {
 		chaincodeLogger.Errorf("tx [%s] cause a invoking to itself", shorttxid(msg.Txid))
 		return nil, fmt.Errorf("Invoking-self failure")
 	}
@@ -842,10 +847,7 @@ func (handler *Handler) handleInvokeChaincode(msg *pb.ChaincodeMessage, tctx *tr
 		txtype = pb.Transaction_CHAINCODE_QUERY
 	}
 
-	// Launch the new chaincode if not already running
-	// TODO: we should support the inter-ledger invoking
-	ledgerObj := handler.Ledger
-	launchErr, chrte := handler.chaincodeSupport.Launch(context.Background(), ledgerObj, chaincodeSpec.ChaincodeID, nil)
+	launchErr, chrte := handler.chaincodeSupport.Launch(context.Background(), ledgerObj, ccname, nil)
 	if launchErr != nil {
 		chaincodeLogger.Debugf("[%s]Failed to launch invoked chaincode. Sending %s", shorttxid(msg.Txid), pb.ChaincodeMessage_ERROR)
 		//triggerNextStateMsg = &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_ERROR, Payload: payload, Txid: msg.Txid}

@@ -166,7 +166,7 @@ func (mo *globalstatusMO) FullMerge(key, existingValue []byte, operands [][]byte
 			//skip this op, except 0, which is left for update_node
 			//notice it can't not be "<=" because the "equal" case
 			//is important
-			dbLogger.Warningf("%s have deprecated id %d (current %d)", key, n, gs.Count)
+			//dbLogger.Debugf("[%12X] have deprecated id %d (current %d)", key, n, gs.Count)
 			continue
 		}
 
@@ -518,13 +518,21 @@ func (txdb *GlobalDataDB) addGSCritical(parentStateHash []byte, statehash []byte
 
 	connected := parentgs != nil && newgs != nil
 	if connected {
+		for _, childHash := range parentgs.NextNodeStateHash {
+			if bytes.Compare(statehash, childHash) == 0 {
+				//we have a duplicated addition (both current and parent is existed and connected)
+				dbLogger.Warningf("adding [%.12x] on [%.12x] is duplicated", statehash, parentStateHash)
+				return
+			}
+		}
+
 		//detect the cyclic case, in this case, parent and newgs will change the same path
 		//and lead to a duplicated path error, we must resolve it by change the next/last
 		//node into each other, this must ok even one of the node is not really a branched
 		//one
 		if bytes.Compare(parentgs.NextBranchNodeStateHash, newgs.NextBranchNodeStateHash) == 0 {
 
-			dbLogger.Infof("found cyclic when [%x] is connected to [%x], resolve it", parentStateHash, statehash)
+			dbLogger.Infof("found cyclic when [%.12x] is connected to [%.12x], resolve it", parentStateHash, statehash)
 			if len(parentgs.NextNodeStateHash) == 0 && len(newgs.ParentNodeStateHash) == 0 {
 				//"pure" cylic, a single path connect its tail from head, we resolve
 				//this case by add a dummy node on the tail
@@ -570,13 +578,6 @@ func (txdb *GlobalDataDB) addGSCritical(parentStateHash []byte, statehash []byte
 
 	//first update possible change on branch inf., so the following reference will be correct
 	if parentgs != nil {
-		for _, childHash := range parentgs.NextNodeStateHash {
-			if bytes.Compare(statehash, childHash) == 0 {
-				//we have a duplicated addition (both current and parent is existed and connected)
-				return
-			}
-		}
-
 		parentgs.NextNodeStateHash = append(parentgs.NextNodeStateHash, statehash)
 		if len(parentgs.GetNextNodeStateHash()) == 2 {
 			//the "critical" point that is, node will just become branched after
@@ -705,7 +706,7 @@ func (txdb *GlobalDataDB) AddGlobalState(parentStateHash []byte, statehash []byt
 
 	if bytes.Compare(parentStateHash, statehash) == 0 {
 		//never concat same state
-		dbLogger.Warningf("self link at [%X] is omitted", statehash)
+		dbLogger.Warningf("self link at [%.12X] is omitted", statehash)
 		return nil
 	} else if len(statehash) > txdb.globalHashLimit {
 		return fmt.Errorf("add a state whose hash (%x) is longer than limited (%d)", statehash, txdb.globalHashLimit)

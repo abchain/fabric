@@ -40,16 +40,6 @@ func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface, function string
 	var A, B string    // Entities
 	var Aval, Bval int // Asset holdings
 	var err error
-	var b []byte
-
-	b, err = stub.GetCallerCertificate()
-	if err != nil {
-		logger.Warning("Security fail", err)
-	} else if b == nil {
-		logger.Info("No security")
-	} else {
-		logger.Info("Get security", len(b))
-	}
 
 	if len(args) != 4 {
 		return nil, errors.New("Incorrect number of arguments. Expecting 4")
@@ -87,13 +77,6 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function stri
 	if function == "delete" {
 		// Deletes an entity from its state
 		return t.delete(stub, args)
-	}
-
-	attr, errattr := stub.ReadCertAttribute("position")
-	if errattr != nil {
-		fmt.Println("attr fail", errattr)
-	} else {
-		fmt.Println("attr position is", string(attr))
 	}
 
 	var A, B string    // Entities
@@ -135,7 +118,7 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface, function stri
 	}
 	Aval = Aval - X
 	Bval = Bval + X
-	fmt.Printf("Aval = %d, Bval = %d\n", Aval, Bval)
+	fmt.Printf("(%d), %sval = %d, %sval = %d\n", X, A, Aval, B, Bval)
 
 	// Write the state back to the ledger
 	err = stub.PutState(A, []byte(strconv.Itoa(Aval)))
@@ -176,13 +159,6 @@ func (t *SimpleChaincode) Query(stub shim.ChaincodeStubInterface, function strin
 	var A string // Entities
 	var err error
 
-	attr, errattr := stub.ReadCertAttribute("position")
-	if errattr != nil {
-		fmt.Println("attr fail", errattr)
-	} else {
-		fmt.Println("attr position is", string(attr))
-	}
-
 	if len(args) != 1 {
 		return nil, errors.New("Incorrect number of arguments. Expecting name of the person to query")
 	}
@@ -205,4 +181,3 @@ func (t *SimpleChaincode) Query(stub shim.ChaincodeStubInterface, function strin
 	fmt.Printf("Query Response:%s\n", jsonResp)
 	return Avalbytes, nil
 }
-

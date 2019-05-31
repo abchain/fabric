@@ -34,7 +34,11 @@ func buildLegacyNode(t *testing.T) *NodeEngine {
 
 }
 
-func compareTx(t *testing.T, origin *pb.Transaction, delivered *pb.TransactionHandlingContext) {
+func compareTxAndTxe(t *testing.T, origin *pb.Transaction, delivered *pb.TransactionHandlingContext) {
+	compareTx(t, origin, delivered.Transaction)
+}
+
+func compareTx(t *testing.T, origin, delivered *pb.Transaction) {
 
 	if delivered == nil {
 		t.Fatal("No tx is found to compare with", origin)
@@ -91,7 +95,7 @@ func TestTxNetwork(t *testing.T) {
 	//need some time to fill the tx into network ...
 	time.Sleep(time.Second)
 
-	compareTx(t, tx1, thenode.DefaultLedger().GetPooledTransaction(txid1))
+	compareTx(t, tx1, thenode.DefaultLedger().MustGetTransactionByID(txid1))
 	obj, err := topicRead.ReadOne()
 	if err != nil {
 		t.Fatal("read tx fail", err)
@@ -103,7 +107,7 @@ func TestTxNetwork(t *testing.T) {
 		if topictx.ChaincodeSpec == nil {
 			t.Fatalf("wrong exec context: %v", topictx)
 		}
-		compareTx(t, tx1, topictx)
+		compareTxAndTxe(t, tx1, topictx)
 	}
 
 	thepeer.Stop()
@@ -146,7 +150,7 @@ func TestTxNetwork(t *testing.T) {
 
 	//need some time to fill the tx into network ...
 	time.Sleep(time.Second)
-	compareTx(t, tx1, thenode.DefaultLedger().GetPooledTransaction(txid1again))
+	compareTx(t, tx1, thenode.DefaultLedger().MustGetTransactionByID(txid1again))
 
 	obj, err = topicRead.ReadOne()
 	if err != nil {
@@ -160,8 +164,8 @@ func TestTxNetwork(t *testing.T) {
 			t.Fatalf("wrong exec context for tx2: %v", topictx)
 		}
 
-		compareTx(t, tx2, topictx)
-		compareTx(t, tx2, thenode.DefaultLedger().GetPooledTransaction(topictx.Transaction.GetTxid()))
+		compareTxAndTxe(t, tx2, topictx)
+		compareTx(t, tx2, thenode.DefaultLedger().MustGetTransactionByID(topictx.Transaction.GetTxid()))
 	}
 
 }

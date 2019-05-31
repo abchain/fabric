@@ -38,8 +38,10 @@ func (r *readerPos) next() *readerPos {
 	return &readerPos{Element: r.Next()}
 }
 
-func (r *readerPos) toCache() *readerPosCache {
-	return &readerPosCache{r.batch(), r.logpos}
+func (r *readerPos) clone() *readerPos {
+
+	cp := *r
+	return &cp
 }
 
 type clientReg struct {
@@ -64,7 +66,6 @@ type topicUnit struct {
 	conf        *topicConfiguration
 	data        *list.List
 	dryRun      bool
-	passed      *readerPos //no reader is behind this position
 	start       *readerPos //new reader is adviced to start at this position
 	clients     clientReg
 	batchSignal *sync.Cond
@@ -84,7 +85,6 @@ func InitTopic(conf *topicConfiguration) *topicUnit {
 		readers: make(map[client]bool),
 	})
 
-	ret.passed = &readerPos{Element: pos}
 	ret.start = &readerPos{Element: pos}
 	ret.batchSignal = sync.NewCond(ret)
 
@@ -112,7 +112,7 @@ func (t *topicUnit) getTailAndWait(curr uint64) *readerPos {
 	t.Lock()
 	defer t.Unlock()
 
-	if t.data.Back().Value.(*batch).series <= curr {
+	for t.data.Back().Value.(*batch).series <= curr {
 		t.batchSignal.Wait()
 	}
 
@@ -127,8 +127,8 @@ func (t *topicUnit) _head() *readerPos {
 	return &readerPos{Element: t.data.Front()}
 }
 
-func (t *topicUnit) _position(b *batch, offset int) uint64 {
-	return b.series*uint64(t.conf.maxbatch) + uint64(offset)
+func (t *topicUnit) _position(pos *readerPos) uint64 {
+	return pos.batch().series*uint64(t.conf.maxbatch) + uint64(pos.logpos)
 }
 
 func (t *topicUnit) setDryrun(d bool) {
@@ -136,13 +136,6 @@ func (t *topicUnit) setDryrun(d bool) {
 	defer t.Unlock()
 
 	t.dryRun = d
-}
-
-func (t *topicUnit) setPassed(n *readerPos) {
-	t.Lock()
-	defer t.Unlock()
-
-	t.passed = n
 }
 
 //only used by Write
@@ -156,36 +149,28 @@ func (t *topicUnit) addBatch() (ret *batch) {
 
 	t.data.PushBack(ret)
 
-	//sequence of following steps is subtle!
-
-	//1. in dryrun (no clients are active) mode, we must manage the passed position
-	if t.dryRun {
-		for t.passed.batch().series+uint64(t.conf.maxDelay*2) < ret.series {
-			t.passed.Element = t.passed.Next()
-		}
-	}
-
-	//2. adjust start
+	//adjust start
 	for t.start.batch().series+uint64(t.conf.maxDelay) < ret.series {
 		t.start.Element = t.start.Element.Next()
 	}
 
-	//3. purge
-	for pos := t._head(); pos.batch().series+uint64(t.conf.maxkeep) < t.passed.batch().series; pos.Element = t.data.Front() {
-
-		t.data.Remove(t.data.Front())
+	//1. in dryrun (no clients are active) mode, we must manage the passed position
+	if t.dryRun {
+		dryRunDelay := uint64(t.conf.maxDelay*2 + t.conf.maxkeep)
+		//3. purge
+		for pos := t._head(); pos.batch().series+dryRunDelay < ret.series; pos.Element = t.data.Front() {
+			t.data.Remove(t.data.Front())
+		}
 	}
 
 	//4. force clean
 	if t.conf.maxbatch != 0 {
 		for ; t.conf.maxbatch < t.data.Len(); t.data.Remove(t.data.Front()) {
-
-			pos := t._head()
 			//purge or force unreg
-			if pos.batch().series >= t.passed.batch().series {
+			if batch := t._head().batch(); len(batch.readers) > 0 {
 				t.Unlock()
 				//force unreg
-				for cli, _ := range pos.batch().readers {
+				for cli, _ := range batch.readers {
 					cli.UnReg(t)
 				}
 				t.Lock()
@@ -201,10 +186,7 @@ func (t *topicUnit) Clients() *clientReg {
 }
 
 func (t *topicUnit) CurrentPos() uint64 {
-
-	tail := t.getTail()
-
-	return t._position(tail.batch(), tail.logpos)
+	return t._position(t.getTail())
 }
 
 func (t *topicUnit) Write(i interface{}) error {
@@ -218,10 +200,20 @@ func (t *topicUnit) Write(i interface{}) error {
 
 	if blk.wriPos == t.conf.batchsize {
 		t.addBatch()
-		defer t.batchSignal.Broadcast()
+		t.batchSignal.Broadcast()
 	}
 
 	return nil
+}
+
+func (t *topicUnit) DoPurge(passed uint64) {
+
+	t.Lock()
+	defer t.Unlock()
+
+	for pos := t._head(); pos.batch().series+uint64(t.conf.maxkeep) < passed; pos.Element = t.data.Front() {
+		t.data.Remove(t.data.Front())
+	}
 }
 
 func (t *topicUnit) ReleaseWaiting() {

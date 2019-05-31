@@ -100,3 +100,43 @@ func Test_Transaction_Digest(t *testing.T) {
 		t.Errorf("tx get same digest with different content")
 	}
 }
+
+func Test_YFCCNameParse(t *testing.T) {
+	var fname string
+	fname = "single"
+	n, tmp, ls := ParseYFCCName(fname)
+	if len(ls) != 0 || tmp != "" || n != "single" {
+		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+	}
+
+	fname = "tt:single"
+	n, tmp, ls = ParseYFCCName(fname)
+	if len(ls) != 0 || tmp != "tt" || n != "single" {
+		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+	}
+
+	fname = "tt:single@1,2,3"
+	n, tmp, ls = ParseYFCCName(fname)
+	if len(ls) != 3 || tmp != "tt" || n != "single" {
+		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+	}
+
+	fname = "single@1,2,3"
+	n, tmp, ls = ParseYFCCName(fname)
+	if len(ls) != 3 || tmp != "" || n != "single" {
+		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+	}
+
+	fname = "tt:@1,2,3"
+	n, tmp, ls = ParseYFCCName(fname)
+	if len(ls) != 3 || tmp != "tt" || n != "" {
+		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+	}
+
+	fname = "tt:rr@1"
+	n, tmp, ls = ParseYFCCName(fname)
+	if len(ls) != 1 || tmp != "tt" || n != "rr" {
+		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+	}
+
+}

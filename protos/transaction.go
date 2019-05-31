@@ -44,6 +44,9 @@ func normalizedTxFuncWithAlg(h hash.Hash) func(*Transaction) string {
 	}
 
 	return func(tx *Transaction) string {
+		//we share the hash function for the txs in the whole block
+		//and it must be reset at the beginning of each calling
+		h.Reset()
 		dlg, err := tx.digest(h)
 		if err != nil {
 			return fmt.Sprintf("###wrongtxdigest [%s]###", err)
@@ -201,10 +204,17 @@ func NewChaincodeDeployTransaction(chaincodeDeploymentSpec *ChaincodeDeploymentS
 		}
 		transaction.ChaincodeID = data
 	}
+
 	//if chaincodeDeploymentSpec.ChaincodeSpec.GetCtorMsg() != nil {
 	//	transaction.Function = chaincodeDeploymentSpec.ChaincodeSpec.GetCtorMsg().Function
 	//	transaction.Args = chaincodeDeploymentSpec.ChaincodeSpec.GetCtorMsg().Args
 	//}
+	if ccspec := chaincodeDeploymentSpec.GetChaincodeSpec(); ccspec != nil {
+		ccspec.ChaincodeID = nil
+		defer func() {
+			ccspec.ChaincodeID = cID
+		}()
+	}
 	data, err := proto.Marshal(chaincodeDeploymentSpec)
 	if err != nil {
 		logger.Errorf("Error mashalling payload for chaincode deployment: %s", err)
@@ -228,6 +238,14 @@ func NewChaincodeExecute(chaincodeInvocationSpec *ChaincodeInvocationSpec, uuid 
 			return nil, fmt.Errorf("Could not marshal chaincode : %s", err)
 		}
 		transaction.ChaincodeID = data
+	}
+
+	//notice: chaincodeID is not embedded in spec anymore, but we do not change the argument
+	if ccspec := chaincodeInvocationSpec.GetChaincodeSpec(); ccspec != nil {
+		ccspec.ChaincodeID = nil
+		defer func() {
+			ccspec.ChaincodeID = cID
+		}()
 	}
 	data, err := proto.Marshal(chaincodeInvocationSpec)
 	if err != nil {
@@ -268,17 +286,17 @@ func (c *ChaincodeInput) UnmarshalJSON(b []byte) error {
   fields
 */
 type TransactionHandlingContext struct {
-	//fields will be tagged from outside, if PeerID is not set,
+	*Transaction //the original transaction
+	//first fields which will be tagged from outside, if PeerID is not set,
 	//it will be considered as "self peer" in network
 	NetworkID, PeerID string
-	*Transaction          //the original transaction
-	PoolCount         int //used by txpool
-	//every fields can be readout from transaction (may covered by the confidentiality)
-	ChaincodeSpec       *ChaincodeSpec
-	ChaincodeDeploySpec *ChaincodeDeploymentSpec
-	ChaincodeTemplate   string
-	SecContex           *ChaincodeSecurityContext
-	CustomFields        map[string]interface{}
+	//every fields can be readout from transaction (unlessed covered by the confidentiality)
+	ChaincodeName, ChaincodeTemplate string
+	TargetLedgers                    []string
+	ChaincodeSpec                    *ChaincodeSpec
+	ChaincodeDeploySpec              *ChaincodeDeploymentSpec
+	SecContex                        *ChaincodeSecurityContext
+	CustomFields                     map[string]interface{}
 }
 
 func NewTransactionHandlingContext(t *Transaction) *TransactionHandlingContext {
@@ -288,90 +306,101 @@ func NewTransactionHandlingContext(t *Transaction) *TransactionHandlingContext {
 }
 
 /*
-   read a unencrypted tx and fill possible fields
+   read a unencrypted tx and try to fill possible fields
 */
-func mustParsePlainTx(tx *TransactionHandlingContext) (ret *TransactionHandlingContext, err error) {
-	if tx.GetConfidentialityLevel() != ConfidentialityLevel_PUBLIC {
-		err = fmt.Errorf("Can't not parse non-public (level:%s) transaction", tx.GetConfidentialityLevel())
-		return
-	}
 
-	return parsePlainTx(tx)
-}
-
-func parsePlainTx(tx *TransactionHandlingContext) (ret *TransactionHandlingContext, err error) {
-
-	if tx.GetConfidentialityLevel() != ConfidentialityLevel_PUBLIC {
-		return
-	}
+func parsePlainTx(tx *TransactionHandlingContext) (ret *TransactionHandlingContext) {
 
 	ret = tx
+	if tx.GetConfidentialityLevel() != ConfidentialityLevel_PUBLIC {
+		return
+	}
 
 	switch tx.Type {
 	case Transaction_CHAINCODE_DEPLOY:
 		cds := &ChaincodeDeploymentSpec{}
-		err = proto.Unmarshal(tx.Payload, cds)
-		if err != nil {
+		if err := proto.Unmarshal(tx.Payload, cds); err != nil {
+			logger.Errorf("Unmarshal payload in deploy tx: %s", err)
 			return
 		}
 		ret.ChaincodeDeploySpec = cds
 		ret.ChaincodeSpec = cds.GetChaincodeSpec()
 	case Transaction_CHAINCODE_INVOKE, Transaction_CHAINCODE_QUERY:
 		ci := &ChaincodeInvocationSpec{}
-		err = proto.Unmarshal(tx.Payload, ci)
-		if err != nil {
+
+		if err := proto.Unmarshal(tx.Payload, ci); err != nil {
+			logger.Errorf("Unmarshal payload in invoking tx: %s", err)
 			return
 		}
 		ret.ChaincodeSpec = ci.GetChaincodeSpec()
 	default:
-		err = fmt.Errorf("invalid transaction type: %d", tx.Type)
+		return
 	}
+
+	//replace the embedded chaincodeID field, avoiding misuse (or malice code
+	//which set another different cc name trying to bypass the validations)
+	ret.ChaincodeSpec.ChaincodeID = &ChaincodeID{Name: ret.ChaincodeName}
+	return
+}
+
+func mustParsePlainTx(tx *TransactionHandlingContext) (ret *TransactionHandlingContext, err error) {
+	if tx.GetConfidentialityLevel() != ConfidentialityLevel_PUBLIC {
+		err = fmt.Errorf("Can't not parse non-public (level:%s) transaction", tx.GetConfidentialityLevel())
+		return
+	}
+
+	ret = parsePlainTx(tx)
+	if ret.ChaincodeSpec == nil {
+		err = fmt.Errorf("Can't not read payload in tx")
+	}
+	//verify the embedded chaincodeID and replace
 
 	return
 }
 
 //parse the chaincode name in YA-fabric 0.9's standard form: [templateName:]ccName[@LedgerName]
-//TODO: we still not assign ledger name to a field
-func parseChaincodeName(tx *TransactionHandlingContext) (ret *TransactionHandlingContext, err error) {
-
-	ret = tx
-	if ret.ChaincodeSpec == nil {
-		err = fmt.Errorf("Spec has not being parsed yet")
-		return
-	}
-
-	yfCCName := ret.ChaincodeSpec.GetChaincodeID().GetName()
-	if yfCCName == "" {
-		err = fmt.Errorf("Spec has an empty chaincodeName")
-		return
-	}
-
-	parsed := strings.Split(yfCCName, ":")
+func ParseYFCCName(ccfullName string) (ccName, templateName string, ledgerName []string) {
+	parsed := strings.Split(ccfullName, ":")
 
 	if len(parsed) >= 2 {
-		ret.ChaincodeTemplate = parsed[0]
+		templateName = parsed[0]
 		if len(parsed[1:]) > 1 {
-			yfCCName = strings.Join(parsed[1:], "")
+			ccfullName = strings.Join(parsed[1:], "")
 		} else {
-			yfCCName = parsed[1]
+			ccfullName = parsed[1]
 		}
 	}
 
-	parsed = strings.Split(yfCCName, "@")
-
-	//we overwrite the spec
+	parsed = strings.Split(ccfullName, "@")
 	if len(parsed) >= 2 {
-		ret.ChaincodeSpec.ChaincodeID.Name = parsed[0]
-	} else {
-		ret.ChaincodeSpec.ChaincodeID.Name = yfCCName
+		ledgerName = strings.Split(parsed[1], ",")
 	}
+
+	ccName = parsed[0]
+
 	return
 }
 
-func NewPlainTxHandlingContext(tx *Transaction) (*TransactionHandlingContext, error) {
-	ret := NewTransactionHandlingContext(tx)
+func parseChaincodeName(tx *TransactionHandlingContext) (ret *TransactionHandlingContext, err error) {
 
-	return mustParsePlainTx(ret)
+	ret = tx
+	if len(tx.GetChaincodeID()) == 0 {
+		//empty ccid is not consider as error (may just fail in later handling)
+		return
+	}
+
+	fccid := new(ChaincodeID)
+	if err = proto.Unmarshal(tx.GetChaincodeID(), fccid); err != nil {
+		return
+	}
+
+	if yfCCName := fccid.GetName(); yfCCName == "" {
+		err = fmt.Errorf("Spec has an empty chaincodeName")
+	} else {
+		ret.ChaincodeName, ret.ChaincodeTemplate, ret.TargetLedgers = ParseYFCCName(fccid.GetName())
+	}
+
+	return
 }
 
 /*
@@ -403,10 +432,15 @@ func (f TxFuncAsTxPreHandler) Handle(txe *TransactionHandlingContext) (*Transact
 }
 
 var NilValidator = TxFuncAsTxPreHandler(func(tx *Transaction) (*Transaction, error) { return tx, nil })
-var PlainTxHandler = FuncAsTxPreHandler(parsePlainTx)
+var PlainTxHandler = FuncAsTxPreHandler(mustParsePlainTx)
+
+//name handler should be the very first one before any working handling (Except simple tagging)
+//start, so handling specfied by ccname can work
 var YFCCNameHandler = FuncAsTxPreHandler(parseChaincodeName)
 
-var DefaultTxHandler = MutipleTxHandler(PlainTxHandler, YFCCNameHandler)
+//default handler provided a base routine for picking a tx into execution enviroment again
+//(e.g. when we need execute a tx read from the txdb)
+var DefaultTxHandler = MutipleTxHandler(YFCCNameHandler, PlainTxHandler)
 
 /*
   Mutiple handler

@@ -73,7 +73,7 @@ func dumpTopic(t *testing.T, title string, u *topicUnit) {
 		dumpbatch(t, i.Value.(*batch))
 	}
 
-	t.Log("-------- Pass:", u.passed.batch().series)
+	t.Log("-------- Pass:", u.clients.passedSeries)
 
 	t.Log("-------- End dumping topic for phase")
 
@@ -134,7 +134,7 @@ type readTester int
 func (r readTester) testV(t *testing.T, v interface{}) readTester {
 	iv, ok := v.(int)
 	if !ok {
-		t.Fatal("read type fail")
+		panic(fmt.Sprintf("read type fail: %v", v))
 	}
 
 	if int(r) != iv {
@@ -355,8 +355,8 @@ func TestMutipleReader(t *testing.T) {
 	}
 
 	checkTopic(t, topic, 1, 0, 0)
-	if topic.passed.batch().series != 1 {
-		t.Fatal("wrong pass position")
+	if passed := topic.clients.passedSeries; passed != 1 {
+		t.Fatal("wrong pass position", passed)
 	}
 
 	rd3, err = cli3.Read(topic, ReadPos_Default)
@@ -367,8 +367,8 @@ func TestMutipleReader(t *testing.T) {
 
 	checkTopic(t, topic, 1, 0, 0)
 
-	if topic.passed.batch().series != 0 {
-		t.Fatal("wrong pass position")
+	if passed := topic.clients.passedSeries; passed != 0 {
+		t.Fatal("wrong pass position", passed)
 	}
 
 	var vs []interface{}
@@ -505,9 +505,9 @@ func TestUnReg(t *testing.T) {
 	}
 
 	checkTopic(t, topic, 12, 0, 11)
-	if topic.passed.batch().series != 1 {
+	if passed := topic.clients.passedSeries; passed != 1 {
 		dumpTopic(t, "wrong pass position 1", topic)
-		t.Fatal("wrong pass position")
+		t.Fatal("wrong pass position:", passed)
 	}
 
 	rd4, err = cli4.Read(topic, ReadPos_Default)
@@ -526,10 +526,10 @@ func TestUnReg(t *testing.T) {
 	cli4.UnReg(topic)
 
 	cli2.UnReg(topic)
-	checkTopic(t, topic, 12, 0, 11)
-	if topic.passed.batch().series != 12 {
+	checkTopic(t, topic, 12, 9, 11)
+	if passed := topic.clients.passedSeries; passed != 12 {
 		dumpTopic(t, "wrong pass position 2", topic)
-		t.Fatal("wrong pass position")
+		t.Fatal("wrong pass position:", passed)
 	}
 
 	if topic.dryRun {
@@ -584,7 +584,7 @@ func TestForceDropOut(t *testing.T) {
 		tester1 = tester1.testV(t, v)
 	}
 
-	checkTopic(t, topic, 10, 6, 9)
+	checkTopic(t, topic, 10, 7, 9)
 
 	_, err = rd2.ReadOne()
 	if err != ErrDropOut {

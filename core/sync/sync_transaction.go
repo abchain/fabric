@@ -19,11 +19,14 @@ func NewTxSyncClient(opt *clientOpts, txids []string) *txCliFactory {
 	}
 
 	clilogger.Debugf("create client for sync %d txs, assign %d on each worker", len(txids), assign)
+	//avoiding change input txid
+	ctxid := make([]string, len(txids))
+	copy(ctxid, txids)
 
 	return &txCliFactory{
 		opt:         opt,
 		assignedCnt: assign,
-		target:      txids,
+		target:      ctxid,
 	}
 }
 

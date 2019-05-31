@@ -81,9 +81,9 @@ func TestStateSync_FullSimu(t *testing.T) {
 	defer endAll()
 	baseOpt := DefaultSyncOption()
 
-	testSrc := &testFactory{t, baseCtx, testLedger, baseOpt}
-	testTarget := &testFactory{t, baseCtx, targetLedger, baseOpt}
-	testDummy := &testFactory{t, baseCtx, dummyLedger, baseOpt}
+	testSrc := &testFactory{baseCtx, testLedger, baseOpt}
+	testTarget := &testFactory{baseCtx, targetLedger, baseOpt}
+	testDummy := &testFactory{baseCtx, dummyLedger, baseOpt}
 
 	peerSrc := testSrc.preparePeer("src")
 	peerTarget := testTarget.preparePeer("target")

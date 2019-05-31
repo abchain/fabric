@@ -67,7 +67,7 @@ func TestSyncCli_Schedule(t *testing.T) {
 	defer endAll()
 
 	testLedger := ledger.InitTestLedger(t)
-	testBase := &testFactory{t, baseCtx, testLedger, DefaultSyncOption()}
+	testBase := &testFactory{baseCtx, testLedger, DefaultSyncOption()}
 
 	sstub := testBase.preparePeer("test")
 	for i := 0; i < dummyClis; i++ {

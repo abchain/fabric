@@ -58,7 +58,7 @@ func TestRunningScc(t *testing.T) {
 	}
 
 	if _, err := defpf.Launch(context.Background(), ne.DefaultLedger(),
-		deployspec.ChaincodeSpec.ChaincodeID, deployspec); err == nil {
+		"shouldnotrun", deployspec); err == nil {
 		t.Fatal("unexpected success in running syscc (security is passed by)")
 	}
 }

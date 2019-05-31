@@ -18,6 +18,7 @@ package ledger
 
 import (
 	"bytes"
+	"errors"
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/util"
 	"github.com/abchain/fabric/protos"
@@ -153,7 +154,7 @@ func (blockchain *blockchain) getBlock(blockNumber uint64) (*protos.Block, error
 		if err != nil {
 			return nil, err
 		}
-		return finishFetchedBlock(blockcopy), nil
+		return finishFetchedBlock(blockcopy)
 	}
 
 	return fetchBlockFromDB(blockchain.OpenchainDB, blockNumber)
@@ -218,10 +219,9 @@ func (blockchain *blockchain) getBlockchainInfoForBlock(height uint64, block *pr
 	return info
 }
 
-//block-build helper func
-func buildBlock(stateHash, metadata []byte, transactions []*protos.Transaction) *protos.Block {
+//block-build helper func, without statehash
+func buildBlock(metadata []byte, transactions []*protos.Transaction) *protos.Block {
 	block := protos.NewBlock(transactions, metadata)
-	block.StateHash = stateHash
 	if block.NonHashData == nil {
 		block.NonHashData = &protos.NonHashData{LocalLedgerCommitTimestamp: util.CreateUtcTimestamp()}
 	} else {
@@ -510,13 +510,17 @@ func compatibleLegacyBlock(block *protos.Block) *protos.Block {
 	return block
 }
 
-func finishFetchedBlock(blk *protos.Block) *protos.Block {
+func finishFetchedBlock(blk *protos.Block) (*protos.Block, error) {
 	if blk == nil {
-		return nil
+		return nil, errors.New("block is nil")
 	}
 
 	if blk.Transactions == nil {
 		blk.Transactions = fetchTxsFromDB(blk.Txids)
+		if len(blk.Transactions) < len(blk.Txids) {
+			return nil, errors.New("transactions can not be obtained")
+		}
+
 	} else if blk.Txids == nil {
 		//only for compatible with the legacy block bytes
 		blk.Txids = make([]string, len(blk.Transactions))
@@ -525,7 +529,7 @@ func finishFetchedBlock(blk *protos.Block) *protos.Block {
 		}
 	}
 
-	return blk
+	return blk, nil
 }
 
 func bytesToBlock(blockBytes []byte) (*protos.Block, error) {
@@ -571,11 +575,12 @@ func fetchBlockFromDB(odb *db.OpenchainDB, blockNumber uint64) (blk *protos.Bloc
 	blk, err = fetchRawBlockFromDB(odb, blockNumber)
 	if err != nil {
 		return
+	} else if blk == nil {
+		return nil, nil
 	}
 
-	blk = finishFetchedBlock(blk)
+	return finishFetchedBlock(blk)
 
-	return
 }
 
 func bytesToBlockNumber(bytes []byte) uint64 {
