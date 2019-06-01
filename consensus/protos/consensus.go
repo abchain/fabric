@@ -1,6 +1,9 @@
 package csprotos
 
 import proto "github.com/golang/protobuf/proto"
+import "github.com/golang/protobuf/ptypes/empty"
+
+var Nothing = &empty.Empty{}
 
 type ConsensusRet []byte
 

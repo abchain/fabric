@@ -50,6 +50,13 @@ type LedgerLearner interface {
 	//  their delivery
 	Put(context.Context, *pb.TransactionHandlingContext) error
 
+	//put direct allow external calling directly input some result,
+	//to drive the ledger/status wrapped inside learner go forward
+	//forexample, ConsensusBase allow deliver any custom process
+	//which is able to access the learner directly. Such a process can
+	//make use of this entry
+	PutDirect(context.Context, *cspb.ConsensusOutput) error
+
 	//trigger make learner to resolve its pending task, even no new
 	//consensus tx is input
 	//it is also help caller to decide if writeback tx should be delivered
@@ -473,6 +480,69 @@ func (l *baseLearnerImpl) Trigger(ctx context.Context) bool {
 	return true
 }
 
+func (l *baseLearnerImpl) handleOutput(ctx context.Context, linfo *ledger.LedgerInfo, ro *cspb.ConsensusOutput) error {
+
+	defer func() {
+		if l.ledger.TestContinuouslBlockRange() >= linfo.Persisted.Blocks {
+			if ulinfo, err := l.ledger.GetLedgerInfo(); err != nil {
+				logger.Errorf("can not update ledger info: %s", err)
+			} else {
+				linfo = ulinfo
+			}
+		}
+
+		if err := l.stateForward(ctx, linfo); err != nil && err != errNothing {
+			logger.Errorf("state forward fail on put consensus transaction step: %s", err)
+		}
+	}()
+
+	switch r := ro.GetOut().(type) {
+	case *cspb.ConsensusOutput_More:
+		panic("not implied")
+	case *cspb.ConsensusOutput_Block:
+		if err := l.putblock(linfo, ro.GetPosition(), r.Block); err != nil {
+			return fmt.Errorf("block %d@[%8X] not commit: %s",
+				ro.GetPosition(), r.Block.GetStateHash(), err)
+		}
+		if newBlk := ro.GetPosition(); newBlk == linfo.GetHeight() {
+			l.resolvePendingBlock(newBlk, linfo.GetCurrentBlockHash())
+		}
+		return nil
+	case *cspb.ConsensusOutput_Blocks:
+		for _, pblk := range r.Blocks.GetBlks() {
+			if err := l.putblock(linfo, pblk.GetN(), pblk.GetB()); err != nil {
+				return fmt.Errorf("block %d@[%8X] not commit: %s",
+					pblk.GetN(), pblk.GetB().GetStateHash(), err)
+			} else if newBlk := pblk.GetN(); newBlk == linfo.GetHeight() {
+				defer l.resolvePendingBlock(newBlk, linfo.GetCurrentBlockHash())
+			}
+		}
+		return nil
+	case *cspb.ConsensusOutput_Blockhash:
+		if linfo.GetHeight() <= ro.GetPosition() {
+			l.updateRefHistory(ro.GetPosition(), r.Blockhash)
+		}
+		return nil
+	case *cspb.ConsensusOutput_Error:
+		return fmt.Errorf("handle input consensus fail: %s", r.Error)
+	case *cspb.ConsensusOutput_Nothing:
+		return nil
+	default:
+		panic("Unexpected type")
+	}
+
+}
+
+func (l *baseLearnerImpl) PutDirect(ctx context.Context, ro *cspb.ConsensusOutput) error {
+
+	linfo, err := l.ledger.GetLedgerInfo()
+	if err != nil {
+		return err
+	}
+
+	return l.handleOutput(ctx, linfo, ro)
+}
+
 func (l *baseLearnerImpl) Put(ctx context.Context, cstxe *pb.TransactionHandlingContext) (ferr error) {
 
 	linfo, err := l.ledger.GetLedgerInfo()
@@ -498,43 +568,8 @@ func (l *baseLearnerImpl) Put(ctx context.Context, cstxe *pb.TransactionHandling
 			if doCommit := l.commitCC[cstxe.ChaincodeName]; ferr == nil && doCommit {
 				l.ledger.CommitTransactions([]string{cstxe.GetTxid()}, ro.GetPosition())
 			}
-
-			if l.ledger.TestContinuouslBlockRange() >= linfo.Persisted.Blocks {
-				if ulinfo, err := l.ledger.GetLedgerInfo(); err != nil {
-					logger.Errorf("can not update ledger info: %s", err)
-				} else {
-					linfo = ulinfo
-				}
-			}
-
-			if err := l.stateForward(ctx, linfo); err != nil && err != errNothing {
-				logger.Errorf("state forward fail on put consensus transaction step: %s", err)
-			}
 		}()
 
-		switch r := ro.GetOut().(type) {
-		case *cspb.ConsensusOutput_More:
-			panic("not implied")
-		case *cspb.ConsensusOutput_Block:
-			if err := l.putblock(linfo, ro.GetPosition(), r.Block); err != nil {
-				return fmt.Errorf("block %d@[%8X] not commit: %s",
-					ro.GetPosition(), r.Block.GetStateHash(), err)
-			}
-			if newBlk := ro.GetPosition(); newBlk == linfo.GetHeight() {
-				l.resolvePendingBlock(newBlk, linfo.GetCurrentBlockHash())
-			}
-			return nil
-		case *cspb.ConsensusOutput_Blockhash:
-			if linfo.GetHeight() <= ro.GetPosition() {
-				l.updateRefHistory(ro.GetPosition(), r.Blockhash)
-			}
-			return nil
-		case *cspb.ConsensusOutput_Error:
-			return fmt.Errorf("handle input consensus fail: %s", r.Error)
-		case *cspb.ConsensusOutput_Nothing:
-			return nil
-		default:
-			panic("Unexpected type")
-		}
+		return l.handleOutput(ctx, linfo, ro)
 	}
 }

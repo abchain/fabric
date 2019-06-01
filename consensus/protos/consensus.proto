@@ -24,6 +24,10 @@ message PurposeTransactions {
     repeated string ids = 1;
 }
 
+message PurposeBlocks {
+    repeated PurposeBlock blks = 1;
+}
+
 message ConsensusOutput {
 
     //indicate the position the consensus tx corresponding to in
@@ -47,6 +51,11 @@ message ConsensusOutput {
         //input tx can be commited, and node should try to sync
         //state by this tip
         bytes blockhash = 4;
+        //like block, but provide more than one blocks, the position
+        //just indicate the highest one, all of the blocks MUST belong
+        //to the same state branch
+        PurposeBlocks blocks= 5;
+
         //tx is consumed and nothing is output, input tx should
         //be commited
         google.protobuf.Empty nothing = 8;

@@ -137,6 +137,11 @@ func (dl *dummyLearner) Trigger(context.Context) bool {
 		return true
 	}
 }
+
+func (dl *dummyLearner) PutDirect(context.Context, *cspb.ConsensusOutput) error {
+	panic("DONT CALL")
+}
+
 func (dl *dummyLearner) Put(context.Context, *pb.TransactionHandlingContext) error {
 	if dl.triggercnt == 2 {
 		panic("wrong state")
