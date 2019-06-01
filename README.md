@@ -22,6 +22,8 @@ What we have achieved include:
 
 * Immigrating PBFT module into the consensus framework, with dynamic decision of the involving peers
 
+* Implement of ledger rolling back, current code has been well prepared but we still need some lines to make it work (also the testing)
+
 * Concurrent execution of transactions
 
 * API help to evaluate the cost of tx executions
@@ -34,11 +36,15 @@ If you wish to take a look at the original readme of fabric 0.6, found [here](ht
 
 * Use rocksdb 5.10
 
-## Release a preview of 0.9
+## Release a preview of 0.95
+
+* The backbone of consensus framework
 
 * Syncing module 
 
 * A new ledger package, see the [readme](https://github.com/abchain/fabric/blob/0.9/core/ledger/README.md)
+
+## Release of 0.9 is skipped for the reversed developing plan and we haved worked for a further version
 
 ## Release of 0.8
 
