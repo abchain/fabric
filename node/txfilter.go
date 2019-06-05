@@ -87,10 +87,12 @@ type recordHandler struct {
 func (r *recordHandler) Handle(txe *pb.TransactionHandlingContext) (*pb.TransactionHandlingContext, error) {
 
 	ccname := r.nameTrans(txe.ChaincodeSpec.GetChaincodeID().GetName())
+	wtopic := ccname
 
-	topic, ok := r.txtopic[ccname]
+	topic, ok := r.txtopic[wtopic]
 	if !ok {
-		topic, ok = r.txtopic[""]
+		wtopic = ""
+		topic, ok = r.txtopic[wtopic]
 		if !ok {
 			txlogger.Debugf("tx %s with ccname %s do not write to any topic", txe.GetTxid(), ccname)
 			return txe, nil
@@ -98,10 +100,10 @@ func (r *recordHandler) Handle(txe *pb.TransactionHandlingContext) (*pb.Transact
 	}
 
 	if err := topic.Write(txe); err != nil {
-		txlogger.Errorf("Tx %s write into topic [%s] fail: %s", txe.GetTxid(), ccname, err)
+		txlogger.Errorf("Tx %s (for %s) write into topic [%s] fail: %s", txe.GetTxid(), ccname, wtopic, err)
 		return txe, pb.ValidateInterrupt
 	}
-	txlogger.Debugf("tx [%s] write to topic [%s]", txe.GetTxid(), ccname)
+	txlogger.Debugf("tx [%s] (for %s) write to topic [%s]", txe.GetTxid(), ccname, wtopic)
 
 	return txe, nil
 }

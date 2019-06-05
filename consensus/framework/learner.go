@@ -74,6 +74,7 @@ type baseLearnerImpl struct {
 	stateSyncDist     int
 	fullSyncCriterion uint64
 	txPrehandle       pb.TxPreHandler
+	chainforTx        chaincode.ChainName
 	commitCC          map[string]bool
 
 	//we trace, both the highest block state of current chain (top)
@@ -100,12 +101,13 @@ type baseLearnerImpl struct {
 	}
 }
 
-func NewBaseLedgerLearner(l *ledger.Ledger, peer *node.PeerEngine, cfg *FrameworkConfig) *baseLearnerImpl {
+func NewBaseLedgerLearner(l *ledger.Ledger, peer *node.PeerEngine, cfg FrameworkConfig) *baseLearnerImpl {
 
 	ret := &baseLearnerImpl{
 		sync:              peer.Syncer(),
 		ledger:            l,
 		txPrehandle:       pb.DefaultTxHandler,
+		chainforTx:        chaincode.DefaultChain,
 		txSyncDist:        5,
 		blockSyncDist:     200,
 		stateSyncDist:     2000000000, //2T blocks, which is large enough
@@ -325,68 +327,85 @@ func (l *baseLearnerImpl) stateForward(ctx context.Context, linfo *ledger.Ledger
 				return fmt.Errorf("state forward fail on get reference block: %s", err)
 			}
 
-			//try cache, currently we can only build a state just on top of current chain
-			//so cache will be always cleared after that
-			if cachedOut := l.lastBuilt.output; cachedOut != nil {
-				l.lastBuilt.output = nil
-				if bytes.Compare(l.lastBuilt.state, refblk.StateHash) == 0 {
-					logger.Debugf("Apply last built block [%.16X]", l.lastBuilt.state)
-					if err := cachedOut.CommitBlock(startH, refblk); err != nil {
-						logger.Errorf("state forward fail on use cached built data: %s", err)
-					} else {
-						continue
+			//execute in a closure ...
+			if err := func() (ferr error) {
+
+				defer func(parentHash []byte) {
+					if ferr == nil {
+						if err := l.ledger.AddGlobalState(parentHash, lastStateHash); err != nil {
+							logger.Warningf("can not add global state [%12X] on [%12X]:%s",
+								lastStateHash, parentHash, err)
+
+						}
+					}
+
+				}(lastStateHash)
+
+				//try cache, currently we can only build a state just on top of current chain
+				//so cache will be always cleared after that
+				if cachedOut := l.lastBuilt.output; cachedOut != nil {
+					l.lastBuilt.output = nil
+					if bytes.Compare(l.lastBuilt.state, refblk.StateHash) == 0 {
+						logger.Debugf("Apply last built block [%.16X]", l.lastBuilt.state)
+
+						//also remember commit the txs
+						if err := l.ledger.CommitTransactions(refblk.GetTxids(), startH); err != nil {
+							logger.Warningf("Can not commit tx in block %d: %s", startH, err)
+						}
+
+						if err := cachedOut.CommitBlock(startH, refblk); err != nil {
+							logger.Errorf("state forward fail on use cached built data: %s", err)
+						} else {
+							lastStateHash = refblk.StateHash
+							return nil
+						}
 					}
 				}
-			}
 
-			outTxs, pending := l.ledger.GetTxForExecution(refblk.GetTxids(), l.txPrehandle)
-			if len(pending) > 0 {
-				if stateFallbehind > uint64(l.txSyncDist) {
-					//put pending txid for syncing, or we just wait
-					l.cache.pendingTxs = pending
+				outTxs, pending := l.ledger.GetTxForExecution(refblk.GetTxids(), l.txPrehandle)
+				if len(pending) > 0 {
+					if stateFallbehind > uint64(l.txSyncDist) {
+						//put pending txid for syncing, or we just wait
+						l.cache.pendingTxs = pending
+					}
+					return fmt.Errorf("finish forwarding state for transaction is not avaliable yet")
 				}
-				return fmt.Errorf("finish forwarding state for transaction is not avaliable yet")
-			}
 
-			//commit tx here, so in the previous GetTxForExecution call, we can make
-			// use of the tx pool
-			if err := l.ledger.CommitTransactions(refblk.GetTxids(), startH); err != nil {
-				logger.Warningf("Can not commit tx in block %d: %s", startH, err)
-			}
+				startT := time.Now()
 
-			startT := time.Now()
+				txagent, err := ledger.NewTxEvaluatingAgent(l.ledger)
+				if err != nil {
+					return err
+				}
+				//done, we evaluate the txs
+				if _, err := chaincode.ExecuteTransactions2(ctx, l.chainforTx, outTxs, txagent); err != nil {
+					logger.Errorf("Execute transactions on block %d encounter err, which is fatal: %s",
+						startH, err)
+					return err
+				}
 
-			txagent, err := ledger.NewTxEvaluatingAgent(l.ledger)
-			if err != nil {
+				//commit tx at the last, so in the previous GetTxForExecution call, we can make
+				// use of the tx pool
+				if err := l.ledger.CommitTransactions(refblk.GetTxids(), startH); err != nil {
+					logger.Warningf("Can not commit tx in block %d: %s", startH, err)
+				}
+
+				if err := txagent.StateCommitOne(startH, refblk); err != nil {
+					logger.Errorf("commit state to block %d encounter err %s", startH, err)
+					return err
+				}
+
+				lastStateHash = txagent.LastCommitState()
+
+				endT := time.Now().Sub(startT)
+				//TODO: more detail information (like geth?)
+				logger.Infof("Commit block %d: evaluate %d transactions in %.3f sec", startH,
+					len(outTxs), endT.Seconds())
+
+				return nil
+			}(); err != nil {
 				return err
 			}
-			//done, we evaluate the txs
-			_, err = chaincode.ExecuteTransactions2(ctx, chaincode.DefaultChain, outTxs, txagent)
-			if err != nil {
-				logger.Errorf("Execute transactions on block %d encounter err, which is fatal: %s",
-					startH, err)
-				return err
-			}
-
-			err = txagent.StateCommitOne(startH, refblk)
-			if err != nil {
-				logger.Errorf("commit state to block %d encounter err %s", startH, err)
-				return err
-			}
-
-			err = l.ledger.AddGlobalState(lastStateHash, txagent.LastCommitState())
-			if err != nil {
-				logger.Warningf("can not add global state [%12X] on [%12X]:%s",
-					txagent.LastCommitState(), lastStateHash, err)
-				return err
-			}
-			lastStateHash = txagent.LastCommitState()
-
-			endT := time.Now().Sub(startT)
-			//TODO: more detail information (like geth?)
-			logger.Infof("Commit block %d: evaluate %d transactions in %.3f sec", startH,
-				len(outTxs), endT.Seconds())
-
 		}
 
 		return nil
@@ -412,7 +431,7 @@ func (l *baseLearnerImpl) Preview(ctx context.Context, pos uint64, txes []*pb.Tr
 	}
 
 	//done, we evaluate the txs
-	_, err = chaincode.ExecuteTransactions2(ctx, chaincode.DefaultChain, txes, txagent)
+	_, err = chaincode.ExecuteTransactions2(ctx, l.chainforTx, txes, txagent)
 	if err != nil {
 		logger.Errorf("Execute transactions on block %d encounter err, which is fatal: %s",
 			pos, err)
@@ -551,6 +570,17 @@ func (l *baseLearnerImpl) Put(ctx context.Context, cstxe *pb.TransactionHandling
 		return ErrorWriteBack{}
 	}
 
+	var txForPosition uint64
+
+	defer func() {
+
+		if doCommit := l.commitCC[cstxe.ChaincodeName]; ferr == nil && doCommit {
+			l.ledger.CommitTransactions([]string{cstxe.GetTxid()}, txForPosition)
+		} else {
+			l.ledger.PruneTransactions([]*pb.Transaction{cstxe.Transaction})
+		}
+	}()
+
 	//evaluate the input tx on SYSTEM chaincode platform
 	//consensus tx is a query one, but it in fact keep state inside itself
 	consensusRet, err := chaincode.Execute2(ctx, l.ledger, chaincode.GetSystemChain(), cstxe, ledger.NewQueryExecState(l.ledger))
@@ -563,13 +593,34 @@ func (l *baseLearnerImpl) Put(ctx context.Context, cstxe *pb.TransactionHandling
 		panic(fmt.Sprintf("chaincode do not set valid output， fail for (%s)", err))
 	} else {
 
-		defer func() {
-			//commit cstx
-			if doCommit := l.commitCC[cstxe.ChaincodeName]; ferr == nil && doCommit {
-				l.ledger.CommitTransactions([]string{cstxe.GetTxid()}, ro.GetPosition())
-			}
-		}()
+		txForPosition = ro.GetPosition()
 
 		return l.handleOutput(ctx, linfo, ro)
 	}
+}
+
+//also provide an interface of deliver, such a deliver can send tx into learner directly
+func (l *baseLearnerImpl) Send(ctx context.Context, txs []*pb.Transaction) error {
+	var txes []*pb.TransactionHandlingContext
+	for _, tx := range txs {
+		txe, err := l.txPrehandle.Handle(pb.NewTransactionHandlingContext(tx))
+		if err != nil {
+			return err
+		}
+		txes = append(txes, txe)
+	}
+
+	for i, txe := range txes {
+		err := l.Put(ctx, txe)
+		if err != nil {
+			return &deliverProgress{
+				lastFailure: err,
+				resumedTask: &pendingDelivery{
+					txs:     txs[i:],
+					deliver: l,
+				},
+			}
+		}
+	}
+	return nil
 }

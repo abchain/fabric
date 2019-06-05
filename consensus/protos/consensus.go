@@ -35,3 +35,20 @@ func (m *ConsensusOutput) ToRet() ([]byte, error) {
 func (m *ConsensusPurpose) ToRet() ([]byte, error) {
 	return proto.Marshal(m)
 }
+
+type ConsensusPayloads []byte
+
+func (bt ConsensusPayloads) Block() (*PurposeBlock, error) {
+
+	msg := new(PurposeBlock)
+	if err := proto.Unmarshal(bt, msg); err != nil {
+		return nil, err
+	}
+
+	return msg, nil
+
+}
+
+func (b *PurposeBlock) Bytes() ([]byte, error) {
+	return proto.Marshal(b)
+}

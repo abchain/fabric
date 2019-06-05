@@ -68,6 +68,7 @@ func test_core(t *testing.T, tf func(*baseLearnerImpl, *ledger.Ledger)) {
 		sync:              syncstrategy.GetSyncStrategyEntry(targetstub.StreamStub),
 		ledger:            target,
 		txPrehandle:       pb.DefaultTxHandler,
+		chainforTx:        chaincode.SystemChain,
 		txSyncDist:        5,
 		blockSyncDist:     30,
 		stateSyncDist:     1000,

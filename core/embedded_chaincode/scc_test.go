@@ -3,6 +3,7 @@ package embedded_chaincode_test
 import (
 	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/core/config"
+	"github.com/abchain/fabric/core/embedded_chaincode"
 	"github.com/abchain/fabric/core/embedded_chaincode/api"
 	cc "github.com/abchain/fabric/examples/chaincode/embedded/simple_chaincode"
 	"github.com/abchain/fabric/node"
@@ -42,7 +43,10 @@ func TestRunningScc(t *testing.T) {
 	}
 
 	if err := api.RegisterAndLaunchSysCC(context.Background(), ccConf, ne.LedgersList()...); err != nil {
-		t.Fatal(err)
+		if _, ok := err.(embedded_chaincode.SuccessWithOutput); !ok {
+			t.Fatal(err)
+		}
+
 	}
 
 	defpf := chaincode.NewChaincodeSupport(chaincode.DefaultChain, ne.Name,

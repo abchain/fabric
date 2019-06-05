@@ -201,6 +201,7 @@ func (chaincodeSupport *ChaincodeSupport) chaincodeHasBeenLaunched(l *ledger.Led
 					fcc := chaincodeSupport.runningChaincodes.freeChainCodes[chaincode]
 					chaincodeSupport.runningChaincodes.freeChainCodes[chaincode] = fcc[1:]
 					hasbeenlaunched = true
+					chaincodeLogger.Debugf("pick free launching chaincode %s", chaincode)
 				}
 			}
 		}()
@@ -496,8 +497,6 @@ func (chaincodeSupport *ChaincodeSupport) finishLaunching(l *ledger.Ledger, chai
 
 	//we need a "lasttime checking", so if the launching chaincode is not registered,
 	//we just erase it and notify a termination
-	chaincodeSupport.runningChaincodes.Lock()
-	defer chaincodeSupport.runningChaincodes.Unlock()
 	if rte, ok := chaincodeSupport.chaincodeHasBeenLaunched(l, chaincode); !ok {
 		//nothing to do
 		chaincodeLogger.Warningf("trying to terminate the launching for unexist chaincode %s", chaincode)
@@ -518,9 +517,11 @@ func (chaincodeSupport *ChaincodeSupport) finishLaunching(l *ledger.Ledger, chai
 
 	//if we get err notify, we must clear the rte even it has created a handler
 	if notify != nil {
+		chaincodeLogger.Debugf("cleaning prelaunched rt for [%s] (error %s)", chaincode, notify)
 		ml := chaincodeSupport.runningChaincodes.chaincodeMap[chaincode]
 		delete(ml, l)
 		if len(ml) == 0 {
+			chaincodeLogger.Debugf("cleaning the whole chaincode map for [%s]", chaincode)
 			delete(chaincodeSupport.runningChaincodes.chaincodeMap, chaincode)
 		}
 	}
@@ -560,18 +561,17 @@ func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, netTag s
 func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *ledger.Ledger, chaincode string, cds *pb.ChaincodeDeploymentSpec) (error, *chaincodeRTEnv) {
 
 	chaincodeSupport.runningChaincodes.Lock()
+	defer chaincodeSupport.runningChaincodes.Unlock()
 
 	//the first tx touch the corresponding run-time object is response for the actually
 	//launching and other tx just wait
 	if chrte, ok := chaincodeSupport.chaincodeHasBeenLaunched(ledger, chaincode); ok {
 		if chrte.waitCtx == nil {
 			chaincodeLogger.Debugf("chaincode is running(no need to launch) : %s", chaincode)
-			chaincodeSupport.runningChaincodes.Unlock()
 			return nil, chrte
 		}
 		//all of us must wait here till the cc is really launched (or failed...)
 		chaincodeLogger.Debug("chainicode not in READY state...waiting")
-		chaincodeSupport.runningChaincodes.Unlock()
 
 		select {
 		case <-chrte.waitCtx.Done():
@@ -584,11 +584,32 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 			if chrte.handler == nil {
 				chaincodeLogger.Errorf("handler is not available but lauching [%s(chain:%s,nodeid:%s)] not notify that", chaincode, chaincodeSupport.name, chaincodeSupport.nodeID)
 				return fmt.Errorf("internal error"), nil
+			} else if cds != nil {
+				//notice we must ban another call of deploy
+				return fmt.Errorf("Try to redeploy existed chaincode [%s]", chaincode), nil
 			} else {
 				return nil, chrte
 			}
 		} else {
 			return chrte.launchResult, nil
+		}
+	}
+
+	//we should first check the deployment information so we avoid spent extra resources
+	//on non-existed chaincode
+	var err error
+	var depTx *pb.Transaction
+	if cds == nil {
+		cds, depTx, err = chaincodeSupport.extractDeployData(chaincode, ledger)
+		if err != nil {
+			return err, nil
+		}
+
+	} else {
+		depTx, _ = checkDeployTx(chaincode, ledger)
+		if depTx != nil {
+			err = fmt.Errorf("Try to redeploy existed chaincode [%s]", chaincode)
+			return err, nil
 		}
 	}
 
@@ -598,25 +619,12 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 	chrte.waitCtx, waitCf = context.WithCancel(ctx)
 	chaincodeSupport.runningChaincodes.Unlock()
 
-	var err error
-	var depTx *pb.Transaction
-
 	//so the launchResult in runtime will be set first
 	defer waitCf()
-	defer func() { chaincodeSupport.finishLaunching(ledger, chaincode, err) }()
-
-	if cds == nil {
-		cds, depTx, err = chaincodeSupport.extractDeployData(chaincode, ledger)
-		if err != nil {
-			return err, chrte
-		}
-
-	} else {
-		depTx, _ = checkDeployTx(chaincode, ledger)
-		if depTx != nil {
-			return fmt.Errorf("Try to redeploy existed chaincode [%s]", chaincode), chrte
-		}
-	}
+	defer func() {
+		chaincodeSupport.runningChaincodes.Lock()
+		chaincodeSupport.finishLaunching(ledger, chaincode, err)
+	}()
 
 	cLang := cds.ChaincodeSpec.Type
 	//launch container if it is a System container or not in dev mode

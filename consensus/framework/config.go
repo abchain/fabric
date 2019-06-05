@@ -13,7 +13,12 @@ type FrameworkConfig struct {
 }
 
 func NewConfig(vp *viper.Viper) FrameworkConfig {
-	config.CacheViper(vp)
+	if vp == nil {
+		vp = viper.GetViper()
+	} else {
+		config.CacheViper(vp)
+	}
+
 	ret := FrameworkConfig{vp}
 	return ret
 }

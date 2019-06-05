@@ -331,9 +331,9 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 		plain tx parsing,
 		[confidentiality],
 		verifier,
+		[pooling],
 		[peer custom],
 		[node custom],
-		[pooling],
 		topic recording,
 	*/
 	handlerArray := []pb.TxPreHandler{
@@ -345,19 +345,26 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 
 	//TODO: handling confidentiality
 
-	handlerArray = append(handlerArray, pb.FuncAsTxPreHandler(
-		func(txe *pb.TransactionHandlingContext) (*pb.TransactionHandlingContext, error) {
-			if txe.ChaincodeSpec == nil {
-				return nil, fmt.Errorf("tx can not be corretly parsed")
-			}
-			return txe, nil
-		}))
-	handlerArray = append(handlerArray, pe.TxHandlerOpts.Customs...)
-	handlerArray = append(handlerArray, node.CustomFilters...)
+	// Jun. 5: we abandond this filter because tx in higher-order (not just for a single
+	// chaincode) has been purposed and used in the future
+	// handlerArray = append(handlerArray, pb.FuncAsTxPreHandler(
+	// 	func(txe *pb.TransactionHandlingContext) (*pb.TransactionHandlingContext, error) {
+	// 		if txe.ChaincodeSpec == nil {
+	// 			return nil, fmt.Errorf("tx can not be corretly parsed")
+	// 		}
+	// 		return txe, nil
+	// 	}))
 
+	//pooling
 	if !pe.TxHandlerOpts.NoPooling {
 		handlerArray = append(handlerArray, txPoolHandler{peerLedger})
 	}
+
+	//custom
+	handlerArray = append(handlerArray, pe.TxHandlerOpts.Customs...)
+	handlerArray = append(handlerArray, node.CustomFilters...)
+
+	//FINAL: topic collections
 	handlerArray = append(handlerArray, &recordHandler{node.TxTopic, node.TxTopicNameHandler})
 
 	pe.txn.InitTerminal(pb.MutipleTxHandler(handlerArray...))

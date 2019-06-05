@@ -52,6 +52,8 @@ type SystemChaincode struct {
 
 	// Chaincode is the actual chaincode object
 	Chaincode shim.Chaincode
+
+	Deployed *protos.ChaincodeDeploymentSpec
 }
 
 // RegisterSysCC registers the given system chaincode with the peer
@@ -68,23 +70,24 @@ func RegisterAndLaunchSysCC(ctx context.Context, syscc *SystemChaincode, ledger 
 		return err
 	}
 
-	deployspec := &protos.ChaincodeSpec{
-		Type:        protos.ChaincodeSpec_Type(protos.ChaincodeSpec_Type_value["GOLANG"]),
-		ChaincodeID: &protos.ChaincodeID{Path: regpath, Name: syscc.Name},
-		CtorMsg:     &protos.ChaincodeInput{Args: syscc.InitArgs},
+	deployspec := &protos.ChaincodeDeploymentSpec{
+		ChaincodeSpec: &protos.ChaincodeSpec{
+			Type:        protos.ChaincodeSpec_Type(protos.ChaincodeSpec_Type_value["GOLANG"]),
+			ChaincodeID: &protos.ChaincodeID{Path: regpath, Name: syscc.Name},
+			CtorMsg:     &protos.ChaincodeInput{Args: syscc.InitArgs},
+		},
+		ExecEnv: protos.ChaincodeDeploymentSpec_SYSTEM,
 	}
 
 	for _, l := range ledger {
 		//system chaincode should not change state in deploy entry
 		//so SuccessWithOutput is consider as error
-		if err := embedded.DeployEcc(ctx, l, chainplatform,
-			&protos.ChaincodeDeploymentSpec{
-				ExecEnv:       protos.ChaincodeDeploymentSpec_SYSTEM,
-				ChaincodeSpec: deployspec,
-			}); err != nil {
+		if err := embedded.DeployEcc(ctx, l, chainplatform, deployspec); err != nil {
 			return err
 		}
 	}
+
+	syscc.Deployed = deployspec
 
 	return nil
 

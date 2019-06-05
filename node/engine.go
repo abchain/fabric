@@ -148,6 +148,20 @@ func (ne *NodeEngine) SelectLedger(name string) (*ledger.Ledger, error) {
 
 }
 
+func (ne *NodeEngine) AddTxTopic(name string, topic ...litekfk.Topic) {
+	if ne.TxTopic == nil {
+		panic("Not inited, don't call before preinit")
+	}
+
+	if len(topic) == 0 {
+		topicCfg := litekfk.NewDefaultConfig()
+		ne.TxTopic[name] = litekfk.CreateTopic(topicCfg)
+	} else {
+		ne.TxTopic[name] = topic[0]
+	}
+
+}
+
 func (ne *NodeEngine) AddServicePoint(s ServicePoint) {
 	ne.srvPoints = append(ne.srvPoints, s.servicePoint)
 }

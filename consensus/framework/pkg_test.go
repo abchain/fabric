@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-var defTestChaincodeSup = chaincode.DefaultChain
+var defTestChaincodeSup = chaincode.SystemChain
 var defCCName = "example02"
 
 var theChain *chaincode.ChaincodeSupport
@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 
 	testutil.SetupTestConfig()
 	theChain = chaincode.NewSystemChaincodeSupport("test", defTestChaincodeSup)
-	chaincode.SetChaincodeSupport(chaincode.SystemChain, theChain)
+	//	chaincode.SetChaincodeSupport(chaincode.SystemChain, theChain)
 	//register cscc and contract cc
 	err := api.RegisterECC(&api.EmbeddedChaincode{defCCName, new(simple_chaincode.SimpleChaincode)})
 	if err != nil {

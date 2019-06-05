@@ -68,12 +68,12 @@ func (tp *transactionPool) cleanTransaction(txs []*pb.Transaction) {
 		for _, tx := range txs {
 			removeOneTx(tp.txPool, tx.GetTxid())
 		}
-		ledgerLogger.Debugf("%d txs has been pruned from pool later, currently %d txs left", len(txs), len(tp.txPool)+len(tp.txPoolSnapshot))
+		ledgerLogger.Debugf("%d txs has been pruned from pool, currently %d txs left", len(txs), len(tp.txPool)+len(tp.txPoolSnapshot))
 	} else {
 		for _, tx := range txs {
 			tp.txPool[tx.GetTxid()] = nil
 		}
-		ledgerLogger.Debugf("%d txs has will be pruned from pool later, currently %d txs left", len(txs), len(tp.txPool)+len(tp.txPoolSnapshot))
+		ledgerLogger.Debugf("%d txs will be pruned from pool later, currently %d txs left", len(txs), len(tp.txPool)+len(tp.txPoolSnapshot))
 	}
 
 }
@@ -94,8 +94,8 @@ func (tp *transactionPool) commitTransaction(txids []string, blockNum uint64) er
 				pendingTxs = append(pendingTxs, tx.Transaction)
 				removeOneTx(tp.txPool, id)
 			}
-			ledgerLogger.Debugf("%d txs will be commited, currently %d txs left", len(pendingTxs), len(tp.txPool)+len(tp.txPoolSnapshot))
 		}
+		ledgerLogger.Debugf("%d in %d txs will be commited, currently %d txs left", len(pendingTxs), len(txids), len(tp.txPool)+len(tp.txPoolSnapshot))
 	} else {
 		for _, id := range txids {
 			tx, ok := tp.txPool[id]
@@ -110,8 +110,8 @@ func (tp *transactionPool) commitTransaction(txids []string, blockNum uint64) er
 				delete(tp.txPool, id)
 			}
 			pendingTxs = append(pendingTxs, tx.Transaction)
-			ledgerLogger.Debugf("%d txs will be commited, currently %d(+%d snapshotted) txs left ", len(pendingTxs), len(tp.txPool), len(tp.txPoolSnapshot))
 		}
+		ledgerLogger.Debugf("%d in %d txs will be commited, currently %d(+%d snapshotted) txs left ", len(pendingTxs), len(txids), len(tp.txPool), len(tp.txPoolSnapshot))
 	}
 
 	tp.Unlock()

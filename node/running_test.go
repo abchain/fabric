@@ -16,7 +16,7 @@ func buildLegacyNode(t *testing.T) *NodeEngine {
 	cf := config.SetupTestConf{"FABRIC", "conf_legacy_test", ""}
 	cf.Setup()
 
-	tempDir, err := ioutil.TempDir("", "fabric-db-test")
+	tempDir, err := ioutil.TempDir("", "fabric-running-test")
 	if err != nil {
 		t.Fatal("tempfile fail", err)
 	}

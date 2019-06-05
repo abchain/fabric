@@ -191,9 +191,8 @@ func ExecuteTransactions2(ctxt context.Context, cname ChainName, xacts []*pb.Tra
 				ChaincodeEvents: result.Events,
 			}
 			succeededTXs = append(succeededTXs, t.Transaction)
+			agent.AddExecResult(result.State, txResult)
 		}
-
-		agent.AddExecResult(result.State, txResult)
 	}
 
 	return

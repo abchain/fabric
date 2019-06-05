@@ -5,6 +5,7 @@ import (
 	cspb "github.com/abchain/fabric/consensus/protos"
 	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/events/litekfk"
+	"github.com/abchain/fabric/node"
 	pb "github.com/abchain/fabric/protos"
 	"golang.org/x/net/context"
 	"time"
@@ -29,7 +30,7 @@ type ConsensusPurposer interface {
 //wrap the interface for delivering generated transactions, often it can be just wrap of the client service module
 //when tx is delivered, it will be treated as other consensus tx received from txnetwork and handled by learner
 type ConsensusTxDeliver interface {
-	Deliver(context.Context, []*pb.Transaction) error
+	Send(context.Context, []*pb.Transaction) error
 }
 
 type PurposeTask func(context.Context, LedgerLearnerInfo)
@@ -43,28 +44,44 @@ type ConsensusBase struct {
 }
 
 func NewConsensusBase(topic litekfk.Topic) *ConsensusBase {
+	cb := NewConsensusBaseNake()
+	cb.cstxTopic = topic
+	return cb
+}
+
+func NewConsensusBaseNake() *ConsensusBase {
 	return &ConsensusBase{
 		immediateH:  make(chan *pb.TransactionHandlingContext, 1),
 		purpose:     make(chan PurposeTask, 1),
-		cstxTopic:   topic,
 		triggerTime: 5 * time.Second,
 	}
 }
 
-func (cb *ConsensusBase) TxHandler() pb.TxPreHandler {
+func (cb *ConsensusBase) PurposeEntry() chan<- PurposeTask {
+	return cb.purpose
+}
+
+func (cb *ConsensusBase) MakeScheme(ne *node.NodeEngine, ccname string) {
+	ne.AddTxTopic(ccname)
+	cb.cstxTopic = ne.TxTopic[ccname]
 
 	//a common "bypass" mode for handling tx in more efficient way: tx first
 	//try to send to handler and if it success, the following handling chain
 	//is interrupted
-	return pb.FuncAsTxPreHandler(
+	ne.CustomFilters = append(ne.CustomFilters, pb.FuncAsTxPreHandler(
 		func(txe *pb.TransactionHandlingContext) (*pb.TransactionHandlingContext, error) {
+
+			if txe.ChaincodeName != ccname {
+				return txe, nil
+			}
+
 			select {
 			case cb.immediateH <- txe:
 				return nil, pb.ValidateInterrupt
 			default:
 				return txe, nil
 			}
-		})
+		}))
 }
 
 //BuildBasePurposeRoutine return this type for trigger a new purposing progress
@@ -218,7 +235,7 @@ func (cb *ConsensusBase) BuildBasePurposerRoutine(purposer ConsensusPurposer,
 			logger.Infof("--------------- End in %.3f sec ----------------", time.Now().Sub(startH).Seconds())
 			switch r := ret.GetOut().(type) {
 			case *cspb.ConsensusPurpose_Txs:
-				return deliver.Deliver(ctx, r.Txs.GetTransactions())
+				return deliver.Send(ctx, r.Txs.GetTransactions())
 			case *cspb.ConsensusPurpose_Nothing:
 				logger.Debugf("Miner output nothing")
 			case *cspb.ConsensusPurpose_Error:

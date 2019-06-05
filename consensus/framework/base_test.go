@@ -188,7 +188,7 @@ func (dummyPurposer) Cancel() {}
 
 type dummyDeliver func([]*pb.Transaction)
 
-func (f dummyDeliver) Deliver(_ context.Context, txs []*pb.Transaction) error {
+func (f dummyDeliver) Send(_ context.Context, txs []*pb.Transaction) error {
 	f(txs)
 	return nil
 }

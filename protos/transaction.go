@@ -159,6 +159,7 @@ func toArgs(arguments []string) (ret [][]byte) {
 	return
 }
 
+// YA-fabric 0.9: deprecated this
 // NewTransaction creates a new transaction. It defines the function to call,
 // the chaincodeID on which the function should be called, and the arguments
 // string. The arguments could be a string of JSON, but there is no strict
@@ -188,6 +189,61 @@ func NewTransaction(chaincodeID ChaincodeID, uuid string, function string, argum
 	transaction.Payload = payloaddata
 
 	return transaction, nil
+}
+
+// create a new transaction with its "core" field is specified
+func NewTransactionCore(ttype Transaction_Type, chaincodepayload []byte, basepayload []byte) *Transaction {
+	transaction := new(Transaction)
+	transaction.ChaincodeID = chaincodepayload
+	transaction.Timestamp = util.CreateUtcTimestamp()
+	transaction.Payload = basepayload
+	transaction.Type = ttype
+	transaction.ConfidentialityLevel = ConfidentialityLevel_PUBLIC
+	//so we mark this tx is "internal" and should be modified before being delivered to network
+	transaction.Txid = "internalTransaction"
+
+	return transaction
+}
+
+// A transaction which is applied on a EXISTED single chaincode (i.e.: invoke or query ...)
+// (it is not easy to handle deployment in the same entry)
+// This is used to replace the deprecated NewTransaction entry
+// input chaincode is handled and wrapped into generated chaincodespec field
+func NewChaincodeTransaction(action Transaction_Type, chaincodeID *ChaincodeID, function string, arguments [][]byte) (*Transaction, error) {
+
+	chaincodepayload, err := proto.Marshal(chaincodeID)
+	if err != nil {
+		return nil, fmt.Errorf("Could not marshal chaincode : %s", err)
+	}
+
+	ccname, _, _ := ParseYFCCName(chaincodeID.GetName())
+
+	// Build the spec
+	// Note: fabric wrap chaincodespec as payload is ambiguous and error-prone, the
+	// CtorMsg is the only fields which will be considered while being handled
+	// (i.e. in chaincode module, though we still add type and chaincode ID fields
+	// for possible compatible cases), we may re-define the corresponding messsage
+	// type in the future
+	spec := &ChaincodeSpec{Type: ChaincodeSpec_GOLANG,
+		ChaincodeID: &ChaincodeID{Name: ccname},
+		CtorMsg:     &ChaincodeInput{Args: append([][]byte{[]byte(function)}, arguments...)},
+	}
+
+	// Build the ChaincodeInvocationSpec message
+	var basepayload []byte
+	switch action {
+	case Transaction_CHAINCODE_INVOKE, Transaction_CHAINCODE_QUERY:
+		basepayload, err = proto.Marshal(&ChaincodeInvocationSpec{ChaincodeSpec: spec})
+	default:
+		return nil, fmt.Errorf("Could not handle specified chaincode action [%s]", action)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("Could not marshal base payload : %s", err)
+	}
+
+	return NewTransactionCore(action, chaincodepayload, basepayload), nil
+
 }
 
 // NewChaincodeDeployTransaction is used to deploy chaincode.

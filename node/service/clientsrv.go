@@ -30,7 +30,6 @@ import (
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/node"
 	pb "github.com/abchain/fabric/protos"
-	"github.com/golang/protobuf/proto"
 )
 
 var clisrvLogger = logging.MustGetLogger("server")
@@ -237,52 +236,6 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 	default:
 		return nil, fmt.Errorf("Unexpected msg type %s", resp.GetType())
 	}
-
-}
-
-func (d *Devops) LocalDeploy(ctx context.Context, ccSpec []byte) error {
-
-	msg := new(pb.ChaincodeSpec)
-	if err := proto.Unmarshal(ccSpec, msg); err != nil {
-		return err
-	}
-
-	_, err := d.Deploy(ctx, msg)
-	if err != nil {
-		return err
-	}
-
-	return nil
-
-}
-
-func (d *Devops) LocalInvoke(ctx context.Context, ccInvocationSpec []byte) ([]byte, error) {
-	msg := new(pb.ChaincodeInvocationSpec)
-	if err := proto.Unmarshal(ccInvocationSpec, msg); err != nil {
-		return nil, err
-	}
-
-	ret, err := d.Invoke(ctx, msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return ret.Msg, nil
-}
-
-func (d *Devops) LocalQuery(ctx context.Context, ccInvocationSpec []byte) ([]byte, error) {
-
-	msg := new(pb.ChaincodeInvocationSpec)
-	if err := proto.Unmarshal(ccInvocationSpec, msg); err != nil {
-		return nil, err
-	}
-
-	ret, err := d.Query(ctx, msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return ret.Msg, nil
 
 }
 
