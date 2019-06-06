@@ -72,7 +72,11 @@ logging:
     client: debug
 
     test: info:consensus/framework,txhandler,ledger=debug
-    
+
+consensus:
+    base:
+        triggertime: 500
+
 ###############################################################################
 #
 #    Peer section

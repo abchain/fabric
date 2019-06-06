@@ -14,11 +14,10 @@ type FrameworkConfig struct {
 
 func NewConfig(vp *viper.Viper) FrameworkConfig {
 	if vp == nil {
-		vp = viper.GetViper()
-	} else {
-		config.CacheViper(vp)
+		vp = config.SubViper("consensus")
 	}
 
+	config.CacheViper(vp)
 	ret := FrameworkConfig{vp}
 	return ret
 }

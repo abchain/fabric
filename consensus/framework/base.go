@@ -44,17 +44,27 @@ type ConsensusBase struct {
 }
 
 func NewConsensusBase(topic litekfk.Topic) *ConsensusBase {
-	cb := NewConsensusBaseNake()
+	cb := NewConsensusBaseNake(NewConfig(nil))
 	cb.cstxTopic = topic
 	return cb
 }
 
-func NewConsensusBaseNake() *ConsensusBase {
-	return &ConsensusBase{
+func NewConsensusBaseNake(cfg FrameworkConfig) *ConsensusBase {
+	ret := &ConsensusBase{
 		immediateH:  make(chan *pb.TransactionHandlingContext, 1),
 		purpose:     make(chan PurposeTask, 1),
 		triggerTime: 5 * time.Second,
 	}
+
+	conf := cfg.SubConfig("base")
+
+	if v := conf.GetInt("triggertime"); v != 0 {
+		ret.triggerTime = time.Duration(v) * time.Millisecond
+	}
+
+	logger.Infof("Start a base [%.3f]", ret.triggerTime.Seconds())
+
+	return ret
 }
 
 func (cb *ConsensusBase) PurposeEntry() chan<- PurposeTask {

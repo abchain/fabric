@@ -97,7 +97,7 @@ func (*Devops) getChaincodeBytes(context context.Context, spec *pb.ChaincodeSpec
 	}
 
 	//test embedded chaincode first
-	if ret, err := ecc.BuildEmbeddedCC(spec); err != nil {
+	if ret, err := ecc.BuildEmbeddedCC(spec); err == nil {
 		return ret, nil
 	}
 

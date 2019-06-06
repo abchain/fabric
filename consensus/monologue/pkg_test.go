@@ -54,7 +54,7 @@ func TestMining(t *testing.T) {
 	ne.Options.MakeGenesisForLedger = true
 
 	ne.PreInit()
-	cbase := framework.NewConsensusBaseNake()
+	cbase := framework.NewConsensusBaseNake(framework.NewConfig(nil))
 	cbase.MakeScheme(ne, syscc.Name)
 
 	defer ne.FinalRelease()
