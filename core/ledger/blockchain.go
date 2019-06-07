@@ -75,7 +75,7 @@ func newBlockchain2(db *db.OpenchainDB) (*blockchain, error) {
 		}
 		if cblkn == 0 {
 			//byte not exist, do a test and restore current continuous blocks
-			blockchain.continuousTo.beginBlockID = testBlockExistedRange(db, 0, true)
+			blockchain.continuousTo.beginBlockID = testBlockExistedRange(db, 0, true) - 1
 		} else {
 			blockchain.continuousTo.beginBlockID = cblkn
 		}

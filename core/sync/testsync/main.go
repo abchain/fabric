@@ -171,20 +171,20 @@ func runAsClient() {
 	baseCtx := node.GetNode().DefaultPeer().GetPeerCtx()
 
 	blkAgent := ledger.NewBlockAgent(l)
-	blockCli := sync.NewBlockSyncClient(baseCtx, blkAgent.SyncCommitBlock,
+	blockCli := sync.NewBlockSyncClient(blkAgent.SyncCommitBlock,
 		sync.CheckpointToSyncPlan(map[uint64][]byte{targetHeight: targetHash}))
 
 	//left some time and chance to ensure we have connect the server ...
 	blockCli.Opts().RetryInterval = 2
 	blockCli.Opts().RetryCount = 3
 
-	err = sync.ExecuteSyncTask(blockCli, sstub)
+	err = sync.ExecuteSyncTask(baseCtx, blockCli, sstub)
 	if err != nil {
 		logger.Errorf("syncing blocks fail: %s, exit", err)
 		return
 	}
 
-	sdetector := sync.NewStateSyncDetector(baseCtx, l, int(targetHeight))
+	sdetector := sync.NewStateSyncDetector(l, int(targetHeight))
 	err = sdetector.DoDetection(sstub)
 	if err != nil {
 		logger.Errorf("state detect fail: %s, exit", err)
@@ -203,7 +203,7 @@ func runAsClient() {
 	stateCli, endSyncF := sync.NewStateSyncClient(baseCtx, syncer)
 	defer endSyncF()
 
-	err = sync.ExecuteSyncTask(stateCli, sstub)
+	err = sync.ExecuteSyncTask(baseCtx, stateCli, sstub)
 	if err != nil {
 		logger.Errorf("create state syncer fail: %s, exit", err)
 		return

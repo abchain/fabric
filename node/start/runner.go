@@ -23,6 +23,10 @@ type NodeConfig struct {
 	TaskRun func()
 }
 
+func (ncfg *NodeConfig) SetPreConfig(cfg *GlobalConfig) {
+	ncfg.precfg = cfg
+}
+
 //execute config first, so user can use viper and some config modules and log
 func (ncfg *NodeConfig) PreConfig() error {
 	cfg := new(GlobalConfig)
@@ -46,6 +50,8 @@ func RunNode(ncfg *NodeConfig) {
 		if err := ncfg.PreConfig(); err != nil {
 			panic(fmt.Errorf("Init fail: %s", err))
 		}
+	} else {
+		logger.Debug("preconfiguration is made, skip...")
 	}
 
 	// Init the crypto layer

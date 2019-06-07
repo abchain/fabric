@@ -62,6 +62,7 @@ func NewOpenchainServer() (*ServerOpenchain, error) {
 }
 
 // NewOpenchainServerWithPeerInfo creates a new instance of the ServerOpenchain.
+// TODO: we should be albe to support mutiple ledgers
 func NewOpenchainServerWithPeerInfo(peerServer PeerInfo) (*ServerOpenchain, error) {
 	// Get a handle to the Ledger singleton.
 	ledger, err := ledger.GetLedger()

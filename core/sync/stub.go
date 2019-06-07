@@ -25,10 +25,13 @@ type SyncStub struct {
 
 func NewSyncStub(ctx context.Context, l *ledger.Ledger) *SyncStub {
 
+	opt := DefaultSyncOption()
+	opt.Init(l.Tag())
+
 	ret := &SyncStub{
 		ctx:            ctx,
 		localLedger:    l,
-		srvOptTemplate: *DefaultSyncOption(),
+		srvOptTemplate: *opt,
 	}
 
 	return ret

@@ -95,60 +95,91 @@ func InitFabricNode() error {
 
 	//create node and other infrastructures ... (if no setting, use default peer's server point)
 	//chaincode: TODO: support mutiple chaincode platforms
-	ccsrv, err := node.CreateServerPoint(config.SubViper("chaincode"))
-	if err != nil {
-		logger.Infof("Can not create server spec for chaincode: [%s], merge it into peer", err)
-		ccsrv = theNode.DefaultPeer().GetServerPoint()
-	} else {
-		theNode.AddServicePoint(ccsrv)
-	}
-
-	userRunsCC := false
-	if viper.GetString("chaincode.mode") == chaincode.DevModeUserRunsChaincode {
-		userRunsCC = true
-	}
-
-	chaincode.NewSystemChaincodeSupport(theNode.Name)
-	ccplatform := chaincode.NewChaincodeSupport(chaincode.DefaultChain, theNode.Name, ccsrv.Spec(), userRunsCC)
-	pb.RegisterChaincodeSupportServer(ccsrv.Server, ccplatform)
-
-	var apisrv, evtsrv node.ServicePoint
-	var evtConf *viper.Viper
-	//api, also bind the event hub, and "service" configuration in YA-fabric 0.7/0.8 is abandoned
-	if viper.IsSet("node.api") {
-		if apisrv, err = node.CreateServerPoint(config.SubViper("node.api")); err != nil {
-			return fmt.Errorf("Error setting for API service: %s", err)
+	if ccConf := config.SubViper("chaincode"); !ccConf.GetBool("disabled") {
+		ccsrv, err := node.CreateServerPoint(ccConf)
+		if err != nil {
+			logger.Infof("Can not create server spec for chaincode: [%s], merge it into peer", err)
+			ccsrv = theNode.DefaultPeer().GetServerPoint()
+		} else {
+			theNode.AddServicePoint(ccsrv)
 		}
-		theNode.AddServicePoint(apisrv)
-		evtsrv = apisrv
-		evtConf = config.SubViper("node.api.events")
-	} else {
-		//for old fashion, we just bind it into deafult peer
-		apisrv = theNode.DefaultPeer().GetServerPoint()
-		//and respect the event configuration
-		if evtsrv, err = node.CreateServerPoint(config.SubViper("peer.validator.events")); err != nil {
-			return fmt.Errorf("Error setting for event service: %s", err)
+
+		userRunsCC := false
+		if ccConf.GetString("mode") == chaincode.DevModeUserRunsChaincode {
+			userRunsCC = true
 		}
-		evtConf = config.SubViper("peer.validator.events")
+
+		chaincode.NewSystemChaincodeSupport(theNode.Name)
+		ccplatform := chaincode.NewChaincodeSupport(chaincode.DefaultChain, theNode.Name, ccsrv.Spec(), userRunsCC)
+		pb.RegisterChaincodeSupportServer(ccsrv.Server, ccplatform)
+	} else {
+		logger.Info("Chaincode platform setting is disabled")
 	}
 
 	devOps := api.NewDevopsServer(theNode)
-	pb.RegisterAdminServer(apisrv.Server, api.NewAdminServer())
-	pb.RegisterDevopsServer(apisrv.Server, devOps)
-	pb.RegisterEventsServer(evtsrv.Server, producer.NewEventsServer(
-		uint(evtConf.GetInt("buffersize")),
-		evtConf.GetInt("timeout")))
-
-	//TODO: openchain should be able to use mutiple peer
+	//omit the error of chainsrv, later it should return no error
 	nbif, _ := theNode.DefaultPeer().Peer.GetNeighbour()
-	if ocsrv, err := api.NewOpenchainServerWithPeerInfo(nbif); err != nil {
-		return fmt.Errorf("Error creating OpenchainServer: %s", err)
-	} else {
-		pb.RegisterOpenchainServer(apisrv.Server, ocsrv)
-		//finally the rest, may be abandoned later
-		if viper.GetBool("rest.enabled") {
-			go webapi.StartOpenchainRESTServer(ocsrv, devOps)
+	ocsrv, _ := api.NewOpenchainServerWithPeerInfo(nbif)
+
+	//api, also bind the event hub, and "service" configuration in YA-fabric 0.7/0.8 is abandoned
+	if viper.IsSet("node.api") {
+		apiConf := config.SubViper("node.api")
+		if !apiConf.GetBool("disabled") {
+			apisrv, err := node.CreateServerPoint(config.SubViper("node.api"))
+			if err != nil {
+				return fmt.Errorf("Error setting for API service: %s", err)
+			}
+			theNode.AddServicePoint(apisrv)
+
+			//init each term, with separated disabled switch on them
+			if !apiConf.GetBool("service.disabled") {
+				logger.Info("client service is attached")
+				pb.RegisterDevopsServer(apisrv.Server, devOps)
+			}
+
+			if !apiConf.GetBool("admin.disabled") {
+				logger.Info("administrator interface is attached")
+				pb.RegisterAdminServer(apisrv.Server, api.NewAdminServer())
+			}
+
+			if !apiConf.GetBool("chain.disabled") {
+				logger.Info("chain service is attached")
+				pb.RegisterOpenchainServer(apisrv.Server, ocsrv)
+			}
+
+			if evtConf := config.SubViper("events", apiConf); !evtConf.GetBool("disabled") {
+				logger.Info("event service is attached")
+				pb.RegisterEventsServer(apisrv.Server, producer.NewEventsServer(
+					uint(evtConf.GetInt("buffersize")),
+					evtConf.GetInt("timeout")))
+			}
+		} else {
+			logger.Info("api interface has been disabled")
 		}
+
+	} else {
+		logger.Info("Apply legacy API configurations")
+		//respect legacy configuration: enable all interfaces and bind them to default peer, except for
+		//event
+		apisrv := theNode.DefaultPeer().GetServerPoint()
+		pb.RegisterAdminServer(apisrv.Server, api.NewAdminServer())
+		pb.RegisterDevopsServer(apisrv.Server, devOps)
+		pb.RegisterOpenchainServer(apisrv.Server, ocsrv)
+
+		if evtsrv, err := node.CreateServerPoint(config.SubViper("peer.validator.events")); err != nil {
+			return fmt.Errorf("Error setting for event service: %s", err)
+		} else {
+			theNode.AddServicePoint(evtsrv)
+			evtConf := config.SubViper("peer.validator.events")
+			pb.RegisterEventsServer(evtsrv.Server, producer.NewEventsServer(
+				uint(evtConf.GetInt("buffersize")),
+				evtConf.GetInt("timeout")))
+		}
+	}
+
+	//finally the rest, may be abandoned later
+	if viper.GetBool("rest.enabled") {
+		go webapi.StartOpenchainRESTServer(ocsrv, devOps)
 	}
 
 	return nil
