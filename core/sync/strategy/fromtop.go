@@ -53,11 +53,7 @@ func (s *syncStrategyFromTop) Block(ctx context.Context) error {
 
 }
 
-func (s *syncStrategyFromTop) Full(ctx context.Context) error {
-
-	if err := s.Block(ctx); err != nil {
-		return err
-	}
+func (s *syncStrategyFromTop) State(ctx context.Context) error {
 
 	sdetector := sync.NewStateSyncDetector(s.ledger, 64)
 	err := sdetector.DoDetection(s.sstub)
@@ -89,4 +85,14 @@ func (s *syncStrategyFromTop) Full(ctx context.Context) error {
 
 	logger.Infof("from-to strategy: sync full state done")
 	return nil
+}
+
+func (s *syncStrategyFromTop) Full(ctx context.Context) error {
+
+	if err := s.Block(ctx); err != nil {
+		return err
+	}
+
+	return s.State(ctx)
+
 }

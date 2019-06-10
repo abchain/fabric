@@ -219,6 +219,7 @@ func (l *baseLearnerImpl) putblock(linfo *ledger.LedgerInfo, newBlkN uint64, new
 		return blkAgent.SyncCommitBlock(newBlkN, newblk)
 	}
 
+	logger.Debugf("put pending block %d", newBlkN)
 	l.updateRefHistory(newBlkN-1, newblk.GetPreviousBlockHash())
 	l.cache.pendingBlock[newBlkN] = append(l.cache.pendingBlock[newBlkN], newblk)
 	return nil
@@ -246,14 +247,15 @@ func (l *baseLearnerImpl) blockForward(ctx context.Context, linfo *ledger.Ledger
 
 	defer func() {
 
+		syncTime := time.Now().Sub(startH)
 		if err == nil {
-			syncTime := time.Now().Sub(startH)
 			logger.Infof("----- Sync done in %.1f seconds -----", syncTime.Seconds())
 			//also clean pending tasks ...
 			l.cache.pendingTxs = nil
 
 		} else {
-			logger.Infof("----- Sync failure: %s", err)
+			logger.Infof("----- Sync finished in %.1f seconds but (partial) failure: %s",
+				syncTime.Seconds(), err)
 			//if persisted block has progress, we clear the error flag
 			if l.ledger.TestContinuouslBlockRange() > linfo.Persisted.Blocks {
 				err = nil
@@ -264,17 +266,19 @@ func (l *baseLearnerImpl) blockForward(ctx context.Context, linfo *ledger.Ledger
 
 	//notice, we start with the refpos, not top pos (but we calc watermark by top pos)
 	syncer := l.sync.FromTopStrategy(l.ledger, l.refhistory.syncRefpos, l.refhistory.syncRefhash)
-	if fallbehind > uint64(l.stateSyncDist) || linfo.Avaliable.States < l.fullSyncCriterion {
-		logger.Infof("----- State fall behind (%d) vs newest (%d), do full syncing -----",
-			linfo.Avaliable.States, l.refhistory.pos)
-		err = syncer.Full(ctx)
-	} else {
-		logger.Infof("----- Fall behind from newest (%d) for %d blocks, start syncing -----",
-			l.refhistory.pos, fallbehind)
-		err = syncer.Block(ctx)
+	logger.Infof("----- Fall behind from newest (%d) for %d blocks, start syncing -----",
+		l.refhistory.pos, fallbehind)
+	if err := syncer.Block(ctx); err != nil {
+		return err
 	}
 
-	return err
+	if fallbehind > uint64(l.stateSyncDist) || linfo.Avaliable.States <= l.fullSyncCriterion {
+		logger.Infof("State fall behind exceed tolerance (%d) or just at the beginning (%d), do full syncing:",
+			l.stateSyncDist, linfo.Avaliable.States)
+		return syncer.State(ctx)
+	}
+
+	return nil
 
 }
 
@@ -363,11 +367,13 @@ func (l *baseLearnerImpl) stateForward(ctx context.Context, linfo *ledger.Ledger
 				}
 
 				outTxs, pending := l.ledger.GetTxForExecution(refblk.GetTxids(), l.txPrehandle)
-				if len(pending) > 0 {
+				if ptxl := len(pending); ptxl > 0 {
 					if stateFallbehind > uint64(l.txSyncDist) {
 						//put pending txid for syncing, or we just wait
 						l.cache.pendingTxs = pending
+						logger.Debugf("Put %d tx for syncing", ptxl)
 					}
+					logger.Debugf("Still %d tx is pending, try later", ptxl)
 					return fmt.Errorf("finish forwarding state for transaction is not avaliable yet")
 				}
 
@@ -456,6 +462,9 @@ func (l *baseLearnerImpl) Trigger(ctx context.Context) bool {
 		logger.Errorf("can not get ledger info: %s, trigger is given up", err)
 		return false
 	}
+
+	logger.Debugf("Start trigger, known top (%d:%d), our top %d, persisted top %d",
+		l.refhistory.pos+1, l.refhistory.syncRefpos+1, linfo.GetHeight(), linfo.Avaliable.States)
 
 	//TODO: resolve pending syncing first
 	if !linfo.States.Avaliable {

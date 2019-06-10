@@ -15,11 +15,11 @@ func (self StreamFilter) QualitifiedPeer(ep *pb.PeerEndpoint) bool {
 
 	//infact we should not need to check if endpoint is myself because it was impossible
 	if self.PeerEndpoint != nil && self.ID.Name == ep.ID.Name {
+		logger.Errorf("[%v] can not chat with peer for sync: %v", self.PeerEndpoint, ep.ID.Name)
 		return false
 	}
 
-	//currently state transfer only work for validator
-	return ep.Type == pb.PeerEndpoint_VALIDATOR
+	return true
 }
 
 type NewPeerHandshake struct{}
