@@ -134,10 +134,36 @@ func (transaction *Transaction) Bytes() ([]byte, error) {
 func (txResult *TransactionResult) Bytes() ([]byte, error) {
 	data, err := proto.Marshal(txResult)
 	if err != nil {
-		logger.Errorf("Error marshalling transaction result: %s", err)
-		return nil, fmt.Errorf("Could not marshal transaction result : %s", err)
+		logger.Errorf("Error marshalling transaction events result: %s", err)
+		return nil, fmt.Errorf("Could not marshal transaction events result : %s", err)
 	}
 	return data, nil
+}
+
+func (transaction *Transaction) ParsePayloadAsInvoking() (*ChaincodeInvocationSpec, error) {
+	invoke := &ChaincodeInvocationSpec{}
+	if err := proto.Unmarshal(transaction.GetPayload(), invoke); err != nil {
+		return nil, fmt.Errorf("protobuf decode invoke fail %s", err.Error())
+	}
+	return invoke, nil
+}
+
+func (transaction *Transaction) ParsePayloadAsDeploy() (*ChaincodeDeploymentSpec, error) {
+	cds := &ChaincodeDeploymentSpec{}
+	if err := proto.Unmarshal(transaction.GetPayload(), cds); err != nil {
+		return nil, fmt.Errorf("protobuf decode deployment fail %s", err.Error())
+	}
+	return cds, nil
+}
+
+func UnmarshallTransactionResult(txebyte []byte) (*TransactionResult, error) {
+	txe := &TransactionResult{}
+	err := proto.Unmarshal(txebyte, txe)
+	if err != nil {
+		logger.Errorf("Error unmarshalling Transaction event: %s", err)
+		return nil, fmt.Errorf("Could not unmarshal Transaction event: %s", err)
+	}
+	return txe, nil
 }
 
 func UnmarshallTransaction(transaction []byte) (*Transaction, error) {
@@ -349,6 +375,7 @@ type TransactionHandlingContext struct {
 	//every fields can be readout from transaction (unlessed covered by the confidentiality)
 	ChaincodeName, ChaincodeTemplate string
 	TargetLedgers                    []string
+	CanonicalName                    *ChaincodeID
 	ChaincodeSpec                    *ChaincodeSpec
 	ChaincodeDeploySpec              *ChaincodeDeploymentSpec
 	SecContex                        *ChaincodeSecurityContext
@@ -395,13 +422,16 @@ func parsePlainTx(tx *TransactionHandlingContext) (ret *TransactionHandlingConte
 
 	//replace the embedded chaincodeID field, avoiding misuse (or malice code
 	//which set another different cc name trying to bypass the validations)
-	ret.ChaincodeSpec.ChaincodeID = &ChaincodeID{Name: ret.ChaincodeName}
+	ret.ChaincodeSpec.ChaincodeID = ret.CanonicalName
 	return
 }
 
 func mustParsePlainTx(tx *TransactionHandlingContext) (ret *TransactionHandlingContext, err error) {
 	if tx.GetConfidentialityLevel() != ConfidentialityLevel_PUBLIC {
 		err = fmt.Errorf("Can't not parse non-public (level:%s) transaction", tx.GetConfidentialityLevel())
+		return
+	} else if tx.CanonicalName == nil {
+		err = fmt.Errorf("Chaincode name has not be parsed yet")
 		return
 	}
 
@@ -450,6 +480,7 @@ func parseChaincodeName(tx *TransactionHandlingContext) (ret *TransactionHandlin
 		return
 	}
 
+	ret.CanonicalName = fccid
 	if yfCCName := fccid.GetName(); yfCCName == "" {
 		err = fmt.Errorf("Spec has an empty chaincodeName")
 	} else {

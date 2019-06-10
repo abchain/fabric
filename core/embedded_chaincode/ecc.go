@@ -40,7 +40,7 @@ func DeployEcc(ctxt context.Context, l *ledger.Ledger, chain *chaincode.Chaincod
 		return fmt.Errorf("chaincode spec is nil")
 	}
 
-	err, chrte := chain.Launch(ctxt, l, chaincode, chaincodeDeploymentSpec)
+	err, chrte := chain.DeployLaunch(ctxt, l, chaincode, chaincodeDeploymentSpec)
 	if err != nil {
 		return fmt.Errorf("Failed to launch chaincode spec (%s): %s", chaincode, err)
 	}

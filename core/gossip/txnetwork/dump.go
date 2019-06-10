@@ -5,6 +5,17 @@ import (
 	pb "github.com/abchain/fabric/protos"
 )
 
+func (e *TxNetworkEntry) DumpStatus() (s *pb.PeerTxState, p int) {
+
+	e.net.RLock()
+	defer e.net.RUnlock()
+
+	s, _ = e.net.peers.QuerySelf()
+	p = len(e.net.peers.lruIndex)
+
+	return
+}
+
 func DumpNetwork() map[string]func() map[string]*pb.PeerTxState {
 
 	ret := make(map[string]func() map[string]*pb.PeerTxState)

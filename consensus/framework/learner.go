@@ -353,7 +353,7 @@ func (l *baseLearnerImpl) stateForward(ctx context.Context, linfo *ledger.Ledger
 							logger.Warningf("Can not commit tx in block %d: %s", startH, err)
 						}
 
-						if err := cachedOut.CommitBlock(startH, refblk); err != nil {
+						if err := cachedOut.StateCommitOne(startH, refblk); err != nil {
 							logger.Errorf("state forward fail on use cached built data: %s", err)
 						} else {
 							lastStateHash = refblk.StateHash

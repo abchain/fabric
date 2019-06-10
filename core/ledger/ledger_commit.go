@@ -41,9 +41,13 @@ func (tec *TxEvaluateAndCommit) MergeExec(s TxExecStates) {
 	tec.accumulatedDeltas.ApplyChanges(s.DeRef())
 }
 
-func (tec *TxEvaluateAndCommit) AddExecResult(s TxExecStates, txRes *protos.TransactionResult) {
+func (tec *TxEvaluateAndCommit) AddExecResult(txRes *protos.TransactionResult) {
+	tec.transactionResults = append(tec.transactionResults, txRes)
+}
+
+func (tec *TxEvaluateAndCommit) AddExecSuccessResult(s TxExecStates, txRes *protos.TransactionResult) {
 	tec.accumulatedDeltas.ApplyChanges(s.DeRef())
-	tec.transactionResults = append(tec.transactionResults)
+	tec.AddExecResult(txRes)
 }
 
 func (tec *TxEvaluateAndCommit) Ledger() *Ledger {
@@ -76,6 +80,14 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 
 	writeBatch := ledger.blockchain.NewWriteBatch()
 	defer writeBatch.Destroy()
+
+	if refBlock.GetNonHashData() == nil {
+		buildExecResults(refBlock, tec.transactionResults)
+		err = ledger.blockchain.updateBlock(writeBatch, refBlockNumber, refBlock)
+		if err != nil {
+			return err
+		}
+	}
 
 	err = ledger.state.persistentState(writeBatch)
 	if err != nil {
@@ -123,39 +135,30 @@ func (tec *TxEvaluateAndCommit) PreviewBlock(position uint64, blk *protos.Block)
 	return blk, nil
 }
 
-//commit the preview block built before, no overhead
-func (tec *TxEvaluateAndCommit) CommitBlock(position uint64, blk *protos.Block) error {
+//commit current results and persist them
+func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte, transactions []*protos.Transaction) error {
 
-	ledger := tec.ledger
+	newBlockNumber := tec.ledger.blockchain.getSize()
+	ledgerLogger.Infof("Start full commit txbatch to block %d", newBlockNumber)
 
-	if bytes.Compare(blk.GetStateHash(), ledger.state.getBuildingHash()) != 0 {
-		//state workspace used, need redo
-		err := ledger.state.prepareState(position, tec.accumulatedDeltas)
-		if err != nil {
-			return err
-		}
-
-		tec.lastResult.position = position
-		tec.lastResult.state = ledger.state.getBuildingHash()
-	}
-
-	err := ledger.blockchain.prepareBlock(position, blk)
+	blk, err := tec.PreviewBlock(newBlockNumber, buildBlock(metadata, transactions))
 	if err != nil {
 		return err
 	}
 
+	ledger := tec.ledger
 	blkInfo := ledger.blockchain.getBuildingBlockchainInfo()
 
 	tec.lastResult.block = blkInfo.GetCurrentBlockHash()
 
-	err = ledger.index.prepareIndexes(blk, position, blkInfo.GetCurrentBlockHash())
+	err = ledger.index.prepareIndexes(blk, newBlockNumber, blkInfo.GetCurrentBlockHash())
 	if err != nil {
 		return err
 	}
 
 	writeBatch := ledger.blockchain.NewWriteBatch()
 	defer writeBatch.Destroy()
-	err = ledger.index.persistIndexes(writeBatch, position)
+	err = ledger.index.persistIndexes(writeBatch, newBlockNumber)
 	if err != nil {
 		return err
 	}
@@ -183,26 +186,11 @@ func (tec *TxEvaluateAndCommit) CommitBlock(position uint64, blk *protos.Block) 
 	ledger.state.commitState()
 	ledger.index.commitIndex()
 
-	ledger.blockchain.blockPersisted(position)
+	ledger.blockchain.blockPersisted(newBlockNumber)
 	ledger.state.persistentStateDone()
-	ledger.index.persistDone(position)
+	ledger.index.persistDone(newBlockNumber)
 
 	return nil
-
-}
-
-//commit current results and persist them
-func (tec *TxEvaluateAndCommit) FullCommit(metadata []byte, transactions []*protos.Transaction) error {
-
-	newBlockNumber := tec.ledger.blockchain.getSize()
-	ledgerLogger.Infof("Start full commit txbatch to block %d", newBlockNumber)
-
-	blk, err := tec.PreviewBlock(newBlockNumber, buildBlock(metadata, transactions))
-	if err != nil {
-		return err
-	}
-
-	return tec.CommitBlock(newBlockNumber, blk)
 }
 
 //commit blocks, can work concurrent with mutiple block commiter, or state commiter

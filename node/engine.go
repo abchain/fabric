@@ -34,8 +34,12 @@ var (
 
 type PeerEngine struct {
 	TxHandlerOpts struct {
-		Customs   []pb.TxPreHandler
-		NoPooling bool
+		//validator is applied BEFORE pooling and custom filter applied
+		//AFTER that, if nopooling is set, CustomValidators will be also
+		//omitted
+		Customs          []pb.TxPreHandler
+		CustomValidators []pb.TxPreHandler
+		NoPooling        bool
 		*ccSpecValidator
 	}
 

@@ -323,6 +323,19 @@ func (blockchain *blockchain) prepareBlock(blkNumber uint64, block *protos.Block
 	return nil
 }
 
+//help to update the non-hash part of a block
+func (blockchain *blockchain) updateBlock(writeBatch *db.DBWriteBatch, blkNumber uint64, block *protos.Block) error {
+
+	blockBytes, err := blockchain.buildingBlock.block.GetBlockBytes()
+	if err != nil {
+		return err
+	}
+
+	cf := writeBatch.GetDBHandle().BlockchainCF
+	writeBatch.PutCF(cf, encodeBlockNumberDBKey(blkNumber), blockBytes)
+	return nil
+}
+
 func (blockchain *blockchain) persistentBuilding(writeBatch *db.DBWriteBatch) error {
 
 	blockBytes, err := blockchain.buildingBlock.block.GetBlockBytes()

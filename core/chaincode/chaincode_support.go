@@ -118,9 +118,7 @@ var ReservedCCName = map[string]bool{codepackCCName: true}
 
 func (chaincodeSupport *ChaincodeSupport) FinalDeploy(chrte *chaincodeRTEnv, txe *pb.TransactionHandlingContext, outstate ledger.TxExecStates) error {
 
-	ccName := txe.ChaincodeSpec.GetChaincodeID().GetName()
-
-	if depTx, err := strippedTxForDeployment(txe.Transaction); err != nil {
+	if depTx, err := strippedTxForDeployment(txe); err != nil {
 		return fmt.Errorf("strip deptx fail :%s", err)
 	} else {
 		depTxByte, err := proto.Marshal(depTx)
@@ -128,60 +126,9 @@ func (chaincodeSupport *ChaincodeSupport) FinalDeploy(chrte *chaincodeRTEnv, txe
 			return fmt.Errorf("encode deptx fail: %s", err)
 		}
 		chrte.handler.deployTXSecContext = depTx
-		outstate.Set(ccName, deployTxKey, depTxByte)
+		outstate.Set(txe.ChaincodeName, deployTxKey, depTxByte)
 	}
-
-	//a trick: the payload in original tx is just the deployspec ...
-	outstate.Set(codepackCCName, ccName, txe.Transaction.GetPayload())
 	return nil
-}
-
-func checkDeployTx(chaincode string, ledger *ledger.Ledger) (depTx *pb.Transaction, ledgerErr error) {
-
-	var txByte []byte
-	if txByte, ledgerErr = ledger.GetState(chaincode, deployTxKey, true); ledgerErr != nil {
-		return
-	} else if txByte == nil {
-		chaincodeLogger.Debugf("Deploy tx for chaincoide %s not found, try chaincode name as tx id", chaincode)
-		depTx, ledgerErr = ledger.GetTransactionByID(chaincode)
-		return
-	}
-
-	depTx = new(pb.Transaction)
-	if err := proto.Unmarshal(txByte, depTx); err != nil {
-		ledgerErr = err
-		return
-	}
-
-	return
-}
-
-func (chaincodeSupport *ChaincodeSupport) extractDeployData(chaincode string, ledger *ledger.Ledger) (*pb.ChaincodeDeploymentSpec, *pb.Transaction, error) {
-	if chaincodeSupport.userRunsCC {
-		chaincodeLogger.Error("You are attempting to perform an action other than Deploy on Chaincode that is not ready and you are in developer mode. Did you forget to Deploy your chaincode?")
-	}
-
-	deployTx, err := checkDeployTx(chaincode, ledger)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Check deploy tx fail: %s", err)
-	}
-
-	specByte, err := ledger.GetState(codepackCCName, chaincode, true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("DB error on get ccspec data: %s", err)
-	} else if specByte == nil {
-		//try to decode data from tx ...
-		//we have abandoned the encryption case
-		chaincodeLogger.Warningf("try recover chaincode deployment spec from tx [%s]", deployTx.GetTxid())
-		specByte = deployTx.Payload
-	}
-
-	cds := new(pb.ChaincodeDeploymentSpec)
-	if err = proto.Unmarshal(specByte, cds); err != nil {
-		return nil, nil, fmt.Errorf("decode cc deploy spec fail: %s", err)
-	}
-
-	return cds, deployTx, nil
 }
 
 //call this under lock
@@ -557,8 +504,106 @@ func (chaincodeSupport *ChaincodeSupport) Stop(context context.Context, netTag s
 	return err
 }
 
+func checkDeployTx(chaincode string, st ledger.TxExecStates, ledger *ledger.Ledger) (depTx *pb.Transaction, ledgerErr error) {
+
+	var txByte []byte
+	if txByte, ledgerErr = st.Get(chaincode, deployTxKey, ledger); ledgerErr != nil {
+		return
+	} else if txByte == nil {
+		chaincodeLogger.Debugf("Deploy tx for chaincoide %s not found, try chaincode name as tx id", chaincode)
+		depTx, ledgerErr = ledger.GetTransactionByID(chaincode)
+		return
+	}
+
+	depTx = new(pb.Transaction)
+	if err := proto.Unmarshal(txByte, depTx); err != nil {
+		ledgerErr = err
+		return
+	}
+
+	return
+}
+
+func ValidateDeploymentSpec(txe *pb.TransactionHandlingContext, st ledger.TxExecStates, ledger *ledger.Ledger) error {
+
+	if depTx, _ := checkDeployTx(txe.ChaincodeName, st, ledger); depTx != nil {
+		return fmt.Errorf("Duplicated deployment for chaincode %s", txe.ChaincodeName)
+	}
+
+	//TODO: update cds if it specified a template name
+
+	//a trick: deployment tx has just the deployspec object
+	if txtp := txe.GetType(); txtp != pb.Transaction_CHAINCODE_DEPLOY {
+		return fmt.Errorf("Is not deploy transaction (%s)", txtp)
+	}
+
+	st.Set(codepackCCName, txe.ChaincodeName, txe.Transaction.GetPayload())
+	return nil
+}
+
+func (chaincodeSupport *ChaincodeSupport) DeployLaunch(ctx context.Context, ledger *ledger.Ledger,
+	chaincode string, cds *pb.ChaincodeDeploymentSpec) (error, *chaincodeRTEnv) {
+
+	return chaincodeSupport.Launch2(ctx, ledger, chaincode,
+		func() (*pb.ChaincodeDeploymentSpec, *pb.Transaction, error) {
+			return cds, nil, nil
+		})
+}
+
+func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *ledger.Ledger,
+	st ledger.TxExecStates, chaincode string) (error, *chaincodeRTEnv) {
+
+	getcds := func() (cds *pb.ChaincodeDeploymentSpec, depTx *pb.Transaction, ledgerErr error) {
+
+		depTx, ledgerErr = checkDeployTx(chaincode, st, ledger)
+		if ledgerErr != nil {
+			return
+		} else if depTx == nil {
+			return nil, nil, fmt.Errorf("deploy tx for chaincode %s not found", chaincode)
+		}
+
+		//cid in deploy tx has ensured to be plain text
+		cid := new(pb.ChaincodeID)
+		if err := proto.Unmarshal(depTx.GetChaincodeID(), cid); err != nil {
+			return nil, nil, fmt.Errorf("decode chaincode ID fail: %s", err)
+		}
+
+		ccname, tmn, _ := pb.ParseYFCCName(cid.GetName())
+		if tmn == "" {
+			tmn = ccname
+		}
+		chaincodeLogger.Debugf("Extra deploy package with template name <%s>", tmn)
+
+		//sanity check
+		if ccname != chaincode {
+			chaincodeLogger.Fatalf("Wrong code: we get cc %s's deploy tx with differnt name (%s)", chaincode, ccname)
+		}
+
+		specByte, err := st.Get(codepackCCName, tmn, ledger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("DB error on get ccspec data: %s", err)
+		} else if specByte == nil {
+			//try to decode data from tx ...
+			//we have abandoned the encryption case
+			chaincodeLogger.Warningf("try recover chaincode deployment spec from tx [%s]", depTx.GetTxid())
+			specByte = depTx.Payload
+		}
+
+		cds = new(pb.ChaincodeDeploymentSpec)
+		if err = proto.Unmarshal(specByte, cds); err != nil {
+			return nil, nil, fmt.Errorf("decode cc deploy spec fail: %s", err)
+		}
+
+		chaincodeLogger.Debugf("Load cds for chaincode %s:%s: %v", chaincode, tmn, cds)
+		return
+	}
+
+	return chaincodeSupport.Launch2(ctx, ledger, chaincode, getcds)
+}
+
 // Launch will launch the chaincode if not running (if running return nil) and will wait for handler of the chaincode to get into FSM ready state.
-func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *ledger.Ledger, chaincode string, cds *pb.ChaincodeDeploymentSpec) (error, *chaincodeRTEnv) {
+func (chaincodeSupport *ChaincodeSupport) Launch2(ctx context.Context, ledger *ledger.Ledger,
+	chaincode string, getcds func() (*pb.ChaincodeDeploymentSpec, *pb.Transaction, error)) (error, *chaincodeRTEnv) {
 
 	chaincodeSupport.runningChaincodes.Lock()
 	defer chaincodeSupport.runningChaincodes.Unlock()
@@ -584,9 +629,6 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 			if chrte.handler == nil {
 				chaincodeLogger.Errorf("handler is not available but lauching [%s(chain:%s,nodeid:%s)] not notify that", chaincode, chaincodeSupport.name, chaincodeSupport.nodeID)
 				return fmt.Errorf("internal error"), nil
-			} else if cds != nil {
-				//notice we must ban another call of deploy
-				return fmt.Errorf("Try to redeploy existed chaincode [%s]", chaincode), nil
 			} else {
 				return nil, chrte
 			}
@@ -597,20 +639,9 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 
 	//we should first check the deployment information so we avoid spent extra resources
 	//on non-existed chaincode
-	var err error
-	var depTx *pb.Transaction
-	if cds == nil {
-		cds, depTx, err = chaincodeSupport.extractDeployData(chaincode, ledger)
-		if err != nil {
-			return err, nil
-		}
-
-	} else {
-		depTx, _ = checkDeployTx(chaincode, ledger)
-		if depTx != nil {
-			err = fmt.Errorf("Try to redeploy existed chaincode [%s]", chaincode)
-			return err, nil
-		}
+	cds, depTx, err := getcds()
+	if err != nil {
+		return err, nil
 	}
 
 	//the first one create rte and start its adventure ...

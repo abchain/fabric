@@ -214,7 +214,7 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 	//TODO: now we can specified block height, snapshot, etc
 	querystate := ledger.NewQueryExecState(l)
 
-	err, chrte := chain.Launch(ctx, l, ccname, nil)
+	err, chrte := chain.Launch(ctx, l, querystate, ccname)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to launch chaincode (%s): %s", ccname, err)
 	}

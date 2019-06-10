@@ -158,6 +158,7 @@ func NewBlockV(ver uint32, transactions []*Transaction, metadata []byte) *Block 
 	block.Transactions = transactions
 	block.ConsensusMetadata = metadata
 
+	block.NonHashData = &NonHashData{LocalLedgerCommitTimestamp: util.CreateUtcTimestamp()}
 	block.Version = ver
 
 	if len(block.Transactions) > 0 {

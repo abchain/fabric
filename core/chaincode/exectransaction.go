@@ -42,8 +42,6 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 		return nil, fmt.Errorf("Tx handling context has not enough information yet")
 	}
 
-	cds := te.ChaincodeDeploySpec
-
 	// YA-fabric: the condition on container side is complex enough so we could not make any assurance for creating image
 	// before we actually lauch it (chaincode container side may remove the image, fabric may not execute the deploy tx ...)
 	// so we simply skip this step now
@@ -54,7 +52,18 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 	// }
 
 	//will launch if necessary (and wait for ready)
-	err, chrte := chain.Launch(ctxt, ledgerObj, te.ChaincodeName, cds)
+	var err error
+	var chrte *chaincodeRTEnv
+	if te.ChaincodeDeploySpec == nil {
+		err, chrte = chain.Launch(ctxt, ledgerObj, texec, te.ChaincodeName)
+	} else {
+
+		if err = ValidateDeploymentSpec(te, texec, ledgerObj); err != nil {
+			return nil, err
+		}
+		err, chrte = chain.DeployLaunch(ctxt, ledgerObj, te.ChaincodeName, te.ChaincodeDeploySpec)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("Failed to launch chaincode spec(%s)", err)
 	}
@@ -184,6 +193,7 @@ func ExecuteTransactions2(ctxt context.Context, cname ChainName, xacts []*pb.Tra
 				Error:     err.Error(),
 				ErrorCode: 1,
 			}
+			agent.AddExecResult(txResult)
 		} else {
 			txResult = &pb.TransactionResult{
 				Txid:            t.GetTxid(),
@@ -191,7 +201,7 @@ func ExecuteTransactions2(ctxt context.Context, cname ChainName, xacts []*pb.Tra
 				ChaincodeEvents: result.Events,
 			}
 			succeededTXs = append(succeededTXs, t.Transaction)
-			agent.AddExecResult(result.State, txResult)
+			agent.AddExecSuccessResult(result.State, txResult)
 		}
 	}
 

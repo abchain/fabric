@@ -198,7 +198,7 @@ func (ws *workingStream) handleWriteState(msg *pb.ChaincodeMessage, tctx *transa
 
 func (ws *workingStream) handleInvokeChaincode(msg *pb.ChaincodeMessage, tctx *transactionContext, handler *Handler) {
 
-	chaincodeLogger.Debugf("[%s]Received %s, invoking another chaincode invoking", shorttxid(msg.Txid), msg.Type)
+	chaincodeLogger.Debugf("[%s]Received %s, invoking another chaincode", shorttxid(msg.Txid), msg.Type)
 
 	var respmsg *pb.ChaincodeMessage
 	var err error
@@ -463,8 +463,8 @@ func cloneTx(tx *pb.Transaction) (*pb.Transaction, error) {
 
 // strip the required part of transactions for currently deployment, including the
 // data required for confiedantiality, txid, etc ...
-func strippedTxForDeployment(tx *pb.Transaction) (*pb.Transaction, error) {
-	ret, err := cloneTx(tx)
+func strippedTxForDeployment(txe *pb.TransactionHandlingContext) (*pb.Transaction, error) {
+	ret, err := cloneTx(txe.Transaction)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +474,10 @@ func strippedTxForDeployment(tx *pb.Transaction) (*pb.Transaction, error) {
 	ret.Signature = nil
 	ret.Metadata = nil
 	ret.Nonce = nil
-
+	ret.ChaincodeID, err = proto.Marshal(txe.CanonicalName)
+	if err != nil {
+		return nil, err
+	}
 	// //should not include path in ccid anymore
 	// //we need to null out path from depTx as invoke or queries don't have it
 	// cID := &pb.ChaincodeID{}
@@ -824,7 +827,9 @@ func (handler *Handler) handleInvokeChaincode(msg *pb.ChaincodeMessage, tctx *tr
 
 	// Launch the new chaincode if not already running
 	// TODO: we should support the inter-ledger invoking
-	_, ccname, _ := pb.ParseYFCCName(chaincodeSpec.ChaincodeID.GetName())
+	// TODO: we should handle template calling
+	ccname, _, _ := pb.ParseYFCCName(chaincodeSpec.ChaincodeID.GetName())
+
 	ledgerObj := handler.Ledger
 
 	// never allow invoking itself!
@@ -847,9 +852,10 @@ func (handler *Handler) handleInvokeChaincode(msg *pb.ChaincodeMessage, tctx *tr
 		txtype = pb.Transaction_CHAINCODE_QUERY
 	}
 
-	launchErr, chrte := handler.chaincodeSupport.Launch(context.Background(), ledgerObj, ccname, nil)
+	//notice we can not do inter-chaincode deployment yet
+	launchErr, chrte := handler.chaincodeSupport.Launch(context.Background(), ledgerObj, tctx.state, ccname)
 	if launchErr != nil {
-		chaincodeLogger.Debugf("[%s]Failed to launch invoked chaincode. Sending %s", shorttxid(msg.Txid), pb.ChaincodeMessage_ERROR)
+		chaincodeLogger.Debugf("[%s]Failed to launch invoked chaincode (%s). Sending %s", shorttxid(msg.Txid), ccname, pb.ChaincodeMessage_ERROR)
 		//triggerNextStateMsg = &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_ERROR, Payload: payload, Txid: msg.Txid}
 		return nil, launchErr
 	}

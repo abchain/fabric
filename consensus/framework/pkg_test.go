@@ -50,8 +50,10 @@ func prepareChaincodeSupport(tb testing.TB, ledgers ...*ledger.Ledger) func() {
 		[][]byte{}, ledgers...)
 	testutil.AssertNoError(tb, err, "launch cscc")
 
+	gb := genesis.NewGenesisBlockTemplateDefault([]byte("testgen"))
+
 	for i, l := range ledgers {
-		err = genesis.MakeGenesisForLedgerDirect(l, outs[i])
+		err = gb.MakeGenesisForLedgerDirect(l, outs[i])
 		testutil.AssertNoError(tb, err, "do genesis")
 	}
 

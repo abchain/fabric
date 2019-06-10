@@ -19,8 +19,11 @@ package genesis
 import (
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/ledger"
+	"github.com/abchain/fabric/protos"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/op/go-logging"
 	"sync"
+	"time"
 )
 
 var genesisLogger = logging.MustGetLogger("genesis")
@@ -56,7 +59,23 @@ func MakeGenesis() error {
 	return makeGenesisError
 }
 
-func MakeGenesisForLedgerDirect(l *ledger.Ledger, initState ledger.TxExecStates) error {
+type genesisBlock struct {
+	*protos.Block
+}
+
+var defaultTime = time.Date(2019, time.June, 9, 15, 0, 0, 0, time.FixedZone("UTC-8", -8*60*60))
+
+func NewGenesisBlockTemplateDefault(metadata []byte) genesisBlock {
+	return NewGenesisBlockTemplate(metadata, defaultTime)
+}
+
+func NewGenesisBlockTemplate(metadata []byte, epochT time.Time) genesisBlock {
+	block := protos.NewBlock(nil, metadata)
+	block.Timestamp = &timestamp.Timestamp{Seconds: epochT.Unix()}
+	return genesisBlock{block}
+}
+
+func (b genesisBlock) MakeGenesisForLedgerDirect(l *ledger.Ledger, initState ledger.TxExecStates) error {
 
 	if l.GetBlockchainSize() == 0 {
 
@@ -72,8 +91,18 @@ func MakeGenesisForLedgerDirect(l *ledger.Ledger, initState ledger.TxExecStates)
 		}
 
 		commitAgent.MergeExec(initState)
+		b.Block, err = commitAgent.PreviewBlock(0, b.Block)
+		if err != nil {
+			return err
+		}
 
-		err = commitAgent.FullCommit([]byte("genesis"), nil)
+		blkcmt := ledger.NewBlockAgent(l)
+		err = blkcmt.SyncCommitBlock(0, b.Block)
+		if err != nil {
+			return err
+		}
+
+		err = commitAgent.StateCommitOne(0, b.Block)
 		if err != nil {
 			return err
 		}
@@ -82,6 +111,7 @@ func MakeGenesisForLedgerDirect(l *ledger.Ledger, initState ledger.TxExecStates)
 		if err != nil {
 			return err
 		}
+
 		if shash := info.GetCurrentStateHash(); len(shash) == 0 {
 			return ledger.ErrResourceNotFound
 		} else if err = db.GetGlobalDBHandle().PutGenesisGlobalState(shash); err != nil {
@@ -91,7 +121,7 @@ func MakeGenesisForLedgerDirect(l *ledger.Ledger, initState ledger.TxExecStates)
 	return nil
 }
 
-func MakeGenesisForLedger(l *ledger.Ledger, chaincode string, initValue map[string][]byte) error {
+func (b genesisBlock) MakeGenesisForLedger(l *ledger.Ledger, chaincode string, initValue map[string][]byte) error {
 
 	genesisLogger.Info("Creating genesis block for ledger", chaincode)
 
@@ -104,5 +134,5 @@ func MakeGenesisForLedger(l *ledger.Ledger, chaincode string, initValue map[stri
 		exs.Set(chaincode, k, v)
 	}
 
-	return MakeGenesisForLedgerDirect(l, exs)
+	return b.MakeGenesisForLedgerDirect(l, exs)
 }

@@ -2,23 +2,19 @@ package main
 
 import (
 	"fmt"
+	"github.com/abchain/fabric/core/config"
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/ledger"
-	"github.com/abchain/fabric/peerex"
 )
 
 func main() {
 
-	cfg := peerex.GlobalConfig{LogRole: "client"}
-
-	err := cfg.InitGlobal(false)
-	if err != nil {
-		panic(err)
-	}
+	cf := config.SetupTestConf{"FABRIC", "upgrade", ""}
+	cf.Setup()
 
 	db.Start()
 	defer db.Stop()
-	err = ledger.UpgradeLedger(false)
+	err := ledger.UpgradeLedger(db.GetDBHandle(), false)
 
 	if err != nil {
 		fmt.Print("Upgrade fail:", err)

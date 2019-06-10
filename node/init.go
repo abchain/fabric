@@ -51,7 +51,8 @@ func (ne *NodeEngine) addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, er
 
 	//a legacy progress...
 	if ne.Options.MakeGenesisForLedger {
-		err = genesis.MakeGenesisForLedger(l, "", nil)
+		tmpb := genesis.NewGenesisBlockTemplateDefault([]byte("Yafabric_default"))
+		err = tmpb.MakeGenesisForLedger(l, "", nil)
 		if err != nil {
 			return nil, fmt.Errorf("Try to create genesis block for ledger fail: %s", err)
 		}
@@ -330,7 +331,7 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 		tx validator (tx security context),
 		plain tx parsing,
 		[confidentiality],
-		verifier,
+		[peer custom validator],
 		[pooling],
 		[peer custom],
 		[node custom],
@@ -355,8 +356,9 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	// 		return txe, nil
 	// 	}))
 
-	//pooling
+	//final validating and pooling
 	if !pe.TxHandlerOpts.NoPooling {
+		handlerArray = append(handlerArray, pe.TxHandlerOpts.CustomValidators...)
 		handlerArray = append(handlerArray, txPoolHandler{peerLedger})
 	}
 

@@ -21,6 +21,7 @@ import (
 	"github.com/abchain/fabric/core/ledger/testutil"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestMain(m *testing.M) {
@@ -53,7 +54,8 @@ func TestCustomGenesis(t *testing.T) {
 		t.Fatalf("Expected blockchain size of 0, but got %d", ledger.GetBlockchainSize())
 	}
 
-	makeGenesisErr := MakeGenesisForLedger(ledger, "customCC", map[string][]byte{
+	tblk := NewGenesisBlockTemplate([]byte("test"), time.Time{})
+	makeGenesisErr := tblk.MakeGenesisForLedger(ledger, "customCC", map[string][]byte{
 		"key1": []byte("value1"),
 		"key2": []byte("value2"),
 		"key3": []byte("value3"),

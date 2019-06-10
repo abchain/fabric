@@ -50,3 +50,7 @@ func SecurityEnabled() bool {
 	}
 	return securityEnabled
 }
+
+func GetLogger(tag string) *logging.Logger {
+	return logging.MustGetLogger(tag)
+}
