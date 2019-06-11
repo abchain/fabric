@@ -109,7 +109,7 @@ func newIndexer(blockchain *blockchain, rollback int) (*blockchainIndexerImpl, e
 	odb := blockchain.OpenchainDB
 	sizelimit := blockchain.getSize()
 	persistedLimit := blockchain.getContinuousBlockHeight()
-	if uint64(rollback) > sizelimit {
+	if uint64(rollback) > persistedLimit {
 		persistedLimit = 0
 	} else {
 		persistedLimit = sizelimit - uint64(rollback)
@@ -124,7 +124,7 @@ func newIndexer(blockchain *blockchain, rollback int) (*blockchainIndexerImpl, e
 		return ret, nil
 	}
 
-	//restore indexes (persisted them)
+	//restore indexes (which should be persisted)
 	if err, doneTo := checkIndexTill(odb, persistedLimit); err != nil {
 		return nil, err
 	} else if doneTo < persistedLimit {
@@ -139,16 +139,19 @@ func newIndexer(blockchain *blockchain, rollback int) (*blockchainIndexerImpl, e
 	indexLogger.Infof("init index db done: has indexing %d blocks, continuous to %d, rollback limit %d",
 		scanned+persistedLimit+1, ret.cache.indexedTo.GetProgress(), ret.cache.indexedTo.GetTop())
 
-	//now we read the rest data into cache ...
-	err, _ := progressIndexs(odb, sizelimit-1,
-		ret.cache.indexedTo.GetProgress()+1,
-		func(blk *protos.Block, num uint64, hash []byte) error {
-			ret.cache.i[num] = newBlockIndexCache(hash, blk)
-			return nil
-		})
+	//now we read the rollback able part into cache, that is, block indexes after persisted
+	//and before last block which is continuously persisted...
+	if blkCH := blockchain.getContinuousBlockHeight(); blkCH > 0 {
+		err, _ := progressIndexs(odb, blkCH-1,
+			ret.cache.indexedTo.GetProgress()+1,
+			func(blk *protos.Block, num uint64, hash []byte) error {
+				ret.cache.i[num] = newBlockIndexCache(hash, blk)
+				return nil
+			})
 
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	indexLogger.Infof("load index db to cache done: preload %d records", len(ret.cache.i))
@@ -190,18 +193,15 @@ func (indexer *blockchainIndexerImpl) persistPrepared(writeBatch *db.DBWriteBatc
 //like state, indexes can be only persisted in sequences
 func (indexer *blockchainIndexerImpl) persistIndexes(writeBatch *db.DBWriteBatch, blockNumber uint64) error {
 
+	//notice the target may has been persisted
 	target := indexer.cache.pending
 	if blockNumber != indexer.cache.pendingOn {
-		existed := false
-		target, existed = indexer.cache.i[blockNumber]
-		if !existed {
-			return ErrResourceNotFound
-		}
-	} else if target == nil {
-		return ErrResourceNotFound
+		target = indexer.cache.i[blockNumber]
 	}
 
-	target.persistence(writeBatch, blockNumber)
+	if target != nil {
+		target.persistence(writeBatch, blockNumber)
+	}
 
 	ciid := indexer.cache.indexedTo.PreviewProgress(blockNumber)
 	if ciid > indexer.cache.indexedTo.GetProgress() {

@@ -198,7 +198,7 @@ func checkIndexTill(odb *db.OpenchainDB, till uint64) (error, uint64) {
 		return nil, lastIndexedBlockNum
 	}
 
-	indexLogger.Infof("indexer need to finshish pending block from %d to %d first, please wait ...", lastIndexedBlockNum, till)
+	indexLogger.Infof("indexer need to finish pending block from %d to %d first, please wait ...", lastIndexedBlockNum, till)
 
 	writeBatch := odb.NewWriteBatch()
 	defer writeBatch.Destroy()
@@ -281,16 +281,16 @@ func progressIndexs(odb *db.OpenchainDB, lastCommitedBlockNum uint64, startBlock
 		blockToIndex, err := fetchRawBlockFromDB(odb, startBlockNum)
 		//interrupt for any db error
 		if err != nil {
-			return fmt.Errorf("db fail in getblock %d: %s", startBlockNum, err), 0
+			return fmt.Errorf("db fail in getblock %d: %s", startBlockNum, err), startBlockNum
 		} else if blockToIndex == nil {
-			return fmt.Errorf("db fail in getblock %d: data not exist", startBlockNum), 0
+			return fmt.Errorf("db fail in getblock %d: data not exist", startBlockNum), startBlockNum
 		}
 
 		//when get hash, we must prepare for a incoming "raw" block (the old version require txs to obtain blockhash)
 		blockToIndex = compatibleLegacyBlock(blockToIndex)
 		blockHash, err := blockToIndex.GetHash()
 		if err != nil {
-			return fmt.Errorf("fail in obtained block %d's hash: %s", startBlockNum, err), 0
+			return fmt.Errorf("fail in obtained block %d's hash: %s", startBlockNum, err), startBlockNum
 		}
 
 		//if we index genesis block, no check is needed
@@ -312,7 +312,7 @@ func progressIndexs(odb *db.OpenchainDB, lastCommitedBlockNum uint64, startBlock
 
 		err = persistIndex(blockToIndex, startBlockNum, blockHash)
 		if err != nil {
-			return fmt.Errorf("fail in execute persistent index: %s", err), 0
+			return fmt.Errorf("fail in execute persistent index: %s", err), startBlockNum
 		}
 	}
 

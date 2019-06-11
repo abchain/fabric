@@ -79,18 +79,17 @@ func (b genesisBlock) MakeGenesisForLedgerDirect(l *ledger.Ledger, initState led
 
 	if l.GetBlockchainSize() == 0 {
 
-		if initState.IsEmpty() {
-			genesisLogger.Warningf("Require to build genesis block with empty initstate")
-			initState.InitForInvoking(l)
-			initState.Set("YAfabric_09", "_genesis_", []byte{42, 42, 42})
-		}
-
 		commitAgent, err := ledger.NewTxEvaluatingAgent(l)
 		if err != nil {
 			return err
 		}
 
-		commitAgent.MergeExec(initState)
+		if initState.IsEmpty() {
+			genesisLogger.Warningf("Require to build genesis block with empty initstate")
+		} else {
+			commitAgent.MergeExec(initState)
+		}
+
 		b.Block, err = commitAgent.PreviewBlock(0, b.Block)
 		if err != nil {
 			return err
