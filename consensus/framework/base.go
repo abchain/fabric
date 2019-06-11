@@ -300,13 +300,15 @@ func (cb *ConsensusBase) MainRoutine(ctx context.Context, learner LedgerLearner)
 		return nil
 	}
 
+	triggerTimer := time.NewTimer(cb.triggerTime)
 	plainWait := func() (*pb.TransactionHandlingContext, error) {
 		for {
 			select {
 			case mining := <-cb.purpose:
 				mining(ctx, learner)
-			case <-time.NewTimer(cb.triggerTime).C:
+			case <-triggerTimer.C:
 				logger.Debugf("Idle time out")
+				triggerTimer.Reset(cb.triggerTime)
 				if learner.Trigger(ctx) {
 					return nil, nil
 				}

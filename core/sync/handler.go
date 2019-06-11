@@ -57,6 +57,8 @@ func (h *coreHandlerAdapter) handlerRoutine(ctx context.Context, handler ISyncHa
 	var sessionH ISessionHandler
 	var idleTimerC <-chan time.Time
 	var idleTimer *time.Timer
+	idleTimeStart := time.Now()
+	idleTimeout := time.Duration(0)
 
 	cleanSession := func() {
 		if sessionH != nil {
@@ -102,28 +104,33 @@ func (h *coreHandlerAdapter) handlerRoutine(ctx context.Context, handler ISyncHa
 					h.ResponseFailure(reqMsg, err)
 				} else {
 					sessionH = srv
+					idleTimeout = sessionH.idleTimeout()
+					idleTimeStart = time.Now()
 					idleTimer = time.NewTimer(sessionH.idleTimeout())
-					h.AcceptSession(reqMsg, accept)
 					idleTimerC = idleTimer.C
+					h.AcceptSession(reqMsg, accept)
 				}
 
 			case pb.SyncMsg_CLIENT_SESSION, pb.SyncMsg_CLIENT_SESSION_ACK:
+				idleTimeStart = time.Now()
 				//session message may have been in channel before we made external stop and call sessionfailure
 				if sessReq := reqMsg.GetRequest().GetSession(); sessReq != nil && sessionH != nil {
 					if err := sessionH.onSessionRequest(sessReq); err != nil {
 						logger.Errorf("current session is failed on request [%v]: %s", sessReq, err)
 						notifySessionFailAndClean(err)
-					} else {
-						idleTimer.Reset(sessionH.idleTimeout())
 					}
 				}
 
 			case pb.SyncMsg_CLIENT_SESSION_CLOSE:
 				cleanSession()
 			}
-		case <-idleTimerC:
-			logger.Infof("current session has timeout for idle")
-			notifySessionFailAndClean(fmt.Errorf("Idle expired"))
+		case nt := <-idleTimerC:
+			if expt := idleTimeStart.Add(idleTimeout); expt.After(nt) {
+				idleTimer.Reset(expt.Sub(nt))
+			} else {
+				logger.Infof("current session has timeout for idle")
+				notifySessionFailAndClean(fmt.Errorf("Idle expired"))
+			}
 		case extErr := <-h.sessionErrExternal:
 			notifySessionFailAndClean(extErr)
 		case <-ctx.Done():
