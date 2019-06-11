@@ -74,6 +74,14 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 
 	if refshash := refBlock.GetStateHash(); refshash != nil {
 		if bytes.Compare(stateHash, refshash) != 0 {
+			ledgerLogger.Debugf("state commit (to %.32X) failure dump:", stateHash)
+			ledgerLogger.Debugf("* reference state: %.32X", refshash)
+			for i, result := range tec.transactionResults {
+				ledgerLogger.Debugf("* execute result %d for tx %s", i, result.Txid)
+				ledgerLogger.Debugf("*    error <%s>, %d events, result dump %X",
+					result.Error, len(result.ChaincodeEvents), result.Result)
+			}
+
 			return newLedgerError(ErrorTypeFatalCommit, "local delta not match reference block")
 		}
 	}

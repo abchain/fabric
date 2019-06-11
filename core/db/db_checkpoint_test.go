@@ -218,7 +218,7 @@ func TestSwitchCheckPoint(t *testing.T) {
 	v, _ = openchainDB.GetValue(StateCF, []byte("key5"))
 	assertByteEqual(t, v, "value5")
 
-	v, _ = sn.getFromSnapshot(sn.snapshot, sn.StateCF, []byte("key3"))
+	v, _ = sn.h.getFromSnapshot(sn.snapshot, sn.StateCF, []byte("key3"))
 	assertByteEqual(t, v, "value3")
 
 	sn.Release()

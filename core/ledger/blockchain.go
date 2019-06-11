@@ -223,11 +223,11 @@ func (blockchain *blockchain) getBlockchainInfoForBlock(height uint64, block *pr
 func buildBlock(metadata []byte, transactions []*protos.Transaction) *protos.Block {
 	block := protos.NewBlock(transactions, metadata)
 	if block.NonHashData == nil {
-		block.NonHashData = &protos.NonHashData{LocalLedgerCommitTimestamp: util.CreateUtcTimestamp()}
+		block.NonHashData = &protos.NonHashData{LocalLedgerCommitTimestamp: protos.CreateUtcTimestamp()}
 	} else {
-		block.NonHashData.LocalLedgerCommitTimestamp = util.CreateUtcTimestamp()
+		block.NonHashData.LocalLedgerCommitTimestamp = protos.CreateUtcTimestamp()
 	}
-	block.Timestamp = util.CreateUtcTimestamp()
+	block.Timestamp = protos.CreateUtcTimestamp()
 	return block
 }
 
@@ -456,11 +456,11 @@ func (blockchain *blockchain) buildBlock(block *protos.Block, stateHash []byte) 
 	block.SetPreviousBlockHash(blockchain.buildingBlock.blockHash)
 	block.StateHash = stateHash
 	if block.NonHashData == nil {
-		block.NonHashData = &protos.NonHashData{LocalLedgerCommitTimestamp: util.CreateUtcTimestamp()}
+		block.NonHashData = &protos.NonHashData{LocalLedgerCommitTimestamp: protos.CreateUtcTimestamp()}
 	} else {
-		block.NonHashData.LocalLedgerCommitTimestamp = util.CreateUtcTimestamp()
+		block.NonHashData.LocalLedgerCommitTimestamp = protos.CreateUtcTimestamp()
 	}
-	block.Timestamp = util.CreateUtcTimestamp()
+	block.Timestamp = protos.CreateUtcTimestamp()
 	return block
 }
 

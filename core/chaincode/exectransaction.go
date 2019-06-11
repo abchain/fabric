@@ -128,6 +128,8 @@ func Execute2(ctxt context.Context, ledgerObj *ledger.Ledger, chain *ChaincodeSu
 var legacyHandler = pb.DefaultTxHandler
 
 //Execute - execute transaction or a query
+//This method has been deprecated: chaincode being executed could not obtain an repeatable
+//execution timestamp, which may lead to the generated state being unstable
 func Execute(ctxt context.Context, chain *ChaincodeSupport, t *pb.Transaction) ([]byte, []*pb.ChaincodeEvent, error) {
 
 	// get a handle to ledger to mark the begin/finish of a tx
@@ -168,8 +170,11 @@ var emptyEvent = new(pb.ChaincodeEvent)
 
 //The new exec entry for YA-fabric, which evaluating a series of txs (with handling context)
 //in sequence and prepare for a TxEvaluateAndCommit,
+//it also mutate the incoming transacion handling context, with an execution timestamp being specified
 //the success tx will be returned, respecting the expected behavior in ledger's commitTxBatch
-func ExecuteTransactions2(ctxt context.Context, cname ChainName, xacts []*pb.TransactionHandlingContext, agent *ledger.TxEvaluateAndCommit) (succeededTXs []*pb.Transaction, err error) {
+func ExecuteTransactions2(ctxt context.Context, cname ChainName,
+	xacts []*pb.TransactionHandlingContext, execTime time.Time,
+	agent *ledger.TxEvaluateAndCommit) (succeededTXs []*pb.Transaction, err error) {
 	var chain = GetChain(cname)
 	if chain == nil {
 		// TODO: We should never get here, but otherwise a good reminder to better handle
@@ -182,7 +187,16 @@ func ExecuteTransactions2(ctxt context.Context, cname ChainName, xacts []*pb.Tra
 		}
 	}()
 
+	execTs := pb.ConvertToTimestamp(execTime)
+
 	for _, t := range xacts {
+		//specified timestamp for tx
+		if t.SecContex == nil {
+			t.SecContex = &pb.ChaincodeSecurityContext{TxTimestamp: execTs}
+		} else {
+			t.SecContex.TxTimestamp = execTs
+		}
+
 		execstate := agent.AssignExecRT()
 		result, err := Execute2(ctxt, agent.Ledger(), chain, t, execstate)
 		//

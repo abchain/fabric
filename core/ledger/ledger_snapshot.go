@@ -199,7 +199,7 @@ func (ledger *Ledger) CreateSnapshot() (*LedgerSnapshot, uint64) {
 		return nil, 0
 	}
 
-	return &LedgerSnapshot{ledger.state.GetSnapshotManager(), ledger.snapshots.db.GetSnapshot()},
+	return &LedgerSnapshot{ledger.state.GetSnapshotManager(), ledger.snapshots.GetSnapshotCurrent()},
 		ledger.blockchain.getSize() - 1
 }
 

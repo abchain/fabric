@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abchain/fabric/core/util"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -65,9 +64,9 @@ func Test_Block_CreateNew(t *testing.T) {
 func TestBlockNonHashData(t *testing.T) {
 	block1 := NewBlock(nil, nil)
 	block2 := NewBlock(nil, nil)
-	time1 := util.CreateUtcTimestamp()
+	time1 := CreateUtcTimestamp()
 	time.Sleep(100 * time.Millisecond)
-	time2 := util.CreateUtcTimestamp()
+	time2 := CreateUtcTimestamp()
 	block1.NonHashData = &NonHashData{LocalLedgerCommitTimestamp: time1}
 	block2.NonHashData = &NonHashData{LocalLedgerCommitTimestamp: time2}
 	hash1, err := block1.GetHash()

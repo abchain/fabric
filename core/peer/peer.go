@@ -789,7 +789,7 @@ func (p *Impl) NewOpenchainDiscoveryHello() (*pb.Message, error) {
 		return nil, fmt.Errorf("Error marshalling HelloMessage: %s", err)
 	}
 	// Need to sign the Discovery Hello message
-	newDiscoveryHelloMsg := &pb.Message{Type: pb.Message_DISC_HELLO, Payload: data, Timestamp: util.CreateUtcTimestamp()}
+	newDiscoveryHelloMsg := &pb.Message{Type: pb.Message_DISC_HELLO, Payload: data, Timestamp: pb.CreateUtcTimestamp()}
 	err = p.signMessageMutating(newDiscoveryHelloMsg)
 	if err != nil {
 		return nil, fmt.Errorf("Error signing new HelloMessage: %s", err)

@@ -104,6 +104,7 @@ func GenerateUUID() string {
 }
 
 // CreateUtcTimestamp returns a google/protobuf/Timestamp in UTC
+// (DEPRECATED, moved to protos)
 func CreateUtcTimestamp() *timestamp.Timestamp {
 	now := time.Now().UTC()
 	secs := now.Unix()

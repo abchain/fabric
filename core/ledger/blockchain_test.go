@@ -165,7 +165,7 @@ func testBlockchainBlockLedgerCommitTimestamp(t *testing.T) {
 	testDBWrapper.CleanDB(t)
 	blockchainTestWrapper := newTestBlockchainWrapper(t)
 	block1 := protos.NewBlock(nil, nil)
-	startTime := util.CreateUtcTimestamp()
+	startTime := protos.CreateUtcTimestamp()
 	time.Sleep(2 * time.Second)
 	blockchainTestWrapper.addNewBlock(block1, []byte("stateHash1"))
 	lastBlock := blockchainTestWrapper.getLastBlock()
@@ -211,7 +211,7 @@ func TestBlockchainBlockExistChecking(t *testing.T) {
 	addDistancedBlock := func(h uint64, prevhash []byte) []byte {
 		block1 := protos.NewBlock(nil, nil)
 		block1.PreviousBlockHash = prevhash
-		block1.Timestamp = util.CreateUtcTimestamp()
+		block1.Timestamp = protos.CreateUtcTimestamp()
 		err = testBlockchainWrapper.blockchain.addPersistenceChangesForNewBlock(block1, h, writeBatch)
 		testutil.AssertNoError(t, err, "Error while adding a new block")
 		testDBWrapper.WriteToDB(t, writeBatch)

@@ -273,8 +273,8 @@ func (orgdb *OpenchainDB) GetFromBlockchainCF(key []byte) ([]byte, error) {
 // a snapshot.
 func (openchainDB *OpenchainDB) DeleteState() error {
 
-	openchainDB.RLock()
-	defer openchainDB.RUnlock()
+	openchainDB.Lock()
+	defer openchainDB.Unlock()
 
 	err := openchainDB.db.DropColumnFamily(openchainDB.db.StateCF)
 	if err != nil {
@@ -286,7 +286,8 @@ func (openchainDB *OpenchainDB) DeleteState() error {
 		dbLogger.Errorf("Error dropping state delta CF: %s", err)
 		return err
 	}
-	opts := gorocksdb.NewDefaultOptions()
+
+	opts := openchainDB.db.OpenOpt.Options()
 	defer opts.Destroy()
 	openchainDB.db.StateCF, err = openchainDB.db.CreateColumnFamily(opts, StateCF)
 	if err != nil {
@@ -301,6 +302,46 @@ func (openchainDB *OpenchainDB) DeleteState() error {
 
 	openchainDB.db.cfMap[StateCF] = openchainDB.db.StateCF
 	openchainDB.db.cfMap[StateDeltaCF] = openchainDB.db.StateDeltaCF
+
+	return nil
+}
+
+func (openchainDB *OpenchainDB) DeleteAll() error {
+
+	if err := openchainDB.DeleteState(); err != nil {
+		return err
+	}
+
+	openchainDB.Lock()
+	defer openchainDB.Unlock()
+
+	err := openchainDB.db.DropColumnFamily(openchainDB.db.IndexesCF)
+	if err != nil {
+		dbLogger.Errorf("Error dropping index CF: %s", err)
+		return err
+	}
+	err = openchainDB.db.DropColumnFamily(openchainDB.db.BlockchainCF)
+	if err != nil {
+		dbLogger.Errorf("Error dropping chain CF: %s", err)
+		return err
+	}
+
+	openchainDB.db.IndexesCF, err = openchainDB.db.CreateColumnFamily(openchainDB.indexesCFOpt, IndexesCF)
+	if err != nil {
+		dbLogger.Errorf("Error creating state delta CF: %s", err)
+		return err
+	}
+
+	opts := openchainDB.db.OpenOpt.Options()
+	defer opts.Destroy()
+	openchainDB.db.BlockchainCF, err = openchainDB.db.CreateColumnFamily(opts, BlockchainCF)
+	if err != nil {
+		dbLogger.Errorf("Error creating state CF: %s", err)
+		return err
+	}
+
+	openchainDB.db.cfMap[IndexesCF] = openchainDB.db.IndexesCF
+	openchainDB.db.cfMap[BlockchainCF] = openchainDB.db.BlockchainCF
 
 	return nil
 }
@@ -337,7 +378,8 @@ func (m *snapshotManager) releaseRef() bool {
 }
 
 type DBSnapshot struct {
-	*ocDB
+	h *ocDB
+	*openchainCFs
 	snapshot *gorocksdb.Snapshot
 	hosting  *snapshotManager
 }
@@ -352,6 +394,18 @@ type DBWriteBatch struct {
 	*gorocksdb.WriteBatch
 }
 
+// GetSnapshot create a point-in-time view of the DB.
+func (openchainDB *OpenchainDB) GetSnapshot() *DBSnapshot {
+	openchainDB.RLock()
+	defer openchainDB.RUnlock()
+
+	cfCopy := openchainDB.db.openchainCFs
+
+	openchainDB.db.extendedLock <- 0
+	return &DBSnapshot{openchainDB.db, &cfCopy,
+		openchainDB.db.NewSnapshot(), nil}
+}
+
 func (openchainDB *OpenchainDB) getExtended() *ocDB {
 
 	openchainDB.RLock()
@@ -363,12 +417,6 @@ func (openchainDB *OpenchainDB) getExtended() *ocDB {
 
 func (openchainDB *OpenchainDB) NewWriteBatch() *DBWriteBatch {
 	return &DBWriteBatch{openchainDB.getExtended(), gorocksdb.NewWriteBatch()}
-}
-
-// GetSnapshot create a point-in-time view of the DB.
-func (openchainDB *OpenchainDB) GetSnapshot() *DBSnapshot {
-	theDb := openchainDB.getExtended()
-	return &DBSnapshot{theDb, theDb.NewSnapshot(), nil}
 }
 
 func (openchainDB *OpenchainDB) GetIterator(cfName string) *DBIterator {
@@ -426,7 +474,7 @@ func (e *DBSnapshot) Clone() *DBSnapshot {
 		panic("Wrong code: called clone for unmanaged snapshot")
 	}
 	e.hosting.addRef()
-	return &DBSnapshot{e.ocDB, e.snapshot, e.hosting}
+	return &DBSnapshot{e.h, e.openchainCFs, e.snapshot, e.hosting}
 }
 
 //protect the close function declared in ocDB to avoiding a wrong calling
@@ -436,7 +484,7 @@ func (e *DBSnapshot) Release() {
 
 	if e == nil {
 		return
-	} else if e.ocDB == nil {
+	} else if e.h == nil {
 		//sanity check
 		panic("snapshot is duplicated release")
 	}
@@ -445,10 +493,10 @@ func (e *DBSnapshot) Release() {
 		return
 	}
 	if e.snapshot != nil {
-		e.ReleaseSnapshot(e.snapshot)
+		e.h.ReleaseSnapshot(e.snapshot)
 	}
-	e.finalRelease()
-	e.ocDB = nil
+	e.h.finalRelease()
+	e.h = nil
 }
 
 func (e *DBWriteBatch) GetDBHandle() *ocDB {
@@ -483,7 +531,7 @@ func (e *DBSnapshot) GetFromBlockchainCFSnapshot(key []byte) ([]byte, error) {
 	if e.snapshot == nil {
 		return nil, fmt.Errorf("Snapshot is not inited")
 	}
-	return e.getFromSnapshot(e.snapshot, e.BlockchainCF, key)
+	return e.h.getFromSnapshot(e.snapshot, e.BlockchainCF, key)
 }
 
 func (e *DBSnapshot) GetFromStateCFSnapshot(key []byte) ([]byte, error) {
@@ -492,7 +540,7 @@ func (e *DBSnapshot) GetFromStateCFSnapshot(key []byte) ([]byte, error) {
 		return nil, fmt.Errorf("Snapshot is not inited")
 	}
 
-	return e.getFromSnapshot(e.snapshot, e.StateCF, key)
+	return e.h.getFromSnapshot(e.snapshot, e.StateCF, key)
 }
 
 func (e *DBSnapshot) GetFromIndexCFSnapshot(key []byte) ([]byte, error) {
@@ -501,7 +549,7 @@ func (e *DBSnapshot) GetFromIndexCFSnapshot(key []byte) ([]byte, error) {
 		return nil, fmt.Errorf("Snapshot is not inited")
 	}
 
-	return e.getFromSnapshot(e.snapshot, e.IndexesCF, key)
+	return e.h.getFromSnapshot(e.snapshot, e.IndexesCF, key)
 }
 
 // GetStateCFSnapshotIterator get iterator for column family - stateCF. This iterator
@@ -513,7 +561,7 @@ func (e *DBSnapshot) GetStateCFSnapshotIterator() *gorocksdb.Iterator {
 		dbLogger.Error("Snapshot is not inited")
 		return nil
 	}
-	return e.getSnapshotIterator(e.snapshot, e.StateCF)
+	return e.h.getSnapshotIterator(e.snapshot, e.StateCF)
 }
 
 func (e *DBSnapshot) GetFromStateDeltaCFSnapshot(key []byte) ([]byte, error) {
@@ -521,5 +569,5 @@ func (e *DBSnapshot) GetFromStateDeltaCFSnapshot(key []byte) ([]byte, error) {
 	if e.snapshot == nil {
 		return nil, fmt.Errorf("Snapshot is not inited")
 	}
-	return e.getFromSnapshot(e.snapshot, e.StateDeltaCF, key)
+	return e.h.getFromSnapshot(e.snapshot, e.StateDeltaCF, key)
 }

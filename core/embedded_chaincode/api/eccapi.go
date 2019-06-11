@@ -72,6 +72,8 @@ func BuildEmbeddedCC(spec *protos.ChaincodeSpec) (*protos.ChaincodeDeploymentSpe
 	return chaincodeDeploymentSpec, nil
 }
 
+//We MUST take care of the output state: it maybe not replay able because of the execution timestamp
+//is variant and the result is NEVER combinded with any transaction
 func LaunchEmbeddedCCFull(ctx context.Context, name, chain string,
 	args [][]byte, ledgers ...*ledger.Ledger) (error, *protos.ChaincodeDeploymentSpec, []ledger.TxExecStates) {
 

@@ -11,6 +11,7 @@ import (
 	pb "github.com/abchain/fabric/protos"
 	"golang.org/x/net/context"
 	"testing"
+	"time"
 )
 
 func prepareSourceLedger(t *testing.T, l *ledger.Ledger, till int) {
@@ -23,7 +24,8 @@ func prepareSourceLedger(t *testing.T, l *ledger.Ledger, till int) {
 
 	for i := 1; i <= till; i++ {
 		txagent, _ := ledger.NewTxEvaluatingAgent(l)
-		doneTx, err := chaincode.ExecuteTransactions2(context.Background(), defTestChaincodeSup, buildTx(i), txagent)
+		doneTx, err := chaincode.ExecuteTransactions2(context.Background(),
+			defTestChaincodeSup, buildTx(i), time.Now(), txagent)
 		testutil.AssertNoError(t, err, fmt.Sprintf("build block %d, step 1", i))
 
 		testutil.AssertEquals(t, len(doneTx)+i, 3+i)

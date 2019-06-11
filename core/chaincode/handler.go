@@ -437,7 +437,7 @@ func createTransactionMessage(txtype pb.Transaction_Type, txid string, cMsg *pb.
 	if sec == nil {
 		//create a default, blank sec context, which include a variat (not consistent) timestamp
 		sec = new(pb.ChaincodeSecurityContext)
-		sec.TxTimestamp = util.CreateUtcTimestamp()
+		sec.TxTimestamp = pb.CreateUtcTimestamp()
 		chaincodeLogger.Debug("setting a blank chaincode security context")
 	}
 
@@ -538,9 +538,9 @@ func newChaincodeSupportHandler(chaincodeSupport *ChaincodeSupport) *Handler {
 			{Name: pb.ChaincodeMessage_QUERY_ERROR.String(), Src: []string{readystate}, Dst: readystate},
 		},
 		fsm.Callbacks{
-			// "before_" + pb.ChaincodeMessage_REGISTER.String():               func(e *fsm.Event) { v.beforeRegisterEvent(e, v.FSM.Current()) },
-			// "after_" + pb.ChaincodeMessage_INVOKE_CHAINCODE.String():        func(e *fsm.Event) { v.afterInvokeChaincode(e, v.FSM.Current()) },
-			// "enter_" + establishedstate:                                     func(e *fsm.Event) { v.enterEstablishedState(e, v.FSM.Current()) },
+		// "before_" + pb.ChaincodeMessage_REGISTER.String():               func(e *fsm.Event) { v.beforeRegisterEvent(e, v.FSM.Current()) },
+		// "after_" + pb.ChaincodeMessage_INVOKE_CHAINCODE.String():        func(e *fsm.Event) { v.afterInvokeChaincode(e, v.FSM.Current()) },
+		// "enter_" + establishedstate:                                     func(e *fsm.Event) { v.enterEstablishedState(e, v.FSM.Current()) },
 		},
 	)
 
@@ -883,42 +883,42 @@ func (handler *Handler) handleInvokeChaincode(msg *pb.ChaincodeMessage, tctx *tr
 	}
 }
 
-func (handler *Handler) setChaincodeSecurityContext(tx *pb.Transaction, msg *pb.ChaincodeMessage) error {
-	chaincodeLogger.Debug("setting chaincode security context...")
-	if msg.SecurityContext == nil {
-		msg.SecurityContext = &pb.ChaincodeSecurityContext{}
-	}
-	if tx != nil {
-		chaincodeLogger.Debug("setting chaincode security context. Transaction different from nil")
-		chaincodeLogger.Debugf("setting chaincode security context. Metadata [% x]", tx.Metadata)
+// func (handler *Handler) setChaincodeSecurityContext(tx *pb.Transaction, msg *pb.ChaincodeMessage) error {
+// 	chaincodeLogger.Debug("setting chaincode security context...")
+// 	if msg.SecurityContext == nil {
+// 		msg.SecurityContext = &pb.ChaincodeSecurityContext{}
+// 	}
+// 	if tx != nil {
+// 		chaincodeLogger.Debug("setting chaincode security context. Transaction different from nil")
+// 		chaincodeLogger.Debugf("setting chaincode security context. Metadata [% x]", tx.Metadata)
 
-		msg.SecurityContext.CallerCert = tx.Cert
-		msg.SecurityContext.CallerSign = tx.Signature
-		binding, err := handler.getSecurityBinding(tx)
-		if err != nil {
-			chaincodeLogger.Errorf("Failed getting binding [%s]", err)
-			return err
-		}
-		msg.SecurityContext.Binding = binding
-		msg.SecurityContext.Metadata = tx.Metadata
+// 		msg.SecurityContext.CallerCert = tx.Cert
+// 		msg.SecurityContext.CallerSign = tx.Signature
+// 		binding, err := handler.getSecurityBinding(tx)
+// 		if err != nil {
+// 			chaincodeLogger.Errorf("Failed getting binding [%s]", err)
+// 			return err
+// 		}
+// 		msg.SecurityContext.Binding = binding
+// 		msg.SecurityContext.Metadata = tx.Metadata
 
-		cis := &pb.ChaincodeInvocationSpec{}
-		if err := proto.Unmarshal(tx.Payload, cis); err != nil {
-			chaincodeLogger.Errorf("Failed getting payload [%s]", err)
-			return err
-		}
+// 		cis := &pb.ChaincodeInvocationSpec{}
+// 		if err := proto.Unmarshal(tx.Payload, cis); err != nil {
+// 			chaincodeLogger.Errorf("Failed getting payload [%s]", err)
+// 			return err
+// 		}
 
-		ctorMsgRaw, err := proto.Marshal(cis.ChaincodeSpec.GetCtorMsg())
-		if err != nil {
-			chaincodeLogger.Errorf("Failed getting ctorMsgRaw [%s]", err)
-			return err
-		}
+// 		ctorMsgRaw, err := proto.Marshal(cis.ChaincodeSpec.GetCtorMsg())
+// 		if err != nil {
+// 			chaincodeLogger.Errorf("Failed getting ctorMsgRaw [%s]", err)
+// 			return err
+// 		}
 
-		msg.SecurityContext.Payload = ctorMsgRaw
-		msg.SecurityContext.TxTimestamp = tx.Timestamp
-	}
-	return nil
-}
+// 		msg.SecurityContext.Payload = ctorMsgRaw
+// 		msg.SecurityContext.TxTimestamp = tx.Timestamp
+// 	}
+// 	return nil
+// }
 
 //if depTx is nil (should be for "deploy" only) just prepare the handler
 //else do a ready process

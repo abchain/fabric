@@ -383,8 +383,14 @@ func (l *baseLearnerImpl) stateForward(ctx context.Context, linfo *ledger.Ledger
 				if err != nil {
 					return err
 				}
+				//if there is no timestamp in block (some legacy code, use UNIX 0 instead)
+				blockTs := time.Unix(0, 0)
+				if blkts := refblk.GetTimestamp(); blkts != nil {
+					blockTs = pb.GetUnixTime(blkts)
+				}
 				//done, we evaluate the txs
-				if _, err := chaincode.ExecuteTransactions2(ctx, l.chainforTx, outTxs, txagent); err != nil {
+				if _, err := chaincode.ExecuteTransactions2(ctx, l.chainforTx,
+					outTxs, blockTs, txagent); err != nil {
 					logger.Errorf("Execute transactions on block %d encounter err, which is fatal: %s",
 						startH, err)
 					return err
@@ -436,15 +442,17 @@ func (l *baseLearnerImpl) Preview(ctx context.Context, pos uint64, txes []*pb.Tr
 		return nil, fmt.Errorf("bulid block fail on create agent: %s", err)
 	}
 
+	previewBlk := l.PreviewSimple(txes)
+
 	//done, we evaluate the txs
-	_, err = chaincode.ExecuteTransactions2(ctx, l.chainforTx, txes, txagent)
+	_, err = chaincode.ExecuteTransactions2(ctx, l.chainforTx,
+		txes, pb.GetUnixTime(previewBlk.GetTimestamp()), txagent)
 	if err != nil {
 		logger.Errorf("Execute transactions on block %d encounter err, which is fatal: %s",
 			pos, err)
 		return nil, err
 	}
 
-	previewBlk := l.PreviewSimple(txes)
 	previewBlk, err = txagent.PreviewBlock(pos, previewBlk)
 	if err != nil {
 		return nil, err

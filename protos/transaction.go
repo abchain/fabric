@@ -198,7 +198,7 @@ func NewTransaction(chaincodeID ChaincodeID, uuid string, function string, argum
 	transaction := new(Transaction)
 	transaction.ChaincodeID = data
 	transaction.Txid = uuid
-	transaction.Timestamp = util.CreateUtcTimestamp()
+	transaction.Timestamp = CreateUtcTimestamp()
 
 	// Build the spec
 	spec := &ChaincodeSpec{Type: ChaincodeSpec_GOLANG,
@@ -221,7 +221,7 @@ func NewTransaction(chaincodeID ChaincodeID, uuid string, function string, argum
 func NewTransactionCore(ttype Transaction_Type, chaincodepayload []byte, basepayload []byte) *Transaction {
 	transaction := new(Transaction)
 	transaction.ChaincodeID = chaincodepayload
-	transaction.Timestamp = util.CreateUtcTimestamp()
+	transaction.Timestamp = CreateUtcTimestamp()
 	transaction.Payload = basepayload
 	transaction.Type = ttype
 	transaction.ConfidentialityLevel = ConfidentialityLevel_PUBLIC
@@ -277,7 +277,7 @@ func NewChaincodeDeployTransaction(chaincodeDeploymentSpec *ChaincodeDeploymentS
 	transaction := new(Transaction)
 	transaction.Type = Transaction_CHAINCODE_DEPLOY
 	transaction.Txid = uuid
-	transaction.Timestamp = util.CreateUtcTimestamp()
+	transaction.Timestamp = CreateUtcTimestamp()
 	cID := chaincodeDeploymentSpec.ChaincodeSpec.GetChaincodeID()
 	if cID != nil {
 		data, err := proto.Marshal(cID)
@@ -312,7 +312,7 @@ func NewChaincodeExecute(chaincodeInvocationSpec *ChaincodeInvocationSpec, uuid 
 	transaction := new(Transaction)
 	transaction.Type = typ
 	transaction.Txid = uuid
-	transaction.Timestamp = util.CreateUtcTimestamp()
+	transaction.Timestamp = CreateUtcTimestamp()
 	cID := chaincodeInvocationSpec.ChaincodeSpec.GetChaincodeID()
 	if cID != nil {
 		data, err := proto.Marshal(cID)
