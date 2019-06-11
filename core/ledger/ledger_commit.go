@@ -78,6 +78,18 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 		}
 	}
 
+	defer func() {
+
+		ledger.readCache.Lock()
+		defer ledger.readCache.Unlock()
+
+		ledger.state.commitState()
+		if err == nil {
+			ledger.state.persistentStateDone()
+			ledger.index.persistDone(refBlockNumber)
+		}
+	}()
+
 	writeBatch := ledger.blockchain.NewWriteBatch()
 	defer writeBatch.Destroy()
 
@@ -93,17 +105,12 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 	if err != nil {
 		return err
 	}
+	ledger.index.persistIndexes(writeBatch, refBlockNumber)
 
 	err = writeBatch.BatchCommit()
 	if err != nil {
 		return err
 	}
-
-	ledger.readCache.Lock()
-	defer ledger.readCache.Unlock()
-
-	ledger.state.commitState()
-	ledger.state.persistentStateDone()
 
 	return nil
 }
