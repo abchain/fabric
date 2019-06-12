@@ -324,9 +324,9 @@ func (blockchain *blockchain) prepareBlock(blkNumber uint64, block *protos.Block
 }
 
 //help to update the non-hash part of a block
-func (blockchain *blockchain) updateBlock(writeBatch *db.DBWriteBatch, blkNumber uint64, block *protos.Block) error {
+func updateBlock(writeBatch *db.DBWriteBatch, blkNumber uint64, block *protos.Block) error {
 
-	blockBytes, err := blockchain.buildingBlock.block.GetBlockBytes()
+	blockBytes, err := block.GetBlockBytes()
 	if err != nil {
 		return err
 	}

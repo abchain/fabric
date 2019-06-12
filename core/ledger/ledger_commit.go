@@ -103,7 +103,7 @@ func (tec *TxEvaluateAndCommit) StateCommitOne(refBlockNumber uint64, refBlock *
 
 	if refBlock.GetNonHashData() == nil {
 		buildExecResults(refBlock, tec.transactionResults)
-		err = ledger.blockchain.updateBlock(writeBatch, refBlockNumber, refBlock)
+		err = updateBlock(writeBatch, refBlockNumber, refBlock)
 		if err != nil {
 			return err
 		}
