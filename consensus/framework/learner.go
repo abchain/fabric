@@ -136,8 +136,9 @@ func NewBaseLedgerLearner(l *ledger.Ledger, peer *node.PeerEngine, cfg Framework
 		ret.stateSyncDist = v
 	}
 
-	if v := conf.GetInt64("dofullsyncwhen"); v != 0 {
-		ret.fullSyncCriterion = uint64(v)
+	//notice it can be zero
+	if conf.IsSet("dofullsyncwhen") {
+		ret.fullSyncCriterion = uint64(conf.GetInt64("dofullsyncwhen"))
 	}
 
 	logger.Infof("Start a learner [%d, %d, %d, %d]", ret.txSyncDist, ret.blockSyncDist, ret.stateSyncDist, ret.fullSyncCriterion)
@@ -272,7 +273,7 @@ func (l *baseLearnerImpl) blockForward(ctx context.Context, linfo *ledger.Ledger
 		return err
 	}
 
-	if fallbehind > uint64(l.stateSyncDist) || linfo.Avaliable.States <= l.fullSyncCriterion {
+	if fallbehind > uint64(l.stateSyncDist) || linfo.Avaliable.States < l.fullSyncCriterion {
 		logger.Infof("State fall behind exceed tolerance (%d) or just at the beginning (%d), do full syncing:",
 			l.stateSyncDist, linfo.Avaliable.States)
 		return syncer.State(ctx)
