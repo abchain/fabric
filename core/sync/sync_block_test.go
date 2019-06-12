@@ -149,6 +149,9 @@ func TestBlockSync_Large(t *testing.T) {
 	testBlocks(t, testLedger, targetLedger, 100)
 	testBlocks(t, testLedger, targetLedger, 120)
 
+	_, err = ledger.GetNewLedger(targetLedger.UnderlyingDB(), nil)
+	testutil.AssertNoError(t, err, "reopen")
+
 }
 
 func TestBlockSync_Resume(t *testing.T) {

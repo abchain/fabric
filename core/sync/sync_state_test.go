@@ -63,6 +63,7 @@ func TestStateSync_Basic(t *testing.T) {
 
 	err = syncer.FinishTask()
 	testutil.AssertNoError(t, err, "sync task finish")
+
 }
 
 func TestStateSync_FullSimu(t *testing.T) {
@@ -169,4 +170,13 @@ func TestStateSync_FullSimu(t *testing.T) {
 	sheight, err := testLedger.GetBlockNumberByState(finalS)
 	testutil.AssertNoError(t, err, "get bkn")
 	testutil.AssertEquals(t, sheight, sdetector.Candidate.Height)
+
+	reopenedL, err := ledger.GetNewLedger(targetLedger.UnderlyingDB(), nil)
+	testutil.AssertNoError(t, err, "reopen ledger after finish")
+
+	reopenInfo, err := reopenedL.GetLedgerInfo()
+	testutil.AssertNoError(t, err, "get ledger info")
+
+	testutil.AssertSame(t, reopenInfo.States.Avaliable, true)
+	testutil.AssertSame(t, reopenInfo.Avaliable.States, sdetector.Candidate.Height+1)
 }

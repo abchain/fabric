@@ -572,6 +572,7 @@ func (stateImpl *StateImpl) ApplyPartialSync(syncData *pb.SyncStateChunk) error 
 		//we has got lastcomputedcryptohash when verify level is -1
 		logger.Infof("---- Syncing to state [%x] finish -----", stateImpl.lastComputedCryptoHash)
 		stateImpl.underSync = nil
+		stateImpl.DeleteKey(db.StateCF, partialStatusKey)
 	}
 
 	return nil

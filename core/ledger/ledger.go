@@ -246,6 +246,11 @@ func sanityCheck(odb *db.OpenchainDB) error {
 	return nil
 }
 
+func (ledger *Ledger) UnderlyingDB() *db.OpenchainDB {
+
+	return ledger.blockchain.OpenchainDB
+}
+
 //overload AddGlobalState in ledgerGlobal
 func (ledger *Ledger) AddGlobalState(parent []byte, state []byte) error {
 
@@ -306,7 +311,12 @@ func (ledger *Ledger) EmptyState() error {
 // This is generally only used during state synchronization when creating a
 // new state from a snapshot.
 func (ledger *Ledger) DeleteALLStateKeysAndValues() error {
-	return ledger.state.DeleteState()
+	err := ledger.state.DeleteState()
+	if err != nil {
+		return err
+	}
+
+	return ledger.state.reCreate(ledger.index)
 }
 
 /////////////////// transaction related methods /////////////////////////////////////

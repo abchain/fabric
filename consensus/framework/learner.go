@@ -141,6 +141,16 @@ func NewBaseLedgerLearner(l *ledger.Ledger, peer *node.PeerEngine, cfg Framework
 		ret.fullSyncCriterion = uint64(conf.GetInt64("dofullsyncwhen"))
 	}
 
+	if !linfo.States.Avaliable {
+		if conf.GetBool("syncingresuming.disabled") {
+			logger.Errorf("we have pending full-state syncing but not resume it")
+			err := l.DeleteALLStateKeysAndValues()
+			if err != nil {
+				logger.Fatalf("clean state failure: %s", err)
+			}
+		}
+	}
+
 	logger.Infof("Start a learner [%d, %d, %d, %d]", ret.txSyncDist, ret.blockSyncDist, ret.stateSyncDist, ret.fullSyncCriterion)
 
 	return ret
