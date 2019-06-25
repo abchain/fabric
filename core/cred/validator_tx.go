@@ -197,6 +197,10 @@ func (f *txHandlerDefault) RemovePreValidator(id string) {
 	delete(f.certcache, id)
 }
 
+func (f *txHandlerDefault) GetValidator(string) pb.TxPreHandler {
+	return nil
+}
+
 func newVerifier(id string, cert *x509.Certificate, parent *txHandlerDefault) *txVerifier {
 
 	ret := new(txVerifier)

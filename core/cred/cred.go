@@ -34,7 +34,7 @@ type TxHandlerFactory interface {
 	//notify all of the preparing for a specified id (i.e. caches) can be complete released
 	RemovePreValidator(id string)
 	//tx prevalidator, handle any tx context with peerID being tagged, and fill the security context
-	pb.TxPreHandler
+	GetValidator(id string) pb.TxPreHandler
 }
 
 // DataEncryptor is used to encrypt/decrypt chaincode's state data
