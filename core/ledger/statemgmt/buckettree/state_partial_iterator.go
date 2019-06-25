@@ -128,7 +128,7 @@ func (partialItr *PartialSnapshotIterator) Seek(offset *protos.SyncOffset) error
 		endNum = partialItr.getNumBuckets(level)
 	}
 
-	logger.Infof("Required bucketTreeOffset: [%+v] start-end [%d-%d]",
+	logger.Debugf("Required bucketTreeOffset: [%+v] start-end [%d-%d]",
 		bucketTreeOffset, startNum, endNum)
 
 	partialItr.currentBucketNum = startNum
@@ -228,7 +228,7 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
 		}
 
 	} else {
-		logger.Infof("iterate bucketnode by legacy mode")
+		logger.Debug("iterate bucketnode by legacy mode")
 		partialItr.iterateBucketLegacy(md)
 	}
 

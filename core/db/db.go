@@ -159,7 +159,7 @@ func (openchainDB *OpenchainDB) GetManagedSnapshot(name string) *DBSnapshot {
 	openchainDB.managedSnapshots.Lock()
 	defer openchainDB.managedSnapshots.Unlock()
 	if ret := openchainDB.managedSnapshots.m[name]; ret != nil {
-		return ret.Clone()
+		return ret.clone()
 	} else {
 		return nil
 	}
@@ -176,18 +176,25 @@ func (openchainDB *OpenchainDB) UnManageSnapshot(name string) {
 	}
 }
 
-//manage a snapshot, if name is duplicated, the old one is returned and should be released
-//notice: the managed snapshot CANNOT call Release anymore
-func (openchainDB *OpenchainDB) ManageSnapshot(name string, sn *DBSnapshot) *DBSnapshot {
+//manage a new snapshot for current db, if name is duplicated, the old one is returned
+//and should be released. notice the managed snapshot CANNOT call Release anymore
+func (openchainDB *OpenchainDB) ManageSnapshot(name string) *DBSnapshot {
+
+	newsn := openchainDB.GetSnapshot()
+	newsn.hosting = &snapshotManager{count: 1}
+
 	openchainDB.managedSnapshots.Lock()
 	defer openchainDB.managedSnapshots.Unlock()
-	old := openchainDB.managedSnapshots.m[name]
-	//sanity check
-	if sn.hosting != nil {
-		panic("Wrong code: you manage a managed snapshot")
+
+	//sanity check ...
+	if len(openchainDB.managedSnapshots.m) > maxOpenedExtend/2 {
+		dbLogger.Warningf("We have cached too many snapshots, never cache current")
+		newsn.Release()
+		return nil
 	}
-	sn.hosting = &snapshotManager{count: 1}
-	openchainDB.managedSnapshots.m[name] = sn
+
+	old := openchainDB.managedSnapshots.m[name]
+	openchainDB.managedSnapshots.m[name] = newsn
 	return old
 }
 
@@ -465,7 +472,7 @@ func (e *DBIterator) Close() {
 	e.h = nil
 }
 
-func (e *DBSnapshot) Clone() *DBSnapshot {
+func (e *DBSnapshot) clone() *DBSnapshot {
 
 	if e == nil {
 		return nil

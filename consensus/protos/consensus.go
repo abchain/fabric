@@ -2,8 +2,15 @@ package csprotos
 
 import proto "github.com/golang/protobuf/proto"
 import "github.com/golang/protobuf/ptypes/empty"
+import pb "github.com/abchain/fabric/protos"
 
 var Nothing = &empty.Empty{}
+
+type PendingTransactions []*pb.TransactionHandlingContext
+
+func (m PendingTransactions) PType() []*pb.TransactionHandlingContext {
+	return []*pb.TransactionHandlingContext(m)
+}
 
 type ConsensusRet []byte
 

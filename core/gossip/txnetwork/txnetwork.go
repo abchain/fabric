@@ -143,12 +143,13 @@ func (g *notifies) handleSetSelf(id string, state *pb.PeerTxState) {
 }
 
 type txNetworkPeers struct {
-	maxPeers int
-	sync.RWMutex
-	selfId      string
-	lruQueue    *list.List
-	lruIndex    map[string]*list.Element
+	maxPeers    int
 	peerHandler cred.TxHandlerFactory
+
+	sync.RWMutex
+	selfId   string
+	lruQueue *list.List
+	lruIndex map[string]*list.Element
 }
 
 func (g *txNetworkPeers) truncateTailPeer(cnt int) (ret []string) {
@@ -325,9 +326,11 @@ func (g *txNetworkPeers) TouchPeer(id string, status *pb.PeerTxState) {
 }
 
 type transactionPool struct {
+	ledger       *ledger.Ledger
+	txTerminal   pb.TxPreHandler
+	preValidator cred.TxHandlerFactory
+
 	sync.RWMutex
-	ledger        *ledger.Ledger
-	txTerminal    pb.TxPreHandler
 	cCaches       map[string]commitData
 	cPendingTxs   map[string]bool
 	selfTxProcess func() (uint64, []byte)

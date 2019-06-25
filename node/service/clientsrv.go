@@ -210,9 +210,15 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 
 	//TODO: we should select ledger from cc name of query
 	l := d.node.DefaultLedger()
-
 	//TODO: now we can specified block height, snapshot, etc
 	querystate := ledger.NewQueryExecState(l)
+	lsn, _ := l.CreateSnapshot()
+	if lsn == nil {
+		clisrvLogger.Warningf("Could not get state snapshot, we must use bake db")
+	} else {
+		defer lsn.Release()
+		querystate.BindSnapshot(lsn.DBSnapshot)
+	}
 
 	err, chrte := chain.Launch(ctx, l, querystate, ccname)
 	if err != nil {

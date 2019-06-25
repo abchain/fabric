@@ -80,13 +80,13 @@ func TestMining(t *testing.T) {
 	cslearner := framework.NewBaseLedgerLearner(ne.DefaultLedger(),
 		ne.DefaultPeer(), framework.NewConfig(nil))
 
-	miner := monologue.NewPurposer(true, monologue.DefaultWrapper(syscc.Name, "ANY"))
-	confirmer := monologue.BuildConfirm(syscc.Name, cbase.PurposeEntry(), cslearner)
+	miner := monologue.NewMiner(monologue.DefaultWrapper(syscc.Name, "ANY"))
+	confirmer := monologue.BuildConfirm(syscc.Name, cbase.ProposeEntry(), cslearner)
 
 	txdeliver, err := framework.GenDeliverFromNode(ne, "")
 	testutil.AssertNoError(t, err, "gen deliver")
 
-	mining := cbase.BuildBasePurposerRoutine(miner, txdeliver, 5, ne.TxTopic[""].NewClient())
+	mining := cbase.BuildBaseProposalRoutine(miner, txdeliver, 5, ne.TxTopic[""].NewClient())
 
 	//build 2 tx indicate unexisted cc
 	unexistedCC := &pb.ChaincodeID{Name: "Not existed"}

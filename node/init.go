@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/abchain/fabric/core/config"
 	"github.com/abchain/fabric/core/cred"
-	"github.com/abchain/fabric/core/cred/driver"
 	"github.com/abchain/fabric/core/db"
 	gossip_stub "github.com/abchain/fabric/core/gossip/stub"
 	"github.com/abchain/fabric/core/gossip/txnetwork"
@@ -64,9 +63,9 @@ func (ne *NodeEngine) addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, er
 	return l, nil
 }
 
-func (ne *NodeEngine) GenCredDriver() *cred_driver.Credentials_PeerDriver {
-	drv := cred_driver.Credentials_PeerCredBase{ne.Cred.Peer, ne.Cred.Tx}
-	return &cred_driver.Credentials_PeerDriver{drv.Clone(), nil, ne.Endorsers}
+func (ne *NodeEngine) GenCredDriver() *credentials.Credentials_PeerDriver {
+	drv := credentials.Credentials_PeerCredBase{ne.Cred.Peer, ne.Cred.Tx}
+	return &credentials.Credentials_PeerDriver{drv.Clone(), nil, ne.Endorsers}
 }
 
 //preinit phase simply read all peer's name in the config and create them,
@@ -171,7 +170,7 @@ func (ne *NodeEngine) ExecInit() error {
 	}
 
 	//create base credentials
-	creddrv := new(cred_driver.Credentials_PeerDriver)
+	creddrv := new(credentials.Credentials_PeerDriver)
 	if err := creddrv.Drive(config.SubViper("node")); err == nil {
 		ne.Cred.Peer = creddrv.PeerValidator
 		ne.Cred.Tx = creddrv.TxValidator
@@ -326,9 +325,9 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	pe.TxHandlerOpts.ccSpecValidator = NewCCSpecValidator(node.Cred.ccSpecValidator)
 	//construct txhandler groups:
 	/*
+		(prevalidators binding in txnetwork entry)
 		yfcc name parser,
 		ccspec (custom cert),
-		tx validator (tx security context),
 		plain tx parsing,
 		[confidentiality],
 		[peer custom validator],
@@ -340,7 +339,6 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	handlerArray := []pb.TxPreHandler{
 		pb.YFCCNameHandler,
 		pe.TxHandlerOpts.ccSpecValidator,
-		validatorToHandler(credrv.TxValidator),
 		pb.PlainTxHandler,
 	}
 

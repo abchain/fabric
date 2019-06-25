@@ -480,10 +480,20 @@ func (p *peerTxMemPool) handlePeerUpdate(u txPeerUpdate, id string, g *txPoolGlo
 	txcache := g.AcquireCaches(id)
 	txcache.txHeightRet = heightChan
 
-	txTerminal := pb.MutipleTxHandler(g.transactionPool.buildCompleteTxHandler(),
-		&txChainValidator{p.last.digest},
-		g.transactionPool.buildGetCommitHandler(heightChan),
-		networkTagger(id), g.transactionPool.txTerminal)
+	var prevalidator pb.TxPreHandler
+	if g.preValidator == nil {
+		//at least we just tag the tx
+		prevalidator = networkTagger(id)
+	} else {
+		prevalidator = g.preValidator.GetValidator(id)
+	}
+
+	txTerminal := pb.MutipleTxHandler(
+		g.transactionPool.buildCompleteTxHandler(),          //complete tx if it is sent with lite format
+		&txChainValidator{p.last.digest},                    //check tx is precede with the parent one
+		g.transactionPool.buildGetCommitHandler(heightChan), //avoiding duplicated handling for the same tx
+		prevalidator, //prevalidating
+		g.transactionPool.txTerminal)
 
 	u.Transactions, err = txcache.AddTxsToTarget(u.BeginSeries, u.Transactions, txTerminal)
 	//from now, we must handle the completed txs even an error is encountered

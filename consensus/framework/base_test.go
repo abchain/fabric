@@ -174,15 +174,33 @@ func Test_MainRoutineWriteBack(t *testing.T) {
 
 type dummyPurposer bool
 
-func (b dummyPurposer) RequireState() bool { return bool(b) }
-func (dummyPurposer) Purpose(blk *cspb.PurposeBlock) *cspb.ConsensusPurpose {
-	return &cspb.ConsensusPurpose{
+func (b dummyPurposer) Propose(txes cspb.PendingTransactions, l LedgerLearnerInfo) <-chan *cspb.ConsensusPurpose {
+
+	out := make(chan *cspb.ConsensusPurpose, 1)
+
+	blk := new(cspb.PurposeBlock)
+	if b {
+		var err error
+		blk.N = l.Ledger().GetBlockchainSize()
+		blk.B, err = l.Preview(context.Background(), blk.N, txes.PType())
+		if err != nil {
+			panic(err)
+		}
+
+	} else {
+		blk.B = l.PreviewSimple(txes.PType())
+		blk.N, blk.B.PreviousBlockHash = l.HistoryTop()
+		blk.N++
+	}
+
+	out <- &cspb.ConsensusPurpose{
 		Out: &cspb.ConsensusPurpose_Txs{
 			Txs: &pb.TransactionBlock{
 				Transactions: []*pb.Transaction{framework_example.BuildTransaction(blk.N, blk.B)},
 			},
 		},
 	}
+	return out
 }
 func (dummyPurposer) Cancel() {}
 
@@ -218,7 +236,7 @@ func Test_PurposingBase(t *testing.T) {
 			return
 		}
 
-		purpose := cbase.BuildBasePurposerRoutine(dummyPurposer(true),
+		proposal := cbase.BuildBaseProposalRoutine(dummyPurposer(true),
 			dummyDeliver(func(txs []*pb.Transaction) {
 				for _, txe := range turnTxe(txs) {
 					cbase.immediateH <- txe
@@ -233,7 +251,7 @@ func Test_PurposingBase(t *testing.T) {
 		txTopic[0].Write(txes[2])
 		txTopic[1].Write(txes[1])
 
-		wait := purpose()
+		wait := proposal()
 
 		runCtx, endf := context.WithTimeout(context.Background(), 1000*time.Millisecond)
 		defer endf()
@@ -243,7 +261,7 @@ func Test_PurposingBase(t *testing.T) {
 			close(runEnd)
 		}()
 
-		testutil.AssertNoError(t, wait(context.Background()), "purpose result")
+		testutil.AssertNoError(t, wait(context.Background()), "proposal result")
 		<-runEnd
 
 		linfo, err := learner.ledger.GetLedgerInfo()
@@ -266,7 +284,7 @@ func Test_PurposingBase(t *testing.T) {
 		txTopic[1].Write(txes[4])
 		txTopic[1].Write(txes[5])
 
-		wait = purpose()
+		wait = proposal()
 
 		runCtx, endf = context.WithTimeout(context.Background(), 1000*time.Millisecond)
 		defer endf()
@@ -277,7 +295,7 @@ func Test_PurposingBase(t *testing.T) {
 			close(runEnd)
 		}()
 
-		testutil.AssertNoError(t, wait(context.Background()), "purpose result")
+		testutil.AssertNoError(t, wait(context.Background()), "proposal result")
 		<-runEnd
 
 		linfo, err = learner.ledger.GetLedgerInfo()
@@ -296,13 +314,15 @@ type failPurposer struct {
 	dummyPurposer
 }
 
-func (fp *failPurposer) Purpose(blk *cspb.PurposeBlock) *cspb.ConsensusPurpose {
+func (fp *failPurposer) Propose(txes cspb.PendingTransactions, l LedgerLearnerInfo) <-chan *cspb.ConsensusPurpose {
 	if fp.failit {
-		return &cspb.ConsensusPurpose{
+		out := make(chan *cspb.ConsensusPurpose, 1)
+		out <- &cspb.ConsensusPurpose{
 			Out: &cspb.ConsensusPurpose_Error{Error: "just fail"},
 		}
+		return out
 	} else {
-		return fp.dummyPurposer.Purpose(blk)
+		return fp.dummyPurposer.Propose(txes, l)
 	}
 
 }
@@ -332,9 +352,9 @@ func Test_PurposingFail(t *testing.T) {
 			return
 		}
 
-		purposerFailable := &failPurposer{true, dummyPurposer(false)}
+		proposeFailable := &failPurposer{true, dummyPurposer(false)}
 
-		purpose := cbase.BuildBasePurposerRoutine(purposerFailable,
+		proposal := cbase.BuildBaseProposalRoutine(proposeFailable,
 			dummyDeliver(func(txs []*pb.Transaction) {
 				for _, txe := range turnTxe(txs) {
 					cbase.immediateH <- txe
@@ -349,7 +369,7 @@ func Test_PurposingFail(t *testing.T) {
 		txTopic[0].Write(txes[2])
 		txTopic[1].Write(txes[1])
 
-		wait := purpose()
+		wait := proposal()
 
 		runCtx, endf := context.WithTimeout(context.Background(), 1000*time.Millisecond)
 		defer endf()
@@ -359,7 +379,7 @@ func Test_PurposingFail(t *testing.T) {
 			close(runEnd)
 		}()
 
-		testutil.AssertError(t, wait(context.Background()), "purpose fail result")
+		testutil.AssertError(t, wait(context.Background()), "proposal fail result")
 		<-runEnd
 
 		runCtx, endf = context.WithTimeout(context.Background(), 1000*time.Millisecond)
@@ -371,9 +391,9 @@ func Test_PurposingFail(t *testing.T) {
 			close(runEnd)
 		}()
 
-		purposerFailable.failit = false
-		wait = purpose()
-		testutil.AssertNoError(t, wait(context.Background()), "purpose result")
+		proposeFailable.failit = false
+		wait = proposal()
+		testutil.AssertNoError(t, wait(context.Background()), "proposal result")
 		<-runEnd
 
 		linfo, err := learner.ledger.GetLedgerInfo()

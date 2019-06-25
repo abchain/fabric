@@ -1,6 +1,7 @@
 package monologue
 
 import (
+	"errors"
 	"github.com/abchain/fabric/consensus/framework"
 	cspb "github.com/abchain/fabric/consensus/protos"
 	"github.com/abchain/fabric/core/chaincode/shim"
@@ -70,13 +71,13 @@ func DefaultWrapper(ccname string, method string) func([]byte) (*pb.Transaction,
 //should alternately call mining - confirming - mining
 //the deliver should direct send tx into local learner instead of the tx network,
 //which is provided by framework.baseLearnerImpl
-func BuildConfirm(ccName string, purposeC chan<- framework.PurposeTask,
+func BuildConfirm(ccName string, proposalC chan<- framework.ProposalTask,
 	deliver framework.ConsensusTxDeliver) func(uint64, []byte) {
 
 	wrapper := DefaultWrapper(ccName, tipMethod)
 
 	return func(n uint64, hash []byte) {
-		purposeC <- framework.PurposeTask(func(ctx context.Context, _ framework.LedgerLearnerInfo) {
+		proposalC <- framework.ProposalTask(func(ctx context.Context, _ framework.LedgerLearnerInfo) {
 			tipBlock := new(cspb.PurposeBlock)
 			tipBlock.N = n + 1
 			tipBlock.B = new(pb.Block)
@@ -94,58 +95,94 @@ func BuildConfirm(ccName string, purposeC chan<- framework.PurposeTask,
 
 }
 
-type purposer struct {
-	blockWithStateHash bool
-	metaTagger         func(*cspb.PurposeBlock) []byte
-	wrapper            func([]byte) (*pb.Transaction, error)
+type miner struct {
+	metaTagger func(*cspb.PurposeBlock) []byte
+	wrapper    func([]byte) (*pb.Transaction, error)
+	cancelF    context.CancelFunc
 }
 
 func defaultTagger(*cspb.PurposeBlock) []byte {
 	return []byte("YAFABRIC MONOLOGUE BUILDER")
 }
 
-func NewPurposer(withstate bool, wrapper func([]byte) (*pb.Transaction, error)) *purposer {
+func NewMiner(wrapper func([]byte) (*pb.Transaction, error)) *miner {
 
-	return &purposer{withstate, defaultTagger, wrapper}
+	return &miner{defaultTagger, wrapper, nil}
 
 }
 
-func (p *purposer) SetTagger(f func(*cspb.PurposeBlock) []byte) { p.metaTagger = f }
+func (p *miner) SetTagger(f func(*cspb.PurposeBlock) []byte) { p.metaTagger = f }
 
-//implement of  framework.ConsensusPurposer
-func (p *purposer) RequireState() bool { return p.blockWithStateHash }
-func (p *purposer) Cancel()            {}
-func (p *purposer) Purpose(blk *cspb.PurposeBlock) *cspb.ConsensusPurpose {
+//implement of  framework.ConsensusProposal
+func (p *miner) Cancel() {
+	if p.cancelF != nil {
+		p.cancelF()
+		p.cancelF = nil
+	}
+}
+
+//miner only work when the target ledger is at "top" (i.e.: it has no blocks further than
+//current state)
+func (p *miner) propose(txes []*pb.TransactionHandlingContext,
+	l framework.LedgerLearnerInfo) (*pb.Transaction, error) {
 
 	if p.wrapper == nil {
-		return &cspb.ConsensusPurpose{
-			Out: &cspb.ConsensusPurpose_Error{Error: "No wrapper"},
-		}
+		panic("No wrapper")
+	}
+
+	linfo, err := l.Ledger().GetLedgerInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	if linfo.Avaliable.States < linfo.Avaliable.Blocks {
+		return nil, errors.New("State is fallen behind")
+	}
+
+	var wctx context.Context
+	wctx, p.cancelF = context.WithCancel(context.Background())
+
+	blk := new(cspb.PurposeBlock)
+	blk.N = linfo.GetHeight()
+	blk.B, err = l.Preview(wctx, blk.N, txes)
+	if err != nil {
+		return nil, err
 	}
 
 	metaData := p.metaTagger(blk)
 	//we should also truncate the tx part and non-hash part
+	//make it a RAW block
 	blk.GetB().ConsensusMetadata = metaData
 	blk.GetB().Transactions = nil
 	blk.GetB().NonHashData = nil
 
 	payload, err := blk.Bytes()
 	if err != nil {
-		return &cspb.ConsensusPurpose{
-			Out: &cspb.ConsensusPurpose_Error{Error: err.Error()},
-		}
+		return nil, err
 	}
 
-	outTx, err := p.wrapper(payload)
+	return p.wrapper(payload)
+
+}
+
+func (p *miner) Propose(txes cspb.PendingTransactions,
+	l framework.LedgerLearnerInfo) <-chan *cspb.ConsensusPurpose {
+
+	outC := make(chan *cspb.ConsensusPurpose, 1)
+
+	tx, err := p.propose(txes.PType(), l)
 	if err != nil {
-		return &cspb.ConsensusPurpose{
+		outC <- &cspb.ConsensusPurpose{
 			Out: &cspb.ConsensusPurpose_Error{Error: err.Error()},
+		}
+	} else {
+		outC <- &cspb.ConsensusPurpose{
+			Out: &cspb.ConsensusPurpose_Txs{
+				Txs: &pb.TransactionBlock{Transactions: []*pb.Transaction{tx}},
+			},
 		}
 	}
 
-	return &cspb.ConsensusPurpose{
-		Out: &cspb.ConsensusPurpose_Txs{
-			Txs: &pb.TransactionBlock{Transactions: []*pb.Transaction{outTx}},
-		},
-	}
+	return outC
+
 }

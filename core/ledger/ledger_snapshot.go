@@ -14,10 +14,6 @@ type LedgerSnapshot struct {
 	*db.DBSnapshot
 }
 
-func (sledger *LedgerSnapshot) Clone() *LedgerSnapshot {
-	return &LedgerSnapshot{sledger.stateM, sledger.DBSnapshot.Clone()}
-}
-
 func (sledger *LedgerSnapshot) GetParitalRangeIterator() (statemgmt.PartialRangeIterator, error) {
 
 	return sledger.stateM.GetPartialRangeIterator(sledger.DBSnapshot)
@@ -256,6 +252,11 @@ func initNewLedgerSnapshotManager(odb *db.OpenchainDB, s *stateWrapper, config *
 	}
 
 	lsm.db = odb
+	if s.isSyncing() {
+		ledgerLogger.Info("State is syncing, not cache current snapshots")
+		return lsm
+	}
+
 	if s.cache.refHeight > 0 {
 		lsm.currentHeight = s.cache.refHeight
 		curBlk := lsm.currentHeight - 1
@@ -267,7 +268,7 @@ func initNewLedgerSnapshotManager(odb *db.OpenchainDB, s *stateWrapper, config *
 			lsm.snapshotCurrent(shash)
 		}
 
-		if oldSN := odb.ManageSnapshot(currentSNTag, odb.GetSnapshot()); oldSN != nil {
+		if oldSN := odb.ManageSnapshot(currentSNTag); oldSN != nil {
 			oldSN.Release()
 		}
 	}
@@ -285,7 +286,12 @@ func (lh *ledgerHistory) GetStableIndex() *protos.StateFilter {
 }
 
 func (lh *ledgerHistory) GetSnapshotCurrent() *db.DBSnapshot {
-	return lh.db.GetManagedSnapshot(currentSNTag)
+	sn := lh.db.GetManagedSnapshot(currentSNTag)
+	if sn == nil {
+		ledgerLogger.Warningf("Current snapshot not managed, create it instead")
+		return lh.db.GetSnapshot()
+	}
+	return sn
 }
 
 func (lh *ledgerHistory) GetSnapshot(blknum uint64) (sn *db.DBSnapshot, blkn uint64) {
@@ -319,7 +325,7 @@ func (lh *ledgerHistory) historyIndex(blknum uint64) (int, uint64) {
 }
 
 func (lh *ledgerHistory) snapshotCurrent(shash []byte) {
-	duplicatedSn := lh.db.ManageSnapshot(indexState(shash), lh.db.GetSnapshot())
+	duplicatedSn := lh.db.ManageSnapshot(indexState(shash))
 	if duplicatedSn != nil {
 		ledgerLogger.Warningf("We have duplidated snapshot in state %X and release it", shash)
 		duplicatedSn.Release()
@@ -419,7 +425,7 @@ func (lh *ledgerHistory) Update(shash []byte, blknum uint64) {
 		ledgerLogger.Debugf("cache current snapshot [%X]@%d", lh.currentState, blknum)
 	}
 	//also cache another copy of current db
-	oldSN := lh.db.ManageSnapshot(currentSNTag, lh.db.GetSnapshot())
+	oldSN := lh.db.ManageSnapshot(currentSNTag)
 	if oldSN != nil {
 		oldSN.Release()
 	}

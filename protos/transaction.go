@@ -498,6 +498,14 @@ type TxPreHandler interface {
 	Handle(*TransactionHandlingContext) (*TransactionHandlingContext, error)
 }
 
+type FailureHandler struct {
+	Err error
+}
+
+func (e FailureHandler) Handle(*TransactionHandlingContext) (*TransactionHandlingContext, error) {
+	return nil, e.Err
+}
+
 //convert a function to a prehandler interface
 type FuncAsTxPreHandler func(*TransactionHandlingContext) (*TransactionHandlingContext, error)
 

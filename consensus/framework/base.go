@@ -15,15 +15,15 @@ type ConsensusState []byte
 type ConsensusHistory []byte
 
 //wrap the interface of miner
-type ConsensusPurposer interface {
-	//the intrinsic property of purposer: which require the purposed tx is evaluated base on the
-	//(first) reference history, and the state hash is provided. if false, state and height in
-	//purpose can be omitted
-	RequireState() bool
-	//input a reference block for purposer to create the real consensus transaction, data
-	//in input is all reference and can be freely used, drop or modified by purposer
-	Purpose(*cspb.PurposeBlock) *cspb.ConsensusPurpose
-	//interrupt the purposing process by an external call
+type ConsensusProposal interface {
+	//input a group of transaction (and their handling context) to create
+	//the real consensus transaction, currently the puprposer CAN NOT rejected part of
+	//txs in input. It must accept or rejected them at all
+	//DO NOT CALL methods of the input ledgerlearnerinfo outside of propose (for example, run
+	//them in an spawned goroutine) or we may got race-condition on the target ledger
+	//which binding to the learner
+	Propose(cspb.PendingTransactions, LedgerLearnerInfo) <-chan *cspb.ConsensusPurpose
+	//interrupt the proposal by an external call
 	Cancel()
 }
 
@@ -33,11 +33,11 @@ type ConsensusTxDeliver interface {
 	Send(context.Context, []*pb.Transaction) error
 }
 
-type PurposeTask func(context.Context, LedgerLearnerInfo)
+type ProposalTask func(context.Context, LedgerLearnerInfo)
 
 type ConsensusBase struct {
 	immediateH chan *pb.TransactionHandlingContext
-	purpose    chan PurposeTask
+	proposal   chan ProposalTask
 
 	cstxTopic   litekfk.Topic
 	triggerTime time.Duration
@@ -52,7 +52,7 @@ func NewConsensusBase(topic litekfk.Topic) *ConsensusBase {
 func NewConsensusBaseNake(cfg FrameworkConfig) *ConsensusBase {
 	ret := &ConsensusBase{
 		immediateH:  make(chan *pb.TransactionHandlingContext, 1),
-		purpose:     make(chan PurposeTask, 1),
+		proposal:    make(chan ProposalTask, 1),
 		triggerTime: 5 * time.Second,
 	}
 
@@ -67,8 +67,8 @@ func NewConsensusBaseNake(cfg FrameworkConfig) *ConsensusBase {
 	return ret
 }
 
-func (cb *ConsensusBase) PurposeEntry() chan<- PurposeTask {
-	return cb.purpose
+func (cb *ConsensusBase) ProposeEntry() chan<- ProposalTask {
+	return cb.proposal
 }
 
 func (cb *ConsensusBase) MakeScheme(ne *node.NodeEngine, ccname string) {
@@ -94,13 +94,13 @@ func (cb *ConsensusBase) MakeScheme(ne *node.NodeEngine, ccname string) {
 		}))
 }
 
-//BuildBasePurposeRoutine return this type for trigger a new purposing progress
+//BuildBaseProposalRoutine return this type for trigger a new proposal progress
 //the function can be called mutiple times and after each calling user MUST
 //wait the returned wait function for another call, or undefined behaviour
 //will be raised.
 //use can passed a done context to wait function, which will try to stop
-//current running purposing progress as soon as possible
-type DoPurpose func() func(context.Context) error
+//current running proposal progress as soon as possible
+type ProposalFunc func() func(context.Context) error
 
 //an default handling for purposing (mining) which can be handled in idle time of
 //mainroutine, it was a very base one which do nothing extra (for example: prepare
@@ -108,8 +108,8 @@ type DoPurpose func() func(context.Context) error
 //the reason that mining only run when main routine is idle is node is difficult to
 //made reasonable block when it was just busy for catching the latest state
 //this method generate
-func (cb *ConsensusBase) BuildBasePurposerRoutine(purposer ConsensusPurposer,
-	deliver ConsensusTxDeliver, batchLimit int, sourceCli ...*litekfk.Client) DoPurpose {
+func (cb *ConsensusBase) BuildBaseProposalRoutine(miner ConsensusProposal,
+	deliver ConsensusTxDeliver, batchLimit int, sourceCli ...*litekfk.Client) ProposalFunc {
 
 	cpCli := make([]*litekfk.Client, len(sourceCli))
 	copy(cpCli, sourceCli)
@@ -121,11 +121,11 @@ func (cb *ConsensusBase) BuildBasePurposerRoutine(purposer ConsensusPurposer,
 			cpCli[len(readers)] = cli
 			readers = append(readers, rd)
 		} else {
-			panic(fmt.Sprintf("read topic [%d] fail when preparing purpose: %s", i, err))
+			panic(fmt.Sprintf("read topic [%d] fail when preparing proposal: %s", i, err))
 		}
 	}
 
-	purposerRes := make(chan error)
+	proposalRes := make(chan error)
 
 	waitF := func(ctx context.Context) (err error) {
 
@@ -141,7 +141,7 @@ func (cb *ConsensusBase) BuildBasePurposerRoutine(purposer ConsensusPurposer,
 					logger.Errorf("topic reader encounter fail: %s, retry it", rdErr)
 					if rd, rdErr = cpCli[i].Read(litekfk.ReadPos_ResumeOrDefault); rdErr != nil {
 						//we can ensure that reader normally should not return error
-						panic(fmt.Sprintf("Resume purposer reader fail: %s", rdErr))
+						panic(fmt.Sprintf("Resume tx reader fail: %s", rdErr))
 					} else {
 						readers[i] = rd
 					}
@@ -151,10 +151,10 @@ func (cb *ConsensusBase) BuildBasePurposerRoutine(purposer ConsensusPurposer,
 		}()
 
 		select {
-		case err = <-purposerRes:
+		case err = <-proposalRes:
 		case <-ctx.Done():
-			purposer.Cancel()
-			err = <-purposerRes
+			miner.Cancel()
+			err = <-proposalRes
 		}
 		return
 	}
@@ -187,81 +187,40 @@ func (cb *ConsensusBase) BuildBasePurposerRoutine(purposer ConsensusPurposer,
 			workReaders = workReaders[:lastq]
 		}
 
-		var previewBlk *cspb.PurposeBlock
-		if purposer.RequireState() {
-
-			var err error
-			previewBlk, err = func() (*cspb.PurposeBlock, error) {
-				linfo, err := l.GetLedgerInfo()
-				if err != nil {
-					return nil, fmt.Errorf("Get ledger info fail: %s", err)
-				}
-
-				if linfo.Avaliable.Blocks != linfo.Avaliable.States {
-					return nil, fmt.Errorf("We have no matched state for purposing (state @%d vs block @%d), give up",
-						linfo.Avaliable.States, linfo.Avaliable.Blocks)
-				}
-
-				pblk, err := learner.Preview(ctx, linfo.GetHeight(), outputTxe)
-				if err != nil {
-					return nil, fmt.Errorf("can not preview target hash: %s, give up", err)
-				}
-
-				return &cspb.PurposeBlock{
-					N: linfo.GetHeight(),
-					B: pblk,
-				}, nil
-			}()
-
-			if err != nil {
-				//purpose prepare fail, we just deliver a failure message
-				logger.Errorf("Prepare purposing fail: %s, do not spawn purpose thread", err)
-				go func() {
-					purposerRes <- err
-				}()
-				return
-			}
-
-		} else {
-			previewBlk = &cspb.PurposeBlock{B: learner.PreviewSimple(outputTxe)}
-			previewBlk.N, previewBlk.B.PreviousBlockHash = learner.HistoryTop()
-			previewBlk.N++
-		}
-
-		go func(previewBlk *cspb.PurposeBlock,
-			deliver ConsensusTxDeliver) (ferr error) {
+		startH := time.Now()
+		go func(ret <-chan *cspb.ConsensusPurpose) (ferr error) {
 			defer func() {
-				purposerRes <- ferr
+				logger.Infof("-------- Proposal End after %.3f sec: %v",
+					time.Since(startH).Seconds(), ferr)
+				proposalRes <- ferr
 			}()
 
-			startH := time.Now()
-			logger.Infof("--------------- Do purposing ----------------")
-			logger.Infof("  Wtih %d Transactions", len(previewBlk.GetB().GetTransactions()))
-			logger.Infof("  On top of block %d@[%.16X]", previewBlk.GetN()-1, previewBlk.GetB().GetPreviousBlockHash())
-			logger.Infof("  Wtih state [%.16X]", previewBlk.GetB().GetStateHash())
-
-			ret := purposer.Purpose(previewBlk)
-
-			logger.Infof("--------------- End in %.3f sec ----------------", time.Now().Sub(startH).Seconds())
-			switch r := ret.GetOut().(type) {
-			case *cspb.ConsensusPurpose_Txs:
-				return deliver.Send(ctx, r.Txs.GetTransactions())
-			case *cspb.ConsensusPurpose_Nothing:
-				logger.Debugf("Miner output nothing")
-			case *cspb.ConsensusPurpose_Error:
-				logger.Errorf("Purposer encounter error: %s", r.Error)
-				return fmt.Errorf("%s", r.Error)
-			default:
-				return fmt.Errorf("Unexpected output: %v", r)
+			logger.Infof("------ Do proposal wtih %d Transactions, prepare in %.3f sec--------",
+				len(outputTxe), time.Since(startH).Seconds())
+			select {
+			case csoutput := <-ret:
+				switch r := csoutput.GetOut().(type) {
+				case *cspb.ConsensusPurpose_Txs:
+					return deliver.Send(ctx, r.Txs.GetTransactions())
+				case *cspb.ConsensusPurpose_Nothing:
+					logger.Debugf("Miner output nothing")
+					return nil
+				case *cspb.ConsensusPurpose_Error:
+					logger.Errorf("Purposer encounter error: %s", r.Error)
+					return fmt.Errorf("%s", r.Error)
+				default:
+					return fmt.Errorf("Unexpected output: %v", r)
+				}
+			case <-ctx.Done():
+				return ctx.Err()
 			}
 
-			return nil
-		}(previewBlk, deliver)
+		}(miner.Propose(outputTxe, learner))
 
 	}
 
 	return func() func(context.Context) error {
-		cb.purpose <- coreTask
+		cb.ProposeEntry() <- coreTask
 		return waitF
 	}
 }
@@ -304,7 +263,7 @@ func (cb *ConsensusBase) MainRoutine(ctx context.Context, learner LedgerLearner)
 	plainWait := func() (*pb.TransactionHandlingContext, error) {
 		for {
 			select {
-			case mining := <-cb.purpose:
+			case mining := <-cb.proposal:
 				mining(ctx, learner)
 			case <-triggerTimer.C:
 				logger.Debugf("Idle time out")

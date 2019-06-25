@@ -1,7 +1,6 @@
 package node
 
 import (
-	cred "github.com/abchain/fabric/core/cred"
 	"github.com/abchain/fabric/core/ledger"
 	"github.com/abchain/fabric/events/litekfk"
 	pb "github.com/abchain/fabric/protos"
@@ -20,14 +19,6 @@ var nullTransformer = CCNameTransformer(func(in string) string { return in })
 
 	an transformer for chaincode name is also appliable
 */
-
-func validatorToHandler(txh cred.TxHandlerFactory) pb.TxPreHandler {
-	if txh != nil {
-		return txh
-	}
-
-	return pb.NilValidator
-}
 
 type ccSpecValidator struct {
 	parent    *ccSpecValidator
