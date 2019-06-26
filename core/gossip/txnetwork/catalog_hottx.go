@@ -412,6 +412,9 @@ func (p *peerTxMemPool) purge(id string, purgeto uint64, g *txPoolGlobal) {
 	//never purge at begin
 	if p.head == nil || purgeto <= p.head.digestSeries {
 		return
+	} else if purgeto > p.lastSeries() {
+		logger.Warningf("peer [%s] is required to purge out-of-range %d (current last series %d)", id, purgeto, p.lastSeries())
+		purgeto = p.lastSeries()
 	}
 
 	logger.Debugf("peer [%s] try to prune cache from %d to %d", id, p.firstSeries(), purgeto)
@@ -428,9 +431,15 @@ func (p *peerTxMemPool) handlePeerCoVar(id string, peerStatus *pb.PeerTxState, g
 
 		return fmt.Errorf("covar occurs on %s with a peer status %d earlier than current (%d)",
 			id, to, p.firstSeries())
+	} else if last := p.lastSeries(); to > last {
+		logger.Warningf("covar set peer [%s] to a future state (current last %d) and start at %d",
+			id, last, to)
+		p.reset(createPeerTxItem(peerStatus))
+		g.RemoveCaches(id)
+	} else {
+		p.purge(id, to, g)
 	}
 
-	p.purge(id, to, g)
 	return nil
 }
 
@@ -462,7 +471,7 @@ func (p *peerTxMemPool) handlePeerUpdate(u txPeerUpdate, id string, g *txPoolGlo
 	logger.Debugf("peer [%s] try to updated %d incoming txs from series %d", id, len(u.Transactions), u.BeginSeries)
 
 	if u.BeginSeries > p.lastSeries()+1 {
-		return fmt.Errorf("Get gapped update for [%s] start from %d, current %d", id, u.BeginSeries, p.lastSeries())
+		return fmt.Errorf("Get stale update for [%s] start from %d, current %d", id, u.BeginSeries, p.lastSeries())
 	}
 	u = u.getRef(p.lastSeries() + 1)
 

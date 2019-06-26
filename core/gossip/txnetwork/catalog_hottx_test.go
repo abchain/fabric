@@ -485,6 +485,9 @@ func TestPeerTxPool(t *testing.T) {
 	assertTxIsIdentify(t, indexs[55].tx, ud.GetTransactions()[1])
 	assertTxIsIdentify(t, indexs[59].tx, ud.GetTransactions()[5])
 
+	//test purge out-of-range (should be safe)
+	pool.purge("test", 9999, txGlobal)
+
 }
 
 func TestCatalogyHandler(t *testing.T) {
