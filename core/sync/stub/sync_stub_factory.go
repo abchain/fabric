@@ -38,6 +38,14 @@ func InitSyncStub(bindPeer peer.Peer, l *ledger.Ledger, srv *grpc.Server) *pb.St
 		panic("When streamstub is succefully added, it should not vanish here")
 	}
 
+	l.SubScribeNewState(func(statepos uint64, _ []byte) {
+
+		//only push status for each 3 blocks
+		if statepos%3 == 0 {
+			go syncstub.BroadcastLedgerStatus(sstub)
+		}
+	})
+
 	pb.RegisterSyncServer(srv, rpcServer{sstub})
 	return sstub
 }

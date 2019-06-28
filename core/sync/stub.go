@@ -5,6 +5,7 @@ import (
 	pb "github.com/abchain/fabric/protos"
 	"github.com/op/go-logging"
 	"golang.org/x/net/context"
+	"time"
 )
 
 var logger = logging.MustGetLogger("sync")
@@ -56,4 +57,25 @@ func (s *SyncStub) NewStreamHandlerImpl(id *pb.PeerID, _ *pb.StreamStub, _ bool)
 
 func (s *SyncStub) StubContext() context.Context {
 	return s.ctx
+}
+
+func (s *SyncStub) BroadcastLedgerStatus(sstub *pb.StreamStub) {
+
+	logger.Debugf("Start broadcast ledger status to neighbours")
+	ls := s.localLedger.GetLedgerStatus()
+
+	//must finish in few times to avoiding accumulating
+	wctx, endF := context.WithTimeout(context.TODO(), 3*time.Second)
+	defer endF()
+	chs := sstub.OverAllHandlers(wctx)
+	for strm := range chs {
+		castedh, ok := strm.Impl().(*syncHandler)
+		if !ok {
+			panic("Wrong implement, implement is not syncHandler")
+		}
+		if err := castedh.PushLocalLedgerState(strm.StreamHandler, ls); err != nil {
+			logger.Warningf("Push ledger status to neighbour [%s] fail: %s, give up", strm.GetName(), err)
+		}
+	}
+
 }

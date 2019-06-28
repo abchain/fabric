@@ -183,6 +183,8 @@ func (l *baseLearnerImpl) resolvePendingBlock(newBlkN uint64, refhash []byte) ui
 	blkAgent := ledger.NewBlockAgent(l.ledger)
 	for newblks, ok := l.cache.pendingBlock[newBlkN]; ok; newblks, ok = l.cache.pendingBlock[newBlkN] {
 
+		//if newBlkN is not updated, the next condition will become invalid: we have deleted items in the map
+		//for current newBlkN
 		delete(l.cache.pendingBlock, newBlkN)
 		for _, newblk := range newblks {
 			//find block match to current branch
@@ -195,6 +197,9 @@ func (l *baseLearnerImpl) resolvePendingBlock(newBlkN uint64, refhash []byte) ui
 					newBlkN, refhash = newBlkN+1, blkAgent.LastCommit()
 				}
 				break
+			} else {
+				logger.Warningf("Encounter non-chained block [expected %.8X] (refhash %.8X)",
+					newblk.GetPreviousBlockHash(), refhash)
 			}
 		}
 	}
