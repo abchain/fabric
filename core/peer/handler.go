@@ -18,6 +18,7 @@ package peer
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,6 +100,18 @@ func (d *Handler) deregister() error {
 }
 
 func (d *Handler) GetStream() ChatStream { return d.ChatStream }
+
+func (d *Handler) IsGlareWeak(self *pb.PeerID) bool {
+	//notice, if we have no ToPeerEndpoint, it is always STRONG (not weak)
+	if d.ToPeerEndpoint == nil {
+		return false
+	} else if d.registered && d.initiatedStream {
+		//if we are initial side and connection has been made, we never give up
+		return false
+	}
+
+	return d.initiatedStream != (strings.Compare(self.Name, d.ToPeerEndpoint.ID.GetName()) > 0)
+}
 
 // To return the PeerEndpoint this Handler is connected to.
 func (d *Handler) To() (pb.PeerEndpoint, error) {

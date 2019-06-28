@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"golang.org/x/net/context"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -237,6 +236,10 @@ type MessageHandler interface {
 	SendMessage(msg *pb.Message) error
 	GetStream() ChatStream
 	To() (pb.PeerEndpoint, error)
+	//test if current connection is "glare weak", if so, it will be replaced
+	//by a "glare strong" incoming connection, a glare weak is determinded
+	//in both side (i.e. it is weak in oneside will be also weak in another side)
+	IsGlareWeak(self *pb.PeerID) bool
 	Stop() error
 }
 
@@ -448,9 +451,9 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 		//resolving duplicated case: if current incoming connection is consider to be
 		//"strong", it replace the old one and if it was "weak" it will be abondanded
 		//"weak" is defined like following:
-		if initiated != (strings.Compare(p.self.ID.Name, key.Name) > 0) {
+		if existing.IsGlareWeak(p.self.ID) && !messageHandler.IsGlareWeak(p.self.ID) {
 			peerLogger.Infof("Incoming connection will replace existed handler [%v] with key: %s",
-				messageHandler, key)
+				existing, key)
 			//so we close the existing stream of replaced handler here
 			existing.GetStream().Close()
 		} else {
