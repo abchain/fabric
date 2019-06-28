@@ -21,6 +21,13 @@ func (r rpcServer) Data(stream pb.Sync_DataServer) error {
 	return r.HandleServer(stream)
 }
 
+func init() {
+	sync.AccessStubHelper = func(sstub *pb.StreamStub, hf func(*sync.SyncStub)) {
+		stubF := sstub.StreamHandlerFactory.(syncStubFactory)
+		hf(stubF.SyncStub)
+	}
+}
+
 func InitSyncStub(bindPeer peer.Peer, l *ledger.Ledger, srv *grpc.Server) *pb.StreamStub {
 
 	ep, _ := bindPeer.GetPeerEndpoint()
@@ -38,10 +45,10 @@ func InitSyncStub(bindPeer peer.Peer, l *ledger.Ledger, srv *grpc.Server) *pb.St
 		panic("When streamstub is succefully added, it should not vanish here")
 	}
 
-	l.SubScribeNewState(func(statepos uint64, _ []byte) {
+	l.SubScribeNewBlock(func(blkn uint64, _ *pb.Block) {
 
 		//only push status for each 3 blocks
-		if statepos%3 == 0 {
+		if blkn%3 == 0 {
 			go syncstub.BroadcastLedgerStatus(sstub)
 		}
 	})

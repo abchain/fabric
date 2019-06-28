@@ -46,6 +46,9 @@ type FatalEnd struct {
 
 var retryIntervalLimit = time.Second * 10
 
+//this help us to access the stub object from streamstub
+var AccessStubHelper func(*pb.StreamStub, func(*SyncStub)) = func(*pb.StreamStub, func(*SyncStub)) {}
+
 func ExecuteSyncTask(ctx context.Context, cf ClientFactory, sstub *pb.StreamStub) error {
 
 	opts := cf.Opts()
@@ -66,6 +69,9 @@ func ExecuteSyncTask(ctx context.Context, cf ClientFactory, sstub *pb.StreamStub
 	retryTime := time.Duration(opts.RetryInterval) * time.Second
 	var retryCnt int
 
+	AccessStubHelper(sstub, func(s *SyncStub) { s.depressStatusNotify = true })
+	defer AccessStubHelper(sstub, func(s *SyncStub) { s.depressStatusNotify = false })
+
 	for {
 		clilogger.Infof("start sync task [%s] (%d times)", cf.Tag(), retryCnt)
 
@@ -76,6 +82,8 @@ func ExecuteSyncTask(ctx context.Context, cf ClientFactory, sstub *pb.StreamStub
 
 		if rt.conCurrentLimit == 0 {
 			//all thread has return normally
+			//when we done, broadcast new ledger status to neighbours
+			AccessStubHelper(sstub, func(s *SyncStub) { s.BroadcastLedgerStatus(sstub) })
 			return nil
 		}
 

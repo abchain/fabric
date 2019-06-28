@@ -58,7 +58,7 @@ func TestTxSync_Basic(t *testing.T) {
 	opt.ConcurrentLimit = 3
 	opt.RetryFail = true
 
-	opt.RetryCount = 1
+	opt.RetryCount = 2
 	testCF := &txCliFactory{
 		opt:         opt,
 		assignedCnt: 2,

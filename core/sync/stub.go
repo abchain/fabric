@@ -22,6 +22,9 @@ type SyncStub struct {
 	ctx            context.Context
 	localLedger    *ledger.Ledger
 	srvOptTemplate syncOpt
+
+	//when ledger is syncing, we should stop broadcasting ledger status to outside ...
+	depressStatusNotify bool
 }
 
 func NewSyncStub(ctx context.Context, l *ledger.Ledger) *SyncStub {
@@ -60,6 +63,13 @@ func (s *SyncStub) StubContext() context.Context {
 }
 
 func (s *SyncStub) BroadcastLedgerStatus(sstub *pb.StreamStub) {
+
+	//notice: we suppose there is no concurrent in ledger-update and
+	//depress switch setting (the later just occur when tring to syncing
+	//a ledger, and ledger should not update at that time)
+	if s.depressStatusNotify {
+		return
+	}
 
 	logger.Debugf("Start broadcast ledger status to neighbours")
 	ls := s.localLedger.GetLedgerStatus()
