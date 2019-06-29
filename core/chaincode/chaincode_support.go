@@ -594,6 +594,13 @@ func (chaincodeSupport *ChaincodeSupport) Launch(ctx context.Context, ledger *le
 			return nil, nil, fmt.Errorf("decode cc deploy spec fail: %s", err)
 		}
 
+		if cds.ChaincodeSpec == nil {
+			return nil, nil, fmt.Errorf("Invalid deploy spec: no ccspec included")
+		}
+		//legacy code still use full deploy spec information (include ccid), we must apply cid from tx
+		//to deployspec
+		cds.ChaincodeSpec.ChaincodeID = cid
+
 		chaincodeLogger.Debugf("Load cds for chaincode %s:%s: %v", chaincode, tmn, cds)
 		return
 	}

@@ -140,6 +140,14 @@ func (txResult *TransactionResult) Bytes() ([]byte, error) {
 	return data, nil
 }
 
+func (transaction *Transaction) ParseChaincodeID() (*ChaincodeID, error) {
+	ccid := &ChaincodeID{}
+	if err := proto.Unmarshal(transaction.GetChaincodeID(), ccid); err != nil {
+		return nil, fmt.Errorf("protobuf decode chaincodeID fail %s", err.Error())
+	}
+	return ccid, nil
+}
+
 func (transaction *Transaction) ParsePayloadAsInvoking() (*ChaincodeInvocationSpec, error) {
 	invoke := &ChaincodeInvocationSpec{}
 	if err := proto.Unmarshal(transaction.GetPayload(), invoke); err != nil {
@@ -292,7 +300,7 @@ func NewChaincodeDeployTransaction(chaincodeDeploymentSpec *ChaincodeDeploymentS
 	//	transaction.Args = chaincodeDeploymentSpec.ChaincodeSpec.GetCtorMsg().Args
 	//}
 	if ccspec := chaincodeDeploymentSpec.GetChaincodeSpec(); ccspec != nil {
-		ccspec.ChaincodeID = nil
+		ccspec.ChaincodeID = &ChaincodeID{Name: cID.GetName()}
 		defer func() {
 			ccspec.ChaincodeID = cID
 		}()
@@ -324,7 +332,7 @@ func NewChaincodeExecute(chaincodeInvocationSpec *ChaincodeInvocationSpec, uuid 
 
 	//notice: chaincodeID is not embedded in spec anymore, but we do not change the argument
 	if ccspec := chaincodeInvocationSpec.GetChaincodeSpec(); ccspec != nil {
-		ccspec.ChaincodeID = nil
+		ccspec.ChaincodeID = &ChaincodeID{Name: cID.GetName()}
 		defer func() {
 			ccspec.ChaincodeID = cID
 		}()
