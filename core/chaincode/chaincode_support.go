@@ -546,6 +546,8 @@ func (chaincodeSupport *ChaincodeSupport) DeployLaunch(ctx context.Context, ledg
 
 	return chaincodeSupport.Launch2(ctx, ledger, chaincode,
 		func() (*pb.ChaincodeDeploymentSpec, *pb.Transaction, error) {
+			//notice the cds comes from txhandlingcontext, and the embedded ccid has been
+			//set so we don't need to reset it
 			return cds, nil, nil
 		})
 }

@@ -164,21 +164,6 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 		peerLogger.Debugf("Verified signature for %s", e.Event)
 	}
 
-	if d.initiatedStream == false {
-		// Did NOT intitiate the stream, need to send back HELLO
-		peerLogger.Debugf("Received %s, sending back %s", e.Event, pb.Message_DISC_HELLO.String())
-		// Send back out PeerID information in a Hello
-		helloMessage, err := d.Coordinator.NewOpenchainDiscoveryHello()
-		if err != nil {
-			e.Cancel(fmt.Errorf("Error getting new HelloMessage: %s", err))
-			return
-		}
-		if err := d.SendMessage(helloMessage); err != nil {
-			e.Cancel(fmt.Errorf("Error sending response to %s:  %s", e.Event, err))
-			return
-		}
-	}
-
 	// Register
 	err = d.Coordinator.RegisterHandler(d.ChatStream.Context(), d.initiatedStream, d)
 	if err != nil {
@@ -186,6 +171,21 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 	} else {
 		// Registered successfully
 		d.registered = true
+
+		if d.initiatedStream == false {
+			// Did NOT intitiate the stream, need to send back HELLO
+			peerLogger.Debugf("Received %s, sending back %s", e.Event, pb.Message_DISC_HELLO.String())
+			// Send back out PeerID information in a Hello
+			helloMessage, err := d.Coordinator.NewOpenchainDiscoveryHello()
+			if err != nil {
+				e.Cancel(fmt.Errorf("Error getting new HelloMessage: %s", err))
+				return
+			}
+			if err := d.SendMessage(helloMessage); err != nil {
+				e.Cancel(fmt.Errorf("Error sending response to %s:  %s", e.Event, err))
+				return
+			}
+		}
 
 		//a grace behavior: we do not disclose this address anymore if the other side
 		//prone to be hidden (we add it again if GET_PEERS is received)

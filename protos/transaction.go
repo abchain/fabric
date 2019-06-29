@@ -300,7 +300,9 @@ func NewChaincodeDeployTransaction(chaincodeDeploymentSpec *ChaincodeDeploymentS
 	//	transaction.Args = chaincodeDeploymentSpec.ChaincodeSpec.GetCtorMsg().Args
 	//}
 	if ccspec := chaincodeDeploymentSpec.GetChaincodeSpec(); ccspec != nil {
-		ccspec.ChaincodeID = &ChaincodeID{Name: cID.GetName()}
+
+		ccname, _, _ := ParseYFCCName(cID.GetName())
+		ccspec.ChaincodeID = &ChaincodeID{Name: ccname}
 		defer func() {
 			ccspec.ChaincodeID = cID
 		}()
