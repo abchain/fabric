@@ -30,6 +30,7 @@ import (
 type Discovery interface {
 	AddNode(string) bool           // Add an address to the discovery list
 	RemoveNode(string) bool        // Remove an address from the discovery list
+	AddNodes([]string) []string    // Add a batch of address, and return which is added
 	GetAllNodes() []string         // Return all addresses this peer maintains
 	GetRandomNode() string         // Return n random addresses for this peer to connect t
 	GetRandomNodes(n int) []string // Return n random addresses for this peer to connect to
@@ -67,6 +68,24 @@ func (di *DiscoveryImpl) AddNode(address string) bool {
 		di.nodes[address] = true
 	}
 	return di.nodes[address]
+}
+
+func (di *DiscoveryImpl) AddNodes(addrs []string) []string { // Add a batch of address, and return which is added
+
+	di.Lock()
+	defer di.Unlock()
+
+	seqBefore := len(di.seq)
+
+	for _, addr := range addrs {
+		if _, ok := di.nodes[addr]; !ok {
+			di.seq = append(di.seq, addr)
+			di.nodes[addr] = true
+		}
+	}
+
+	return di.seq[seqBefore:]
+
 }
 
 // RemoveNode removes an address from the discovery list

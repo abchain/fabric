@@ -187,14 +187,17 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 		// Registered successfully
 		d.registered = true
 
-		// We must clean the node from discovery list first, add it had been back
-		// until it sent GET_PEERS
+		//a grace behavior: we do not disclose this address anymore if the other side
+		//prone to be hidden (we add it again if GET_PEERS is received)
 		d.Coordinator.GetDiscHelper().RemoveNode(d.ToPeerEndpoint.Address)
 
 		// if I am a hidden node, I will never send GET_PEERS
 		if !d.Coordinator.isHiddenPeer() {
 			//send GET_PEERS as soon as possible
-			if err := d.SendMessage(&pb.Message{Type: pb.Message_DISC_GET_PEERS}); err != nil {
+			if err := d.SendMessage(&pb.Message{
+				Type:    pb.Message_DISC_GET_PEERS,
+				Payload: []byte(getPeerMagicCode),
+			}); err != nil {
 				peerLogger.Errorf("Error sending %s during handler discovery tick: %s", pb.Message_DISC_GET_PEERS, err)
 			}
 			//then send get_peer message periodically
@@ -222,21 +225,28 @@ func (d *Handler) beforeGetPeers(e *fsm.Event) {
 		}
 	}
 
-	var peersMessage *pb.PeersMessage
+	peersMessage := &pb.PeersMessage{}
 
 	if !d.Coordinator.isDiscoveryDisable() {
-		msg, err := d.Coordinator.GetPeers()
-		if err != nil {
-			lerr := fmt.Errorf("Error Getting Peers: %s", err)
-			peerLogger.Info(lerr.Error())
-			e.Cancel(&fsm.NoTransitionError{Err: lerr})
-			return
-		}
 
-		peersMessage = msg
-	} else {
-		peersMessage = &pb.PeersMessage{}
+		if msg, ok := e.Args[0].(*pb.Message); !ok {
+			peerLogger.Errorf("Received unexpected message type")
+		} else if len(msg.Payload) > 0 && string(msg.Payload) == getPeerMagicCode {
+
+			//we just use the message which carry a series of IP address
+			//we only encode this message when both peer has new implement
+			//or we just act like a discovery-disabled node (never provide any peers)
+			for _, addr := range d.Coordinator.GetDiscHelper().GetAllNodes() {
+				peersMessage.Peers = append(peersMessage.Peers,
+					&pb.PeerEndpoint{Address: addr})
+			}
+			peerLogger.Debugf("Encode %d IPs for far-end", len(peersMessage.Peers))
+		} else {
+			peerLogger.Warningf("Encounter old-fashion peer msg [%v], peer list is not provided",
+				msg.Payload)
+		}
 	}
+
 	data, err := proto.Marshal(peersMessage)
 	if err != nil {
 		lerr := fmt.Errorf("Error Marshalling PeersMessage: %s", err)
@@ -312,6 +322,8 @@ func (d *Handler) SendMessage(msg *pb.Message) error {
 	return nil
 }
 
+var getPeerMagicCode = "GETPEER2"
+
 // start starts the Peer server function
 func (d *Handler) start() error {
 
@@ -320,7 +332,10 @@ func (d *Handler) start() error {
 	for {
 		select {
 		case <-tickChan:
-			if err := d.SendMessage(&pb.Message{Type: pb.Message_DISC_GET_PEERS}); err != nil {
+			if err := d.SendMessage(&pb.Message{
+				Type:    pb.Message_DISC_GET_PEERS,
+				Payload: []byte(getPeerMagicCode),
+			}); err != nil {
 				peerLogger.Errorf("Error sending %s during handler discovery tick: %s", pb.Message_DISC_GET_PEERS, err)
 			}
 		case <-d.doneChan:

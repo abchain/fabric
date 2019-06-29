@@ -350,10 +350,8 @@ func (p *Impl) genPeersList() ([]*pb.PeerEndpoint, error) {
 	for _, msgHandler := range p.handlerMap.m {
 		peerEndpoint, err := msgHandler.To()
 		if err != nil {
-			return nil, fmt.Errorf("Error getting peers: %s", err)
-		}
-
-		if p.discHelper.FindNode(peerEndpoint.Address) {
+			peers = append(peers, &pb.PeerEndpoint{ID: &pb.PeerID{Name: "UNKNOWN"}})
+		} else {
 			peers = append(peers, &peerEndpoint)
 		}
 	}
@@ -373,17 +371,17 @@ func getPeerAddresses(peersMsg *pb.PeersMessage) []string {
 // PeersDiscovered used by MessageHandlers for notifying this coordinator of discovered PeerEndoints. May include this Peer's PeerEndpoint.
 func (p *Impl) PeersDiscovered(peersMessage *pb.PeersMessage) error {
 
-	p.handlerMap.RLock()
-	defer p.handlerMap.RUnlock()
+	var chatAddrs []string
 	for _, peerEndpoint := range peersMessage.Peers {
-		// Filter out THIS Peer's endpoint
-		if *getHandlerKeyFromPeerEndpoint(p.self) == *getHandlerKeyFromPeerEndpoint(peerEndpoint) {
-			// NOOP
-		} else if _, ok := p.handlerMap.m[*getHandlerKeyFromPeerEndpoint(peerEndpoint)]; ok == false {
-			// Start chat with Peer
-			p.chatWithSomePeers([]string{peerEndpoint.Address})
-		}
+		chatAddrs = append(chatAddrs, peerEndpoint.Address)
 	}
+
+	newAddrs := p.discHelper.AddNodes(chatAddrs)
+	if nl := len(newAddrs); nl > 0 {
+		peerLogger.Infof("Add %d address, try them", nl)
+		p.chatWithSomePeers(newAddrs)
+	}
+
 	return nil
 }
 
