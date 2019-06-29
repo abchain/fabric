@@ -63,10 +63,12 @@ func NewPeerConfig(forValidator bool, vp *viper.Viper, spec *config.ServerSpec) 
 }
 
 func (c *PeerConfig) Configuration(vp *viper.Viper, spec *config.ServerSpec) error {
-	c.Discovery.Roots = strings.Split(vp.GetString("discovery.rootnode"), ",")
-	if len(c.Discovery.Roots) == 1 && c.Discovery.Roots[0] == "" {
-		c.Discovery.Roots = []string{}
+	rootList := vp.GetStringSlice("discovery.rootnode")
+	if len(rootList) == 1 {
+		//try splitting rootList with old fashion conf
+		rootList = strings.Split(rootList[0], ",")
 	}
+	c.Discovery.Roots = rootList
 	c.Discovery.Persist = vp.GetBool("discovery.persist")
 	c.Discovery.Hidden = vp.GetBool("discovery.hidden")
 	c.Discovery.Disable = vp.GetBool("discovery.disable")
