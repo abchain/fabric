@@ -456,7 +456,7 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 			existing.GetStream().Close()
 		} else {
 			//Duplicate, return error
-			return newDuplicateHandlerError(messageHandler)
+			return newDuplicateHandlerError(existing)
 		}
 	}
 	p.handlerMap.m[*key] = messageHandler
@@ -702,7 +702,16 @@ func (p *Impl) chatWithPeer(address string) error {
 	err = p.handleChat(stream, true)
 	stream.Close()
 	if err != nil {
+		if duplicatedErr, ok := err.(*DuplicateHandlerError); ok {
+			if duplicatedErr.To.Address != address {
+				peerLogger.Infof("we have duplicated address (%s) for the same peer, abondon current one (%s)",
+					duplicatedErr.To.Address, address)
+				p.discHelper.RemoveNode(address)
+			}
+		}
+
 		peerLogger.Errorf("Ending Chat with peer address %s due to error: %s", address, err)
+
 		return err
 	}
 	return nil
