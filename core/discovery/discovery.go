@@ -29,6 +29,7 @@ import (
 // selection and validating peer selection for non-validating peers
 type Discovery interface {
 	AddNode(string) bool           // Add an address to the discovery list
+	ResumeNode(string)             // Add or resume existed address from discovery list
 	RemoveNode(string) bool        // Remove an address from the discovery list
 	AddNodes([]string) []string    // Add a batch of address, and return which is added
 	GetAllNodes() []string         // Return all addresses this peer maintains
@@ -68,6 +69,12 @@ func (di *DiscoveryImpl) AddNode(address string) bool {
 		di.nodes[address] = true
 	}
 	return di.nodes[address]
+}
+
+func (di *DiscoveryImpl) ResumeNode(address string) {
+	di.Lock()
+	defer di.Unlock()
+	di.nodes[address] = true
 }
 
 func (di *DiscoveryImpl) AddNodes(addrs []string) []string { // Add a batch of address, and return which is added

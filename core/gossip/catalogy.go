@@ -365,7 +365,10 @@ func (h *catalogHandler) HandleUpdate(msg *pb.GossipMsg_Update, cpo CatalogPeerP
 
 	//the final update is executed in another thread, even nil update is accepted
 	logger.Debugf("Accept update from peer [%s]", cpo.GetId())
-	puller.NotifyUpdate(ud)
+	err = puller.NotifyUpdate(ud)
+	if err != nil {
+		logger.Warningf("Notify update fail: %s", err)
+	}
 
 }
 

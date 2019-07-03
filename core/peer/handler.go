@@ -212,16 +212,12 @@ func (d *Handler) beforeGetPeers(e *fsm.Event) {
 	//modified @20180315
 	//add a node into discovery list unless it also require peer
 	otherPeer := d.ToPeerEndpoint.Address
-	if !d.Coordinator.GetDiscHelper().FindNode(otherPeer) {
-		if ok := d.Coordinator.GetDiscHelper().AddNode(otherPeer); !ok {
-			peerLogger.Warningf("Unable to add peer %v to discovery list", otherPeer)
-		}
+	d.Coordinator.GetDiscHelper().ResumeNode(otherPeer)
 
-		if d.Coordinator.discHelper.doPersist {
-			err := d.Coordinator.discHelper.StoreDiscoveryList(d.Coordinator.persistor)
-			if err != nil {
-				peerLogger.Error(err)
-			}
+	if d.Coordinator.discHelper.doPersist {
+		err := d.Coordinator.discHelper.StoreDiscoveryList(d.Coordinator.persistor)
+		if err != nil {
+			peerLogger.Error(err)
 		}
 	}
 

@@ -714,6 +714,7 @@ func (p *Impl) chatWithPeer(address string) error {
 
 		return err
 	}
+	peerLogger.Errorf("Normally ending chat with peer address %s", address)
 	return nil
 }
 

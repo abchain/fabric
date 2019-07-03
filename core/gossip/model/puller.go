@@ -73,7 +73,7 @@ func NewPuller(model *Model) *Puller {
 
 	return &Puller{
 		model:  model,
-		update: make(chan Update),
+		update: make(chan Update, 1),
 	}
 
 }
@@ -105,9 +105,16 @@ func (p *Puller) Process(ctx context.Context) error {
 	}
 }
 
-func (p *Puller) NotifyUpdate(ud Update) {
+func (p *Puller) NotifyUpdate(ud Update) error {
 	if p == nil {
-		return
+		return nil
 	}
-	p.update <- ud
+
+	select {
+	case p.update <- ud:
+		return nil
+	default:
+		return errors.New("Encounter duplicated updating")
+	}
+
 }

@@ -19,18 +19,7 @@ func TestMain(m *testing.M) {
 }
 
 func newGossip(t *testing.T, p peer.Peer, regcat []func(*gossip.GossipStub)) *gossip.GossipStub {
-	gstub := gossip.NewGossipWithPeer(p)
-
-	//gossipStub itself is also a posthandler
-	err := p.AddStreamStub("gossip", stub.GossipFactory{gstub}, gstub)
-	if err != nil {
-		t.Fatal("Bind gossip stub to peer fail: ", err)
-	}
-
-	gstub.StreamStub = p.GetStreamStub("gossip")
-	if gstub.StreamStub == nil {
-		t.Fatal("When streamstub is succefully added, it should not vanish here")
-	}
+	gstub := stub.InitGossipStub(p, nil)
 
 	//reg all catalogs
 	for _, f := range regcat {
