@@ -58,6 +58,7 @@ func (testDB *TestDBWrapper) CleanCF(t testing.TB, cfName string) {
 	if err := GetDBHandle().db.DropColumnFamily(cf); err != nil {
 		t.Fatal("drop cf fail", err)
 	}
+	cf.Destroy()
 
 	var cfOpt *gorocksdb.Options
 
