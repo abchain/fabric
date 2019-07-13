@@ -77,13 +77,6 @@ func (c *PeerConfig) Configuration(vp *viper.Viper, spec *config.ServerSpec) err
 	c.Discovery.TouchPeriod = vp.GetDuration("discovery.touchPeriod")
 	c.Discovery.MaxNodes = vp.GetInt("discovery.touchMaxNodes")
 
-	var peerType pb.PeerEndpoint_Type
-	if c.IsValidator {
-		peerType = pb.PeerEndpoint_VALIDATOR
-	} else {
-		peerType = pb.PeerEndpoint_NON_VALIDATOR
-	}
-
 	// automatic correction for the ID prefix
 	var peerPrefix = ""
 	if c.Discovery.Hidden {
@@ -98,11 +91,17 @@ func (c *PeerConfig) Configuration(vp *viper.Viper, spec *config.ServerSpec) err
 		}
 	}
 	var peerID = vp.GetString("id")
-	if len(peerID) > 3 && strings.Compare(peerPrefix, peerID[:3]) != 0 {
+	if peerID == "" {
+		peerID = "fabricPeer"
+	}
+
+	if len(peerID) < 3 || strings.Compare(peerPrefix, peerID[:3]) != 0 {
 		peerID = peerPrefix + peerID
 	}
 
-	c.PeerEndpoint = &pb.PeerEndpoint{ID: &pb.PeerID{Name: peerID}, Address: spec.ExternalAddr, Type: peerType}
+	c.PeerEndpoint = &pb.PeerEndpoint{ID: &pb.PeerID{Name: peerID},
+		Address: spec.ExternalAddr,
+		Type:    pb.PeerEndpoint_VALIDATOR}
 	peerLogger.Infof("Init peer endpoint: %s", c.PeerEndpoint)
 
 	clispec := spec.GetClient()

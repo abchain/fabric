@@ -336,9 +336,11 @@ func (e *txNetworkEntry) ExecuteTransaction(ctx context.Context, tx *pb.Transact
 		case ret := <-resp:
 			return ret
 		case <-ctx.Done():
-			return &pb.Response{pb.Response_FAILURE, []byte(fmt.Sprintf("%s", ctx.Err()))}
+			return &pb.Response{Status: pb.Response_FAILURE,
+				Msg: []byte(fmt.Sprintf("%s", ctx.Err()))}
 		}
 	} else {
-		return &pb.Response{pb.Response_FAILURE, []byte(fmt.Sprintf("Exec transaction fail: %s", ret))}
+		return &pb.Response{Status: pb.Response_FAILURE,
+			Msg: []byte(fmt.Sprintf("Exec transaction fail: %s", ret))}
 	}
 }
