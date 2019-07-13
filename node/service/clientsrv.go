@@ -212,9 +212,9 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 	l := d.node.DefaultLedger()
 	//TODO: now we can specified block height, snapshot, etc
 	querystate := ledger.NewQueryExecState(l)
-	lsn, _ := l.CreateSnapshot()
+	lsn, blkh := l.CreateSnapshot()
 	if lsn == nil {
-		clisrvLogger.Warningf("Could not get state snapshot, we must use bake db")
+		clisrvLogger.Warningf("Could not get state snapshot, we must use nake db")
 	} else {
 		defer lsn.Release()
 		querystate.BindSnapshot(lsn.DBSnapshot)
@@ -236,9 +236,13 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 	//it is just the simplized post-handling of execute2 ...
 	switch resp.GetType() {
 	case pb.ChaincodeMessage_QUERY_COMPLETED:
-		return &pb.Response{Status: pb.Response_SUCCESS, Msg: resp.GetPayload()}, nil
+		return &pb.Response{Status: pb.Response_SUCCESS,
+			Msg:    resp.GetPayload(),
+			Height: blkh}, nil
 	case pb.ChaincodeMessage_QUERY_ERROR:
-		return &pb.Response{Status: pb.Response_FAILURE, Msg: resp.GetPayload()}, nil
+		return &pb.Response{Status: pb.Response_FAILURE,
+			Msg:    resp.GetPayload(),
+			Height: blkh}, nil
 	default:
 		return nil, fmt.Errorf("Unexpected msg type %s", resp.GetType())
 	}

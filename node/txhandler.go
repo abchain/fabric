@@ -107,10 +107,12 @@ func (t *txNetworkHandlerImpl) HandleTxs(txs []*txnetwork.PendingTransaction) er
 		if htx, err := handleTx(lastDigest, tx.Transaction, endorser); err == nil {
 			htxs = append(htxs, htx)
 			lastDigest = txnetwork.GetTxDigest(htx)
-			tx.Respond(&pb.Response{pb.Response_SUCCESS, []byte(htx.GetTxid())})
+			tx.Respond(&pb.Response{Status: pb.Response_SUCCESS,
+				Msg: []byte(htx.GetTxid())})
 		} else {
 			txlogger.Errorf("building complete tx fail: %s, corresponding tx skipped", err)
-			tx.Respond(&pb.Response{pb.Response_FAILURE, []byte(err.Error())})
+			tx.Respond(&pb.Response{Status: pb.Response_FAILURE,
+				Msg: []byte(err.Error())})
 		}
 	}
 
