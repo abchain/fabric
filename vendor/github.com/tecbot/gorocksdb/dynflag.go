@@ -1,6 +1,7 @@
-// +build !windows
+// +build !linux !static
 
 package gorocksdb
 
-// #cgo LDFLAGS: -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy
+// #cgo !windows LDFLAGS: -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy
+// #cgo windows LDFLAGS: -lstdc++
 import "C"
