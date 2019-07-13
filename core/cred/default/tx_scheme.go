@@ -1,28 +1,16 @@
-package crypto
+package cred_default
 
 import (
-	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/hmac"
-	"errors"
 	"github.com/abchain/fabric/core/crypto/primitives"
-	obc "github.com/abchain/fabric/protos"
 	"math/big"
 )
 
 /*
 	crypto schemes for transaction, including the key-derivation of tx signature and encryption of attribution
 */
-
-func TxToSignatureMsg(tx *obc.Transaction) ([]byte, error) {
-
-	digest, err := tx.Digest()
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes.Join([][]byte{digest, tx.GetCert()}, nil), nil
-}
 
 // the secret algorithm with double HMAC
 func derivedSecret(kdfkey []byte, tidx []byte) []byte {
@@ -38,7 +26,15 @@ func derivedSecret(kdfkey []byte, tidx []byte) []byte {
 var bi_one = new(big.Int).SetInt64(1)
 
 //ECDSA version
-func TxCertKeyDerivationEC(pub *ecdsa.PublicKey, kdfkey []byte, tidx []byte) (*ecdsa.PublicKey, error) {
+func txCertKeyDerivationEC(inpub crypto.PublicKey, kdfkey []byte, tidx []byte) (*ecdsa.PublicKey, error) {
+
+	pub, ok := inpub.(*ecdsa.PublicKey)
+	if !ok {
+		logger.Errorf("the public key (%v) is not ECDSA", inpub)
+		return nil, ErrInvalidKey
+	}
+
+	logger.Debugf("Derived pkx %s with kdf %X and tidx %X", pub.X, kdfkey, tidx)
 
 	k := new(big.Int).SetBytes(derivedSecret(kdfkey, tidx))
 	k.Mod(k, new(big.Int).Sub(pub.Curve.Params().N, bi_one))
@@ -49,7 +45,15 @@ func TxCertKeyDerivationEC(pub *ecdsa.PublicKey, kdfkey []byte, tidx []byte) (*e
 	return &ecdsa.PublicKey{Curve: pub.Curve, X: txX, Y: txY}, nil
 }
 
-func TxCertPrivKDerivationEC(privk *ecdsa.PrivateKey, kdfkey []byte, tidx []byte) (*ecdsa.PrivateKey, error) {
+func txCertPrivKDerivationEC(inprivk crypto.PrivateKey, kdfkey []byte, tidx []byte) (*ecdsa.PrivateKey, error) {
+
+	privk, ok := inprivk.(*ecdsa.PrivateKey)
+	if !ok {
+		logger.Errorf("the key (%v) is not ECDSA", inprivk)
+		return nil, ErrInvalidKey
+	}
+
+	logger.Debugf("Derived key (pkx %s) with kdf %X and tidx %X", privk.PublicKey.X, kdfkey, tidx)
 
 	tempSK := &ecdsa.PrivateKey{
 		PublicKey: ecdsa.PublicKey{
@@ -77,7 +81,8 @@ func TxCertPrivKDerivationEC(privk *ecdsa.PrivateKey, kdfkey []byte, tidx []byte
 
 	// Verify temporary public key is a valid point on the reference curve
 	if !tempSK.Curve.IsOnCurve(tempSK.PublicKey.X, tempSK.PublicKey.Y) {
-		return nil, errors.New("Failed temporary public key IsOnCurve check.")
+		logger.Errorf("Failed temporary public key IsOnCurve check.")
+		return nil, ErrInvalidKey
 	}
 
 	return tempSK, nil

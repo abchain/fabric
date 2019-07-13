@@ -23,10 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
-
-	"github.com/golang/protobuf/proto"
 	"github.com/op/go-logging"
+	"google.golang.org/grpc"
 
 	"github.com/abchain/fabric/core/comm"
 	cred "github.com/abchain/fabric/core/cred"
@@ -216,7 +214,10 @@ type Impl struct {
 	gossipStub         *pb.StreamStub
 	syncStub           *pb.StreamStub
 
-	secHelper     cred.PeerCreds
+	connHelper func(string) (*grpc.ClientConn, error)
+	secHelper  cred.PeerCreds
+	secPeerID  *pb.PeerID //the peerId which other peer will treat it
+
 	reconnectOnce sync.Once
 	discHelper    struct {
 		discovery.Discovery
@@ -236,6 +237,7 @@ type MessageHandler interface {
 	SendMessage(msg *pb.Message) error
 	GetStream() ChatStream
 	To() (pb.PeerEndpoint, error)
+	Credential() cred.PeerCred
 	//test if current connection is "glare weak", if so, it will be replaced
 	//by a "glare strong" incoming connection, a glare weak is determinded
 	//in both side (i.e. it is weak in oneside will be also weak in another side)
@@ -262,6 +264,8 @@ func NewPeer(self *pb.PeerEndpoint) *Impl {
 	peer.pctx = pctx
 	peer.onEnd = endf
 	peer.persistor = defaultPeerStoreKey
+	//legacy implement
+	peer.connHelper = NewPeerClientConnectionWithAddress
 
 	//mapping of all streamstubs above:
 	peer.streamStubs = make(map[string]*pb.StreamStub)
@@ -276,8 +280,13 @@ func CreateNewPeer(cred cred.PeerCreds, config *PeerConfig) (peer *Impl, err err
 
 	peer = NewPeer(config.PeerEndpoint)
 	peer.secHelper = cred
+
 	if config.PeerTag != "peer" && config.PeerTag != "" {
 		peer.persistor = db.PersistKeyRegister("peer" + config.PeerTag)
+	}
+
+	if config.NewPeerClientConn != nil {
+		peer.connHelper = config.NewPeerClientConn
 	}
 
 	// Install security object for peer
@@ -285,6 +294,15 @@ func CreateNewPeer(cred cred.PeerCreds, config *PeerConfig) (peer *Impl, err err
 		if peer.secHelper == nil {
 			return nil, fmt.Errorf("Security helper not provided")
 		}
+	}
+
+	//finally, update peerName with additional credentials
+	if cred != nil {
+		sep, _ := peer.GetPeerEndpoint()
+		peer.secPeerID = getHandlerKeyFromEndpoint(sep)
+		peerLogger.Infof("Update peer name to [%s] by credential", peer.secPeerID.GetName())
+	} else {
+		peer.secPeerID = &pb.PeerID{Name: peer.self.ID.GetName()}
 	}
 
 	return peer, nil
@@ -308,7 +326,13 @@ func (p *Impl) EndPeer() {
 func (p *Impl) Chat(stream pb.Peer_ChatServer) error {
 	cstream, endf := newServerChatStream(stream.Context(), stream)
 	defer endf()
-	return p.handleChat(cstream, false)
+	if err := p.handleChat(cstream, false); err != nil {
+		//do not expose the inner error to remote
+		peerLogger.Errorf("Server end chatting with error: %s", err)
+		//10 is the "abort code" in grpc
+		return grpc.Errorf(10, "Server side error")
+	}
+	return nil
 }
 
 func (p *Impl) ProcessTransaction(context.Context, *pb.Transaction) (*pb.Response, error) {
@@ -378,11 +402,27 @@ func (p *Impl) PeersDiscovered(peersMessage *pb.PeersMessage) error {
 
 	newAddrs := p.discHelper.AddNodes(chatAddrs)
 	if nl := len(newAddrs); nl > 0 {
-		peerLogger.Infof("Add %d address, try them", nl)
+		peerLogger.Infof("Add %d address [%v], try them", nl, newAddrs)
 		p.chatWithSomePeers(newAddrs)
 	}
 
 	return nil
+}
+
+func getHandlerKeyFromEndpoint(peerEndpoint *pb.PeerEndpoint) *pb.PeerID {
+	id := *peerEndpoint.ID
+	//append (hashed) pkid to the end of id, so we always get unique peer id
+	if pkid := peerEndpoint.GetPkiID(); len(pkid) > 0 {
+		pkid_hash := util.ComputeCryptoHash(pkid)
+		//and pick 128 bit only
+		if len(pkid_hash) > 16 {
+			pkid_hash = pkid_hash[:16]
+		}
+
+		id.Name = fmt.Sprintf("%s@%X", id.Name, pkid_hash)
+	}
+
+	return &id
 }
 
 func getHandlerKey(peerMessageHandler MessageHandler) (*pb.PeerID, error) {
@@ -390,11 +430,9 @@ func getHandlerKey(peerMessageHandler MessageHandler) (*pb.PeerID, error) {
 	if err != nil {
 		return &pb.PeerID{}, fmt.Errorf("Error getting messageHandler key: %s", err)
 	}
-	return peerEndpoint.ID, nil
-}
 
-func getHandlerKeyFromPeerEndpoint(peerEndpoint *pb.PeerEndpoint) *pb.PeerID {
-	return peerEndpoint.ID
+	return getHandlerKeyFromEndpoint(&peerEndpoint), nil
+
 }
 
 func (p *Impl) AddStreamStub(name string, factory pb.StreamHandlerFactory, opts ...interface{}) error {
@@ -413,7 +451,7 @@ func (p *Impl) AddStreamStub(name string, factory pb.StreamHandlerFactory, opts 
 		}
 	}
 
-	stub := pb.NewStreamStub(factory, p.self.ID)
+	stub := pb.NewStreamStub(factory, p.secPeerID)
 	p.streamStubs[name] = stub
 	peerLogger.Infof("Add a new streamstub [%s]", name)
 	return nil
@@ -440,7 +478,10 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	key, err := getHandlerKey(messageHandler)
 	if err != nil {
 		return fmt.Errorf("Error registering handler: %s", err)
+	} else if key.GetName() == p.secPeerID.GetName() {
+		return fmt.Errorf("Duplicated name with self peer")
 	}
+
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
 
@@ -449,7 +490,7 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 		//resolving duplicated case: if current incoming connection is consider to be
 		//"strong", it replace the old one and if it was "weak" it will be abondanded
 		//"weak" is defined like following:
-		if existing.IsGlareWeak(p.self.ID) && !messageHandler.IsGlareWeak(p.self.ID) {
+		if existing.IsGlareWeak(p.secPeerID) && !messageHandler.IsGlareWeak(p.secPeerID) {
 			peerLogger.Infof("Incoming connection will replace existed handler [%v] with key: %s",
 				existing, key)
 			//so we close the existing stream of replaced handler here
@@ -463,37 +504,42 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("registered handler with key: %s, active: %t", key, initiated)
 
-	if !initiated {
-		return nil
+	//also start all other stream stubs
+	var connv interface{}
+	if initiated {
+		connv = ctx.Value(peerConnCtxKey("conn"))
+		if connv == nil {
+			peerLogger.Errorf("No connection can be found in context")
+			//NOTICE: we still not consider it as fatal error
+			return nil
+		}
 	}
 
-	//also start all other stream stubs
-	ctxk := peerConnCtxKey("conn")
-	v := ctx.Value(ctxk)
+	var connPsw []byte
+	if cred := messageHandler.Credential(); cred != nil {
+		connPsw = cred.Secret()
+	}
 
-	if v == nil {
-		peerLogger.Errorf("No connection can be found in context")
-	} else {
+	//handling other stream stubs: initiate connect or add whitelist (for server side)
+	for name, stub := range p.streamStubs {
+		//do filter first
+		ep, _ := messageHandler.To()
+		if filter, ok := p.streamFilters[name]; ok && !filter.QualitifiedPeer(&ep) {
+			peerLogger.Debugf("ignore streamhandler %s for remote peer %s", name, key.GetName())
+			continue
+		}
 
-		clidone := make(chan error)
-
-		for name, stub := range p.streamStubs {
-
-			//do filter first
-			ep, _ := messageHandler.To()
-			if filter, ok := p.streamFilters[name]; ok && !filter.QualitifiedPeer(&ep) {
-
-				peerLogger.Debugf("ignore streamhandler %s for remote peer %s", name, key.GetName())
-				continue
-			}
-
+		if initiated {
+			clidone := make(chan error)
 			go func(conn *grpc.ClientConn, stub *pb.StreamStub, name string) {
 				peerLogger.Debugf("start <%s> streamhandler for peer %s", name, key.GetName())
-				err, retf := stub.HandleClient(conn, key)
+				err, retf := stub.HandleClient2(conn, key, connPsw)
 				clidone <- err
 				//a client is handled here...
-				retf()
-			}(v.(*grpc.ClientConn), stub, name)
+				if err := retf(); err != nil {
+					peerLogger.Errorf("stream %s to peer [%s] has been closed: %s", name, key.GetName(), err)
+				}
+			}(connv.(*grpc.ClientConn), stub, name)
 
 			err := <-clidone
 			if err != nil {
@@ -501,7 +547,11 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 			} else if posth, ok := p.streamPostHandlers[name]; ok {
 				posth.NotifyNewPeer(key, stub)
 			}
+
+		} else {
+			stub.AllowClient(key, connPsw)
 		}
+
 	}
 
 	return nil
@@ -527,6 +577,11 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 			"expected handler address[%v], existing handler address[%v]",
 			key, messageHandler, existing)
 		return nil
+	}
+
+	//clean stream's ACL entry first
+	for _, stub := range p.streamStubs {
+		stub.CleanClientACL(key)
 	}
 
 	delete(p.handlerMap.m, *key)
@@ -616,6 +671,7 @@ func (p *Impl) Unicast(msg *pb.Message, receiverHandle *pb.PeerID) error {
 	return nil
 }
 
+// ---- deprecated -----
 // SendTransactionsToPeer forwards transactions to the specified peer address.
 func (p *Impl) SendTransactionsToPeer(peerAddress string, transaction *pb.Transaction) (response *pb.Response) {
 	conn, err := NewPeerClientConnectionWithAddress(peerAddress)
@@ -645,7 +701,8 @@ func (p *Impl) ensureConnected() {
 		}
 		allNodes := p.discHelper.GetAllNodes() // these will always be returned in random order
 		if len(peersMsg.Peers) < len(allNodes) {
-			peerLogger.Warning("Touch service indicates dropped connections, attempting to reconnect...")
+			peerLogger.Warningf("Touch service indicates dropped connections (known %d and now %d), attempting to reconnect...",
+				len(allNodes), len(peersMsg.Peers))
 			delta := util.FindMissingElements(allNodes, getPeerAddresses(peersMsg))
 			if len(delta) > p.discHelper.touchMaxNodes {
 				delta = delta[:p.discHelper.touchMaxNodes]
@@ -673,7 +730,7 @@ func (p *Impl) chatWithSomePeers(addresses []string) {
 	for _, address := range addresses {
 
 		if address == p.self.GetAddress() {
-			peerLogger.Debugf("Skipping own address: %v", address)
+			peerLogger.Warningf("Skipping own address: %v", address)
 			continue
 		}
 		go p.chatWithPeer(address)
@@ -684,7 +741,7 @@ type peerConnCtxKey string
 
 func (p *Impl) chatWithPeer(address string) error {
 	peerLogger.Debugf("Initiating Chat with peer address: %s", address)
-	conn, err := NewPeerClientConnectionWithAddress(address)
+	conn, err := p.connHelper(address)
 	if err != nil {
 		peerLogger.Errorf("Error creating connection to peer address %s: %s", address, err)
 		return err
@@ -699,6 +756,7 @@ func (p *Impl) chatWithPeer(address string) error {
 		return err
 	}
 	peerLogger.Debugf("Established Chat with peer address: %s", address)
+
 	err = p.handleChat(stream, true)
 	stream.Close()
 	if err != nil {
@@ -722,7 +780,33 @@ func (p *Impl) chatWithPeer(address string) error {
 func (p *Impl) handleChat(stream ChatStream, initiatedStream bool) error {
 	deadline, ok := stream.Context().Deadline()
 	peerLogger.Debugf("Current context deadline = %s, ok = %v", deadline, ok)
-	handler, err := NewPeerHandler(p, stream, initiatedStream)
+
+	//additional handshake process..
+	var peerCred cred.PeerCred
+	if initiatedStream && p.secHelper != nil {
+		firstMsg := NewCredQuery()
+		err := stream.Send(firstMsg)
+		if err != nil {
+			return fmt.Errorf("send first message (get query) fail: %s", err)
+		}
+		peerLogger.Debugf("Deliver handshake message [%v]", firstMsg)
+
+		in, err := stream.Recv()
+		if err != nil {
+			return fmt.Errorf("recv first message (cred package) fail: %s", err)
+		} else if in.GetType() != firstMsg.GetType() {
+			return fmt.Errorf("unexpected type for first message: %s", in.GetType())
+		}
+
+		peerLogger.Debugf("Recv handshake resp message [%v]", in)
+		peerCred, err = p.secHelper.CreatePeerCred(in.GetPayload(), nil)
+		if err != nil {
+			peerLogger.Errorf("Fail on create peer's cred: %s", err)
+			return err
+		}
+	}
+
+	handler, err := NewPeerHandler(p, stream, initiatedStream, peerCred)
 	if err != nil {
 		return fmt.Errorf("Error creating handler during handleChat initiation: %s", err)
 	}
@@ -769,55 +853,9 @@ func (p *Impl) GetPeerEndpoint() (*pb.PeerEndpoint, error) {
 	ep = *p.self
 	if p.secHelper != nil {
 		// Set the PkiID on the PeerEndpoint if security is enabled
-		ep.PkiID = p.secHelper.PeerPki()
+		ep.PkiID = p.secHelper.Pki()
 	}
 	return &ep, nil
-}
-
-func (p *Impl) newHelloMessage() (*pb.HelloMessage, error) {
-
-	ep, err := p.GetPeerEndpoint()
-	if err != nil {
-		return nil, err
-	}
-
-	if p.secHelper != nil {
-		return &pb.HelloMessage{PeerEndpoint: ep, PeerCredential: p.secHelper.PeerCred()}, nil
-	} else {
-		return &pb.HelloMessage{PeerEndpoint: ep}, nil
-	}
-
-}
-
-// NewOpenchainDiscoveryHello constructs a new HelloMessage for sending
-func (p *Impl) NewOpenchainDiscoveryHello() (*pb.Message, error) {
-	helloMessage, err := p.newHelloMessage()
-	if err != nil {
-		return nil, fmt.Errorf("Error getting new HelloMessage: %s", err)
-	}
-	data, err := proto.Marshal(helloMessage)
-	if err != nil {
-		return nil, fmt.Errorf("Error marshalling HelloMessage: %s", err)
-	}
-	// Need to sign the Discovery Hello message
-	newDiscoveryHelloMsg := &pb.Message{Type: pb.Message_DISC_HELLO, Payload: data, Timestamp: pb.CreateUtcTimestamp()}
-	err = p.signMessageMutating(newDiscoveryHelloMsg)
-	if err != nil {
-		return nil, fmt.Errorf("Error signing new HelloMessage: %s", err)
-	}
-	return newDiscoveryHelloMsg, nil
-}
-
-// signMessage modifies the passed in Message by setting the Signature based upon the Payload.
-func (p *Impl) signMessageMutating(msg *pb.Message) error {
-	if p.secHelper != nil {
-		var err error
-		msg, err = p.secHelper.EndorsePeerMsg(msg)
-		if err != nil {
-			return fmt.Errorf("Error signing Openchain Message: %s", err)
-		}
-	}
-	return nil
 }
 
 // initDiscovery load the addresses from the discovery list previously saved to disk and adds them to the current discovery list
@@ -845,6 +883,8 @@ func (p *Impl) initDiscovery(cfg *PeerConfig) []string {
 		p.discHelper.touchPeriod = time.Second * 5
 	}
 	p.discHelper.touchMaxNodes = cfg.Discovery.MaxNodes
+	//we disable self-IP, so it is never appear on the node list we used
+	p.discHelper.RemoveNode(cfg.PeerEndpoint.GetAddress())
 
 	addresses := p.discHelper.GetAllNodes()
 	peerLogger.Debugf("Retrieved discovery list from disk: %v", addresses)

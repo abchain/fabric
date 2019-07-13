@@ -216,7 +216,7 @@ func (g *txPoolGlobal) MakeUpdate(d_in model.Digest) model.Update {
 
 	epochH, err := g.ledger.GetBlockNumberByState(d.GetEpoch())
 	if err != nil {
-		logger.Warning("Get epoch height fail, encode all transactions:", err)
+		logger.Debugf("Get epoch height fail, encode all transactions:", err)
 		epochH = 0
 	}
 

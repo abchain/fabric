@@ -3,8 +3,7 @@ package node
 import (
 	"fmt"
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/cred"
-	"github.com/abchain/fabric/core/cred/driver"
+	cred "github.com/abchain/fabric/core/cred"
 	"github.com/abchain/fabric/core/db"
 	gossip_stub "github.com/abchain/fabric/core/gossip/stub"
 	"github.com/abchain/fabric/core/gossip/txnetwork"
@@ -64,11 +63,6 @@ func (ne *NodeEngine) addLedger(vp *viper.Viper, tag string) (*ledger.Ledger, er
 	return l, nil
 }
 
-func (ne *NodeEngine) GenCredDriver() *cred_driver.Credentials_PeerDriver {
-	drv := cred_driver.Credentials_PeerCredBase{ne.Cred.Peer, ne.Cred.Tx}
-	return &cred_driver.Credentials_PeerDriver{drv.Clone(), nil, ne.Endorsers}
-}
-
 //preinit phase simply read all peer's name in the config and create them,
 //user can make settings on node and peer which will be respected in the
 //Init process
@@ -76,7 +70,7 @@ func (ne *NodeEngine) PreInit() {
 
 	ne.Ledgers = make(map[string]*ledger.Ledger)
 	ne.Peers = make(map[string]*PeerEngine)
-	ne.Endorsers = make(map[string]credentials.TxEndorserFactory)
+	ne.Cred.Endorsers = make(map[string]cred.TxEndorserFactory)
 	ne.Cred.ccSpecValidator = NewCCSpecValidator(nil)
 	ne.TxTopic = make(map[string]litekfk.Topic)
 	ne.TxTopicNameHandler = nullTransformer
@@ -115,6 +109,10 @@ func (ne *NodeEngine) PreInit() {
 func (ne *NodeEngine) ExecInit() error {
 
 	config.CacheViper()
+
+	if config.SecurityEnabled() {
+		ne.Options.EnforceSec = true
+	}
 
 	//init ledgers
 	var defaultTag string
@@ -171,10 +169,8 @@ func (ne *NodeEngine) ExecInit() error {
 	}
 
 	//create base credentials
-	creddrv := new(cred_driver.Credentials_PeerDriver)
-	if err := creddrv.Drive(config.SubViper("node")); err == nil {
-		ne.Cred.Peer = creddrv.PeerValidator
-		ne.Cred.Tx = creddrv.TxValidator
+	if es, err := cred.DriveEndorsers(config.SubViper("node")); err == nil {
+		ne.Cred.Endorsers = es
 	} else {
 		logger.Info("No credentials availiable in node:", err)
 	}
@@ -227,7 +223,8 @@ func (pe *PeerEngine) Init(vp *viper.Viper, node *NodeEngine, tag string) error 
 	config.CacheViper(vp)
 
 	var err error
-	credrv := node.GenCredDriver()
+	credrv := new(cred.Credentials_PeerDriver)
+	credrv.SuppliedEndorser = node.Cred.Endorsers
 	if err = credrv.Drive(vp); err != nil {
 		if node.Options.EnforceSec {
 			return fmt.Errorf("Init credential fail: %s", err)

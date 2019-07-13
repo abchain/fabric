@@ -99,11 +99,8 @@ func (di *DiscoveryImpl) AddNodes(addrs []string) []string { // Add a batch of a
 func (di *DiscoveryImpl) RemoveNode(address string) bool {
 	di.Lock()
 	defer di.Unlock()
-	if _, ok := di.nodes[address]; ok {
-		di.nodes[address] = false
-		return true
-	}
-	return false
+	di.nodes[address] = false
+	return true
 }
 
 // GetAllNodes returns an array of all addresses saved in the discovery list

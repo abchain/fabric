@@ -169,6 +169,13 @@ message PeerID {
     string name = 1;
 }
 
+//extended peerid for connection in separated streams, company with 
+//the one-time password
+message PeerIDOnStream {
+    string name = 1;
+    bytes  passw = 2;
+}
+
 message PeerEndpoint {
     PeerID ID = 1;
     string address = 2;
@@ -192,6 +199,9 @@ message PeersAddresses {
 message HelloMessage {
   PeerEndpoint peerEndpoint = 1;
   //BlockchainInfo blockchainInfo = 2;
+  //this is the credential of remote peer, not ours, so the
+  //receiver could not replay or rely this message for
+  //mal-using
   bytes peerCredential = 3;
 }
 
@@ -203,7 +213,7 @@ message Message {
         DISC_DISCONNECT = 2;
         DISC_GET_PEERS = 3;
         DISC_PEERS = 4;
-        DISC_NEWMSG = 5;
+        DISC_GET_CRED = 5;
 
         CHAIN_TRANSACTION = 6;
 

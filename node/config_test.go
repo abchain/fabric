@@ -2,6 +2,7 @@ package node
 
 import (
 	"github.com/abchain/fabric/core/config"
+	_ "github.com/abchain/fabric/core/cred/default"
 	"github.com/spf13/viper"
 	"io/ioutil"
 	"testing"

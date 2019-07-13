@@ -51,7 +51,7 @@ const (
 	chaincodeExecTimeoutDefault    int    = 30000
 	peerAddressDefault             string = "0.0.0.0:7051"
 
-	TLSRootCertFile = "chaincodeCA.pem"
+	//TLSRootCertFile = "chaincodeCA.pem"
 )
 
 // chains is a map between different blockchains and their ChaincodeSupport.
@@ -218,12 +218,6 @@ func NewChaincodeSupport(chainname ChainName, nodeName string, srvSpec *config.S
 		userRunsCC:  userrunsCC,
 		clientGuide: srvSpec.GetClient(),
 		nodeID:      nodeName}
-
-	//currently chaincode support only accept a file scheme for tls
-	if s.clientGuide.EnableTLS && s.clientGuide.TLSRootCertFile == "" {
-		chaincodeLogger.Fatalf("could not use tls scheme except for file: %v", s.clientGuide)
-		return nil
-	}
 
 	s.debugCC = viper.GetBool("chaincode.debugmode")
 

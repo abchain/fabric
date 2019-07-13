@@ -1,9 +1,8 @@
-package credentials
+package cred_default
 
 import (
 	"crypto/x509"
 	"encoding/asn1"
-	"github.com/abchain/fabric/core/crypto/utils"
 )
 
 var (
@@ -17,17 +16,19 @@ var (
 */
 type x509ExtVerifier struct {
 	rootCA    *x509.CertPool
-	rootCache map[*x509.Certificate]*utils.ObjIdIndex
+	rootCache map[*x509.Certificate]*ObjIdIndex
+
+	immeCAPool *x509.CertPool
 }
 
 func NewX509ExtVerifer(certs []*x509.Certificate) *x509ExtVerifier {
 	ret := &x509ExtVerifier{
 		rootCA:    x509.NewCertPool(),
-		rootCache: make(map[*x509.Certificate]*utils.ObjIdIndex),
+		rootCache: make(map[*x509.Certificate]*ObjIdIndex),
 	}
 
 	for _, cert := range certs {
-		ind := new(utils.ObjIdIndex)
+		ind := new(ObjIdIndex)
 		for _, ext := range cert.Extensions {
 			//ext.value is nonsense but we just add it ...
 			ind.AddItem(ext.Value, ext.Id)
@@ -43,12 +44,45 @@ func NewX509ExtVerifer(certs []*x509.Certificate) *x509ExtVerifier {
 	return ret
 }
 
-/* return the FISRT chain with matched ext, if not found matched chain, return nil, and error indicate it*/
-func (v *x509ExtVerifier) Verify(cert *x509.Certificate, immCA *x509.CertPool) ([][]*x509.Certificate, error) {
+func (v *x509ExtVerifier) CloneRootVerifer() *x509ExtVerifier {
+	return &x509ExtVerifier{
+		rootCA:    v.rootCA,
+		rootCache: v.rootCache,
+	}
+}
 
-	opt := x509.VerifyOptions{
-		Intermediates: immCA,
-		Roots:         v.rootCA,
+func (v *x509ExtVerifier) DuplicateImmediateCA(another *x509ExtVerifier) {
+
+	allentries := another.immeCAPool.Subjects()
+
+	v.immeCAPool = x509.NewCertPool()
+	for _, pem := range allentries {
+		v.immeCAPool.AppendCertsFromPEM(pem)
+	}
+}
+
+func (v *x509ExtVerifier) SetImmediateCAs(certs []*x509.Certificate) {
+
+	if v.immeCAPool == nil {
+		v.immeCAPool = x509.NewCertPool()
+	}
+
+	for _, ca := range certs {
+		v.immeCAPool.AddCert(ca)
+	}
+}
+
+/* return the FISRT chain with matched ext, if not found matched chain, return nil, and error indicate it*/
+func (v *x509ExtVerifier) Verify(cert *x509.Certificate) ([][]*x509.Certificate, error) {
+
+	opt := x509.VerifyOptions{}
+
+	if v == nil {
+		opt.Roots = x509.NewCertPool()
+		opt.Roots.AddCert(cert)
+	} else {
+		opt.Roots = v.rootCA
+		opt.Intermediates = v.immeCAPool
 	}
 
 	unhandledExt := cert.UnhandledCriticalExtensions
@@ -61,9 +95,9 @@ func (v *x509ExtVerifier) Verify(cert *x509.Certificate, immCA *x509.CertPool) (
 }
 
 /* return the FISRT chain with matched ext, if not found matched chain, return nil, and error indicate it*/
-func (v *x509ExtVerifier) VerifyWithAttr(cert *x509.Certificate, immCA *x509.CertPool) (chains [][]*x509.Certificate, matched []*x509.Certificate, err error) {
+func (v *x509ExtVerifier) VerifyWithAttr(cert *x509.Certificate) (chains [][]*x509.Certificate, matched []*x509.Certificate, err error) {
 
-	chains, err = v.Verify(cert, immCA)
+	chains, err = v.Verify(cert)
 	if err != nil {
 		return
 	}

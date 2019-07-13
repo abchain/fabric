@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/abchain/fabric/core/chaincode"
+	_ "github.com/abchain/fabric/core/cred/default"
 	"github.com/abchain/fabric/core/embedded_chaincode/api"
 	cc "github.com/abchain/fabric/examples/txnetwork/chaincode"
 	node "github.com/abchain/fabric/node/start"

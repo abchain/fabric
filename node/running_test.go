@@ -3,6 +3,7 @@ package node
 import (
 	"bytes"
 	"github.com/abchain/fabric/core/config"
+	"github.com/abchain/fabric/core/crypto"
 	pb "github.com/abchain/fabric/protos"
 	"github.com/spf13/viper"
 	"golang.org/x/net/context"
@@ -11,9 +12,9 @@ import (
 	"time"
 )
 
-func buildLegacyNode(t *testing.T) *NodeEngine {
+func buildLegacyNode(cfgname string, t *testing.T) *NodeEngine {
 
-	cf := config.SetupTestConf{"FABRIC", "conf_legacy_test", ""}
+	cf := config.SetupTestConf{"FABRIC", cfgname, ""}
 	cf.Setup()
 
 	tempDir, err := ioutil.TempDir("", "fabric-running-test")
@@ -54,9 +55,26 @@ func compareTx(t *testing.T, origin, delivered *pb.Transaction) {
 }
 
 func TestTxNetwork(t *testing.T) {
-
-	thenode := buildLegacyNode(t)
+	thenode := buildLegacyNode("conf_legacy_test", t)
 	defer thenode.FinalRelease()
+
+	testTxNetwork(thenode, t)
+}
+
+func TestTxNetworkWithCred(t *testing.T) {
+
+	if err := crypto.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	thenode := buildLegacyNode("conf_legacy_withcred_test", t)
+	defer thenode.FinalRelease()
+
+	testTxNetwork(thenode, t)
+}
+
+func testTxNetwork(thenode *NodeEngine, t *testing.T) {
+
 	thepeer := thenode.Peers[""]
 
 	if err := thepeer.Run(); err != nil {

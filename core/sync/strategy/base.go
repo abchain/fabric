@@ -58,7 +58,7 @@ func (se *SyncEntry) SyncTransactions(ctx context.Context, txids []string) ([]*p
 		logger.Errorf("sync transaction fail: %s (%d done in %d)", err, len(txids), len(outtx))
 	}
 
-	logger.Info("sync transaction finished for %d txs", len(outtx))
+	logger.Infof("sync transaction finished for %d txs", len(outtx))
 
 	return outtx, outreside
 }

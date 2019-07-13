@@ -1,67 +1,67 @@
 package config
 
 import (
-	"github.com/abchain/fabric/core/util"
+	"crypto/tls"
+	"crypto/x509"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc/credentials"
 )
 
-type tlsClientSpec struct {
-	EnableTLS       bool
-	TLSRootCertFile string
-	TLSHostOverride string
+type TLSImpl interface {
+	GetTLSCert() (*tls.Certificate, error)
+	GetRootCerts() (*x509.CertPool, error)
+}
+
+type FailTLSImpl struct {
+	E error
+}
+
+func (e FailTLSImpl) GetTLSCert() (*tls.Certificate, error) { return nil, e.E }
+func (e FailTLSImpl) GetRootCerts() (*x509.CertPool, error) { return nil, e.E }
+
+type dummyImply struct{}
+
+func (dummyImply) Error() string { return "Not implied" }
+
+//an impl which create util for tls's crypto elements
+var TLSImplFactory func(vp *viper.Viper) TLSImpl = func(*viper.Viper) TLSImpl {
+	return FailTLSImpl{dummyImply{}}
 }
 
 type tlsSpec struct {
-	tlsClientSpec
-	TLSKeyFile  string
-	TLSCertFile string
+	TLSImpl
+	EnableTLS       bool
+	TLSHostOverride string
 }
 
-func (ts *tlsClientSpec) Init(vp *viper.Viper) {
+func (ts *tlsSpec) Init(vp *viper.Viper) {
 
 	ts.EnableTLS = vp.GetBool("enabled")
 	if !ts.EnableTLS {
 		return
 	}
 
-	//we also recognize the file scheme
-	if vp.IsSet("file") {
-		ts.TLSRootCertFile = vp.GetString("file.rootcert")
-	}
-
+	ts.TLSImpl = TLSImplFactory(vp)
 	ts.TLSHostOverride = vp.GetString("serverhostoverride")
-}
-
-func (ts *tlsSpec) Init(vp *viper.Viper) {
-
-	ts.tlsClientSpec.Init(vp)
-	if !ts.EnableTLS {
-		return
-	}
-
-	//we recognize the file scheme
-	if vp.IsSet("file") {
-		ts.TLSCertFile = vp.GetString("file.cert")
-		ts.TLSKeyFile = vp.GetString("file.key")
-		//we suppose the certfile is self-signatured cert for supporting a client implement
-		if ts.TLSRootCertFile == "" {
-			ts.TLSRootCertFile = ts.TLSCertFile
-		}
-	}
 }
 
 //we also make an implement to generating the grpc credential
 func (ts *tlsSpec) GetServerTLSOptions() (credentials.TransportCredentials, error) {
 
-	return credentials.NewServerTLSFromFile(
-		util.CanonicalizeFilePath(ts.TLSCertFile),
-		util.CanonicalizeFilePath(ts.TLSKeyFile))
+	tlscer, err := ts.GetTLSCert()
+	if err != nil {
+		return nil, err
+	}
+
+	return credentials.NewServerTLSFromCert(tlscer), nil
 }
 
-func (ts *tlsClientSpec) GetClientTLSOptions() (credentials.TransportCredentials, error) {
+func (ts *tlsSpec) GetClientTLSOptions() (credentials.TransportCredentials, error) {
 
-	return credentials.NewClientTLSFromFile(
-		util.CanonicalizeFilePath(ts.TLSRootCertFile),
-		ts.TLSHostOverride)
+	tlspool, err := ts.GetRootCerts()
+	if err != nil {
+		return nil, err
+	}
+
+	return credentials.NewClientTLSFromCert(tlspool, ts.TLSHostOverride), nil
 }

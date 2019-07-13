@@ -20,20 +20,31 @@ var logger = logging.MustGetLogger("credential")
 
 */
 
-//peer creds also include the endorse entry because it should be sole per-network
-type PeerCreds interface {
-	PeerPki() []byte
-	PeerCred() []byte
-	EndorsePeerMsg(msg *pb.Message) (*pb.Message, error)
-	VerifyPeerMsg(pki []byte, msg *pb.Message) error
-	VerifyPeerCred([]byte) error
+type PeerCred interface {
+	Cred() []byte
+	//the shared secret between the handshaking peer pair, a key-exchange scheme
+	//is recommended but it is not enforced to cover the secret in the traffic texts
+	Secret() []byte
+	VerifyPeerMsg(msg *pb.Message) error
 }
 
+//peer creds also include the endorse entry because it should be sole per-network
+type PeerCreds interface {
+	PeerCred
+	Pki() []byte
+	//the pki can be nil for creating a PeerCred for "connect" attempt, pki is
+	//nil or not indicate different behavior so caller must verify it first
+	CreatePeerCred(cred []byte, pki []byte) (PeerCred, error)
+	EndorsePeerMsg(msg *pb.Message) (*pb.Message, error)
+}
+
+//txhandlerfactory should be thread-safe
 type TxHandlerFactory interface {
+	SetIdConverter(func([]byte) string)
 	ValidatePeerStatus(id string, status *pb.PeerTxState) error
 	//notify all of the preparing for a specified id (i.e. caches) can be complete released
 	RemovePreValidator(id string)
-	//tx prevalidator, handle any tx context with peerID being tagged, and fill the security context
+	//tx prevalidator, handle security relatedcontext in tx and fill the security context
 	GetValidator(id string) pb.TxPreHandler
 }
 
@@ -72,15 +83,4 @@ type TxEndorserFactory interface {
 type TxEndorser interface {
 	EndorseTransaction(*pb.Transaction) (*pb.Transaction, error)
 	Release()
-}
-
-//represent the most common implement for credential: the cert-base credential
-//A certcred object can always act as a TxHandlerFactory, but
-//it must contain a privte key to act as PeerCred
-//NOTICE: a cert object can act to mutiple role, it deep copy its data to the
-//cred object created in "ActAs..." function
-type CertificateCred interface {
-	HasPrivKey() bool
-	ActAsTxHandlerFactory() (TxHandlerFactory, error)
-	ActAsPeerCreds() (PeerCreds, error)
 }

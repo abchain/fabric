@@ -70,12 +70,10 @@ func (pe *PeerEngine) Syncer() *syncstrategy.SyncEntry      { return pe.sync }
 type NodeEngine struct {
 	Name string
 
-	Ledgers   map[string]*ledger.Ledger
-	Peers     map[string]*PeerEngine
-	Endorsers map[string]cred.TxEndorserFactory
-	Cred      struct {
-		Peer cred.PeerCreds
-		Tx   cred.TxHandlerFactory
+	Ledgers map[string]*ledger.Ledger
+	Peers   map[string]*PeerEngine
+	Cred    struct {
+		Endorsers map[string]cred.TxEndorserFactory
 		*ccSpecValidator
 	}
 	CustomFilters []pb.TxPreHandler
@@ -126,8 +124,8 @@ func (ne *NodeEngine) PeersList() (ret []*PeerEngine) {
 
 func (ne *NodeEngine) SelectEndorser(name string) (cred.TxEndorserFactory, error) {
 
-	if ne.Endorsers != nil {
-		opt, ok := ne.Endorsers[name]
+	if ne.Cred.Endorsers != nil {
+		opt, ok := ne.Cred.Endorsers[name]
 		if ok {
 			return opt, nil
 		}

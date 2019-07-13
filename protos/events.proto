@@ -20,7 +20,7 @@ import "chaincodeevent.proto";
 import "fabric.proto";
 
 package protos;
-
+option go_package = "github.com/abchain/fabric/protos";
 
 //----Event objects----
 

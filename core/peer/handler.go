@@ -25,6 +25,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/looplab/fsm"
 
+	cred "github.com/abchain/fabric/core/cred"
 	pb "github.com/abchain/fabric/protos"
 )
 
@@ -32,35 +33,45 @@ const DefaultSyncSnapshotTimeout time.Duration = 60 * time.Second
 
 // Handler peer handler implementation.
 type Handler struct {
-	chatMutex       sync.Mutex
-	ToPeerEndpoint  *pb.PeerEndpoint
-	Coordinator     *Impl
-	ChatStream      ChatStream
-	doneChan        chan struct{}
-	FSM             *fsm.FSM
+	chatMutex      sync.Mutex
+	ToPeerEndpoint *pb.PeerEndpoint
+	Coordinator    *Impl
+	ChatStream     ChatStream
+	doneChan       chan struct{}
+	FSM            *fsm.FSM
+
+	cred            cred.PeerCred
 	initiatedStream bool // Was the stream initiated within this Peer
 	registered      bool
 }
 
+func NewCredQuery() *pb.Message {
+	return &pb.Message{Type: pb.Message_DISC_GET_CRED}
+}
+
 // NewPeerHandler returns a new Peer handler
 // Is instance of HandlerFactory
-func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (MessageHandler, error) {
+func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool, peerCred cred.PeerCred) (MessageHandler, error) {
 
 	d := &Handler{
-		ChatStream:      stream,
+		ChatStream:  stream,
+		Coordinator: coord,
+
 		initiatedStream: initiatedStream,
-		Coordinator:     coord,
+		cred:            peerCred,
 	}
 
 	d.FSM = fsm.NewFSM(
 		"created",
 		fsm.Events{
+			{Name: pb.Message_DISC_GET_CRED.String(), Src: []string{"created"}, Dst: "created"},
 			{Name: pb.Message_DISC_HELLO.String(), Src: []string{"created"}, Dst: "established"},
 			{Name: pb.Message_DISC_GET_PEERS.String(), Src: []string{"established"}, Dst: "established"},
 			{Name: pb.Message_DISC_PEERS.String(), Src: []string{"established"}, Dst: "established"},
 		},
 		fsm.Callbacks{
 			"enter_state":                                  func(e *fsm.Event) { d.enterState(e) },
+			"before_" + pb.Message_DISC_GET_CRED.String():  func(e *fsm.Event) { d.beforeGetCred(e) },
 			"before_" + pb.Message_DISC_HELLO.String():     func(e *fsm.Event) { d.beforeHello(e) },
 			"before_" + pb.Message_DISC_GET_PEERS.String(): func(e *fsm.Event) { d.beforeGetPeers(e) },
 			"before_" + pb.Message_DISC_PEERS.String():     func(e *fsm.Event) { d.beforePeers(e) },
@@ -70,7 +81,7 @@ func NewPeerHandler(coord *Impl, stream ChatStream, initiatedStream bool) (Messa
 	// If the stream was initiated from this Peer, send an Initial HELLO message
 	if d.initiatedStream {
 		// Send intiial Hello
-		helloMessage, err := d.Coordinator.NewOpenchainDiscoveryHello()
+		helloMessage, err := d.newOpenchainDiscoveryHello()
 		if err != nil {
 			return nil, fmt.Errorf("Error getting new HelloMessage: %s", err)
 		}
@@ -121,6 +132,10 @@ func (d *Handler) To() (pb.PeerEndpoint, error) {
 	return *(d.ToPeerEndpoint), nil
 }
 
+func (d *Handler) Credential() cred.PeerCred {
+	return d.cred
+}
+
 // Stop stops this handler, which will trigger the Deregister from the Peer.
 func (d *Handler) Stop() error {
 	// Deregister the handler
@@ -129,6 +144,49 @@ func (d *Handler) Stop() error {
 		return fmt.Errorf("Error stopping MessageHandler: %s", err)
 	}
 	return nil
+}
+
+func (d *Handler) beforeGetCred(e *fsm.Event) {
+	peerLogger.Debugf("Received %s, respond peer data for incomming connection and sendback", e.Event)
+
+	//TODO: we may do some filter here?
+
+	// Send back out PeerID information in a Hello
+	if err := d.SendMessage(&pb.Message{Type: pb.Message_DISC_GET_CRED,
+		Payload: d.Coordinator.secHelper.Cred()}); err != nil {
+		e.Cancel(fmt.Errorf("Error sending response to %s:  %s", e.Event, err))
+		return
+	}
+
+}
+
+func (d *Handler) newOpenchainDiscoveryHello() (*pb.Message, error) {
+
+	ep, err := d.Coordinator.GetPeerEndpoint()
+	if err != nil {
+		return nil, err
+	}
+
+	helloMessage := &pb.HelloMessage{PeerEndpoint: ep}
+	if d.cred != nil {
+		peerLogger.Debugf("Add peer's credential in hello")
+		helloMessage.PeerCredential = d.cred.Cred()
+	}
+
+	data, err := proto.Marshal(helloMessage)
+	if err != nil {
+		return nil, fmt.Errorf("Error marshalling HelloMessage: %s", err)
+	}
+	// Need to sign the Discovery Hello message
+	newDiscoveryHelloMsg := &pb.Message{Type: pb.Message_DISC_HELLO,
+		Payload: data, Timestamp: pb.CreateUtcTimestamp()}
+	if signer := d.Coordinator.secHelper; signer != nil {
+		newDiscoveryHelloMsg, err = signer.EndorsePeerMsg(newDiscoveryHelloMsg)
+		if err != nil {
+			return nil, fmt.Errorf("Error signing new HelloMessage: %s", err)
+		}
+	}
+	return newDiscoveryHelloMsg, nil
 }
 
 func (d *Handler) beforeHello(e *fsm.Event) {
@@ -151,14 +209,19 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 	peerLogger.Debugf("Received %s from endpoint=%s", e.Event, helloMessage)
 
 	// If security enabled, need to verify the signature on the hello message
-	if d.Coordinator.secHelper != nil {
-		if err := d.Coordinator.secHelper.VerifyPeerMsg(helloMessage.PeerEndpoint.PkiID, msg); err != nil {
-			e.Cancel(fmt.Errorf("Error Verifying signature for received HelloMessage: %s", err))
-			return
+	if cred := d.Coordinator.secHelper; cred != nil {
+		if !d.initiatedStream {
+			d.cred, err = cred.CreatePeerCred(helloMessage.GetPeerCredential(),
+				helloMessage.PeerEndpoint.PkiID)
+			if err != nil {
+				e.Cancel(fmt.Errorf("Error create peer spec credential for [%v] from HelloMessage: %s",
+					d.ToPeerEndpoint.GetID(), err))
+				return
+			}
 		}
 
-		if err := d.Coordinator.secHelper.VerifyPeerCred(helloMessage.GetPeerCredential()); err != nil {
-			e.Cancel(fmt.Errorf("Error Verifying credential (cert) for incoming peer [%v]: %s", d.ToPeerEndpoint.GetID(), err))
+		if err := d.cred.VerifyPeerMsg(msg); err != nil {
+			e.Cancel(fmt.Errorf("Error Verifying hellomessage %s", err))
 			return
 		}
 		peerLogger.Debugf("Verified signature for %s", e.Event)
@@ -168,43 +231,45 @@ func (d *Handler) beforeHello(e *fsm.Event) {
 	err = d.Coordinator.RegisterHandler(d.ChatStream.Context(), d.initiatedStream, d)
 	if err != nil {
 		e.Cancel(fmt.Errorf("Error registering Handler: %s", err))
+		return
 	} else {
 		// Registered successfully
 		d.registered = true
+	}
 
-		if d.initiatedStream == false {
-			// Did NOT intitiate the stream, need to send back HELLO
-			peerLogger.Debugf("Received %s, sending back %s", e.Event, pb.Message_DISC_HELLO.String())
-			// Send back out PeerID information in a Hello
-			helloMessage, err := d.Coordinator.NewOpenchainDiscoveryHello()
-			if err != nil {
-				e.Cancel(fmt.Errorf("Error getting new HelloMessage: %s", err))
-				return
-			}
-			if err := d.SendMessage(helloMessage); err != nil {
-				e.Cancel(fmt.Errorf("Error sending response to %s:  %s", e.Event, err))
-				return
-			}
+	// Did NOT intitiate the stream, need to send back HELLO
+	if d.initiatedStream == false {
+		peerLogger.Debugf("Received %s, sending back %s", e.Event, pb.Message_DISC_HELLO.String())
+		// Send back out PeerID information in a Hello
+		helloMessage, err := d.newOpenchainDiscoveryHello()
+		if err != nil {
+			e.Cancel(fmt.Errorf("Error getting new HelloMessage: %s", err))
+			return
 		}
-
-		//a grace behavior: we do not disclose this address anymore if the other side
-		//prone to be hidden (we add it again if GET_PEERS is received)
-		d.Coordinator.GetDiscHelper().RemoveNode(d.ToPeerEndpoint.Address)
-
-		// if I am a hidden node, I will never send GET_PEERS
-		if !d.Coordinator.isHiddenPeer() {
-			//send GET_PEERS as soon as possible
-			if err := d.SendMessage(&pb.Message{
-				Type:    pb.Message_DISC_GET_PEERS,
-				Payload: []byte(getPeerMagicCode),
-			}); err != nil {
-				peerLogger.Errorf("Error sending %s during handler discovery tick: %s", pb.Message_DISC_GET_PEERS, err)
-			}
-			//then send get_peer message periodically
-			d.doneChan = make(chan struct{})
-			go d.start()
+		if err := d.SendMessage(helloMessage); err != nil {
+			e.Cancel(fmt.Errorf("Error sending response to %s:  %s", e.Event, err))
+			return
 		}
 	}
+
+	//a grace behavior: we do not disclose this address anymore if the other side
+	//prone to be hidden (we add it again if GET_PEERS is received)
+	d.Coordinator.GetDiscHelper().RemoveNode(d.ToPeerEndpoint.Address)
+
+	// if I am a hidden node, I will never send GET_PEERS
+	if !d.Coordinator.isHiddenPeer() {
+		//send GET_PEERS as soon as possible
+		if err := d.SendMessage(&pb.Message{
+			Type:    pb.Message_DISC_GET_PEERS,
+			Payload: []byte(getPeerMagicCode),
+		}); err != nil {
+			peerLogger.Errorf("Error sending %s during handler discovery tick: %s", pb.Message_DISC_GET_PEERS, err)
+		}
+		//then send get_peer message periodically
+		d.doneChan = make(chan struct{})
+		go d.start()
+	}
+
 }
 
 func (d *Handler) beforeGetPeers(e *fsm.Event) {

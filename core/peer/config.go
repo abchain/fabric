@@ -36,6 +36,7 @@ import (
 	"time"
 
 	pb "github.com/abchain/fabric/protos"
+	"google.golang.org/grpc"
 )
 
 type PeerConfig struct {
@@ -50,6 +51,7 @@ type PeerConfig struct {
 		TouchPeriod time.Duration
 		MaxNodes    int
 	}
+	NewPeerClientConn func(string) (*grpc.ClientConn, error)
 }
 
 func NewPeerConfig(forValidator bool, vp *viper.Viper, spec *config.ServerSpec) (*PeerConfig, error) {
@@ -102,6 +104,23 @@ func (c *PeerConfig) Configuration(vp *viper.Viper, spec *config.ServerSpec) err
 
 	c.PeerEndpoint = &pb.PeerEndpoint{ID: &pb.PeerID{Name: peerID}, Address: spec.ExternalAddr, Type: peerType}
 	peerLogger.Infof("Init peer endpoint: %s", c.PeerEndpoint)
+
+	clispec := spec.GetClient()
+	if clispec.EnableTLS {
+		c.NewPeerClientConn = func(peerAddress string) (*grpc.ClientConn, error) {
+			tlscred, err := clispec.GetClientTLSOptions()
+			if err != nil {
+				return nil, err
+			}
+			//func is used by chatwith, which has its own goroutine
+			return grpc.Dial(peerAddress,
+				grpc.WithTransportCredentials(tlscred),
+				grpc.WithTimeout(time.Second*3), //TODO
+				grpc.WithBlock())
+		}
+
+	}
+
 	return nil
 }
 

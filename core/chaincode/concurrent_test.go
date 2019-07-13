@@ -39,7 +39,7 @@ func concurrentInvoke(ctxt context.Context, invtx []*pb.Transaction, querytx []*
 		cond.Wait()
 		lock.Unlock()
 
-		txe, _ := pb.NewPlainTxHandlingContext(tx)
+		txe, _ := pb.DefaultTxHandler.Handle(pb.NewTransactionHandlingContext(tx))
 		tout := ledger.TxExecStates{}
 		if isquery {
 			tout.InitForQuerying(l)

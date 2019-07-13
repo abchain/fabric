@@ -2,6 +2,7 @@ syntax = "proto3";
 package protos;
 import "fabric.proto";
 import "google/protobuf/empty.proto";
+option go_package = "github.com/abchain/fabric/protos";
 
 service Sync {
     rpc Data(stream SyncMsg) returns (stream SyncMsg) {}

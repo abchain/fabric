@@ -20,6 +20,7 @@ package protos;
 
 import "chaincode.proto";
 import "fabric.proto";
+option go_package = "github.com/abchain/fabric/protos";
 
 // Interface exported by the server.
 service Devops {

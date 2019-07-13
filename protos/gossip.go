@@ -37,12 +37,12 @@ func (m *GossipMsg) EstimateSize() (total int) {
 }
 
 // generate a consistent byte represent
-func (s *PeerTxState) MsgEncode(id string) ([]byte, error) {
+func (s *PeerTxState) MsgEncode(id []byte) ([]byte, error) {
 
 	var buf bytes.Buffer
 	w := util.NewConWriter(&buf)
 
-	if err := w.Write([]byte(id)).Write(s.Digest).Write(s.Endorsement).Error(); err != nil {
+	if err := w.Write([]byte(id)).Write(s.Digest).Error(); err != nil {
 		return nil, err
 	}
 

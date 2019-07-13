@@ -1,6 +1,7 @@
 package protos
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
@@ -183,22 +184,30 @@ type shandlerMap struct {
 	m map[PeerID]*StreamHandler
 }
 
+type accessCtl struct {
+	sync.RWMutex
+	m map[string][]byte
+}
+
 //a default implement, use two goroutine for read and write simultaneously
 type StreamStub struct {
 	StreamHandlerFactory
-	handlerMap *shandlerMap
+	handlerMap shandlerMap
+	allowedCli accessCtl
 	localID    *PeerID
 }
 
 func NewStreamStub(factory StreamHandlerFactory, peerid *PeerID) *StreamStub {
 
-	return &StreamStub{
+	ret := &StreamStub{
 		StreamHandlerFactory: factory,
-		handlerMap: &shandlerMap{
-			m: make(map[PeerID]*StreamHandler),
-		},
-		localID: peerid,
+		localID:              peerid,
 	}
+
+	ret.handlerMap.m = make(map[PeerID]*StreamHandler)
+	ret.allowedCli.m = make(map[string][]byte)
+
+	return ret
 }
 
 func (s *StreamStub) registerHandler(h *StreamHandler, peerid *PeerID) error {
@@ -382,17 +391,28 @@ func (s *StreamStub) Broadcast(ctx context.Context, m proto.Message) (err error,
 
 }
 
-func (s *StreamStub) HandleClient(conn *grpc.ClientConn, remotePeerid *PeerID) (error, func()) {
+func (s *StreamStub) HandleClient(conn *grpc.ClientConn, remotePeerid *PeerID) (error, func() error) {
+	return s.HandleClient2(conn, remotePeerid, nil)
+}
+
+func (s *StreamStub) HandleClient2(conn *grpc.ClientConn, remotePeerid *PeerID, psw []byte) (error, func() error) {
 	clistrm, err := s.NewClientStream(conn)
 
 	if err != nil {
-		return err, func() {}
+		return err, func() error { return nil }
 	}
 
-	errf := func() { clistrm.CloseSend() }
+	errf := func() error {
+		clistrm.CloseSend()
+		return nil
+	}
 
+	hsmsg := &PeerIDOnStream{
+		Name:  s.localID.GetName(),
+		Passw: psw,
+	}
 	// handshake: send my id to remote peer
-	err = clistrm.SendMsg(s.localID)
+	err = clistrm.SendMsg(hsmsg)
 	if err != nil {
 		return err, errf
 	}
@@ -411,24 +431,67 @@ func (s *StreamStub) HandleClient(conn *grpc.ClientConn, remotePeerid *PeerID) (
 		return err, errf
 	}
 
-	return nil, func() {
+	return nil, func() error {
 		defer clistrm.CloseSend()
 		defer s.unRegisterHandler(remotePeerid)
-		streamHandler.handleStream(clistrm)
+		return streamHandler.handleStream(clistrm)
 	}
 
 }
 
+func (s *StreamStub) AllowClient(remotePeerid *PeerID, psw []byte) {
+	s.allowedCli.Lock()
+	defer s.allowedCli.Unlock()
+
+	s.allowedCli.m[remotePeerid.GetName()] = psw
+}
+
+func (s *StreamStub) CleanClientACL(remotePeerid *PeerID) {
+	s.allowedCli.Lock()
+	defer s.allowedCli.Unlock()
+
+	delete(s.allowedCli.m, remotePeerid.GetName())
+}
+
+func (s *StreamStub) checkACL(id string, psw []byte) error {
+
+	s.allowedCli.RLock()
+	defer s.allowedCli.RUnlock()
+
+	if spsw, ok := s.allowedCli.m[id]; ok {
+		if len(spsw) > 0 && bytes.Compare(psw, spsw) != 0 {
+			return fmt.Errorf("ACL checking fail: wrong password")
+		}
+	} else {
+		return fmt.Errorf("ACL checking fail: unknown id")
+	}
+
+	return nil
+}
+
 func (s *StreamStub) HandleServer(stream grpc.ServerStream) error {
 
-	remotePeerid := new(PeerID)
+	hsmsg := new(PeerIDOnStream)
 
 	// handshake: receive remote peer id
-	err := stream.RecvMsg(remotePeerid)
+	err := stream.RecvMsg(hsmsg)
 	if err != nil {
 		return err
 	}
 
+	//check access control
+	peerSid := hsmsg.GetName()
+	err = s.checkACL(peerSid, hsmsg.GetPassw())
+	if err != nil {
+		logger.Errorf("Incoming peer %s is reject: %s", peerSid, err)
+		return err
+	} else {
+		s.allowedCli.Lock()
+		delete(s.allowedCli.m, peerSid)
+		s.allowedCli.Unlock()
+	}
+
+	remotePeerid := &PeerID{Name: peerSid}
 	himpl, err := s.NewStreamHandlerImpl(remotePeerid, s, false)
 
 	if err != nil {

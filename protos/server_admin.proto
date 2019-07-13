@@ -19,6 +19,7 @@ syntax = "proto3";
 package protos;
 
 import "google/protobuf/empty.proto";
+option go_package = "github.com/abchain/fabric/protos";
 
 // Interface exported by the server.
 service Admin {

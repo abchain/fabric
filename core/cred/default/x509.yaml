@@ -1,0 +1,217 @@
+
+###############################################################################
+#
+#    LOGGING section
+#
+###############################################################################
+logging:
+
+    # Valid logging levels are case-insensitive strings chosen from
+
+    #     CRITICAL | ERROR | WARNING | NOTICE | INFO | DEBUG
+
+    # Logging 'module' names are also strings, however valid module names are
+    # defined at runtime and are not checked for validity during option
+    # processing.
+
+    # Default logging levels are specified here for each of the peer
+    # commands. For commands that have subcommands, the defaults also apply to
+    # all subcommands of the command. These logging levels can be overridden
+    # on the command line using the --logging-level command-line option, or by
+    # setting the CORE_LOGGING_LEVEL environment variable.
+
+    # The logging level specification is of the form
+
+    #     [<module>[,<module>...]=]<level>[:[<module>[,<module>...]=]<level>...]
+
+    # A logging level by itself is taken as the overall default. Otherwise,
+    # overrides for individual or groups of modules can be specified using the
+    # <module>[,<module>...]=<level> syntax.
+
+    # Examples:
+    #   info                                       - Set default to INFO
+    #   warning:main,db=debug:chaincode=info       - Override default WARNING in main,db,chaincode
+    #   chaincode=info:main=debug:db=debug:warning - Same as above
+    test: debug
+
+
+testblk1:
+    file: 
+        key: server1.key
+        cert: server1.pem
+
+testblk2:
+    pem:
+        key: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC9I7JdhKdQSen0
+            SU10GB6mQaqU3NNhccHCYEZxW0GAy2e1i3UHRSMjIm4QkgYeFHOC3FmadfkjcUS7
+            A/65O0Cva5+GlVpAodh2hWzbICEwhwnkvFvC7lpk/5CBGwrMMkWdb5YmRLBftALv
+            AnxNYIZtb4yDDMfNhjJgv+a4+nHvGMFu7zobZHw049G+Pyb/QcdfV2sq33r9BWfg
+            XiGNXU/IT064aL7DP8HeQ9tbm3UjQykN7N4MeRUvUCOVQDaqnuBG1ltxmPNk3daH
+            Ht15ezGQj7+luCZfoKxsPbdEjSTao4QHIpiXkktjtF6nHe6HGNlcR4oODdTWwvyH
+            P+cls6E5AgMBAAECggEAawBK5AUr8oweQwlFPCx5Cm2T52uWWkZU63Yz4+VQhWCN
+            Z3Nh3Z8LZdEQm2dA9rtzLdEjD/M14wstau+zp28SBSvJsAXGbVIid8q77quamy2K
+            N1EoSHs3wHOkeKWn0iWOpKaAN14cucfI8RZi5BN7eWXmBC2yy17kGT/3cyacVjqd
+            v5MG0q7SycCMJQ9v0w5ucnxMwo0xl1P+rvgMlJmEVoY4GMRyIJFhsd/FiPtdRufo
+            YgfoSCLhBcGaRDuoVMj/eY+iVFNFf0V25Z5FaBSCbdSu0gUxVeK8qio+/yHiLgSE
+            rNkKfnZXozATitSDPhYqI/Z6arKbezyz3M1Mdnc4AQKBgQDoIByrspyC8zhe0Tqs
+            +yh5QhtjG69sybK/hUHs1BgA1fvsbhdjY/lYDcfmfgr1bq1qBldKT/TeDTGcT7jf
+            O3cmqQADqaHnvEAjolYWL6coWx6DjMbmGAOHYcKH5UJNtxQyvYdBCukYNdS6qeQ4
+            CSuDPhDCpuVKSCCkjfMj/shN+QKBgQDQl8I+mzrGhDxoXUOGSgrEZlm6IGiQFrnw
+            SGSuYXSkCk8VvNJ7rejaM3XbVyMHhQtoZzoILXTEtB9bWETGpxMJY9f5IZrlap5f
+            0n4TcfkVUTutWBRGv7pnNa9LQgKbl9g2g+0ZPpqhVzGKHiWXim3DTwMrmKwMMBDM
+            S2AWOz+9QQKBgQDZxD6BicgxRdJtiaadX+bBk5Yz7WYvDi5mZLLLZtK5/gYg8ct5
+            T/I9fHg8MaVASbvgyuAbdFWJ+CDBvzz2GEiY+VVtGjgtOjuF8qcGm2AbiRhgW7LB
+            bGfrG3ivmxIP7KDDVXFNQNoa/216TSYwt9Gdh52br41Omcod9pnS/BSYqQKBgCV8
+            wJoDx8JZjYmsCTCfKeQ2CLYckO4kR3JZcE6ukQnSGHhtoN49WPWt/eZXeKInVO+E
+            bbd+g9e+D0yZRnL1H8S2PuA1G+NTD/dkmuffucYM/U6f37T/S/60dTZvPIy980uI
+            1hmNWLjaNLr/w/3CEQvirU0ueO0PzlUIztHv//qBAoGBAKYxg283f/UNZhDz2QyX
+            a6brNrF/EL5MF2yTSUuowuwRGOqsQeCN+cNNWOG9tB9sU3ozeG+tKpQu/SU/rZcr
+            qQPl1kwA2swv48HaejZcQX6Nm/9c7IKhzPHskDjZauwa+8ag708K3Bv2HwRhRoyc
+            pg3wyc8mI9fhOc4LnKsiePPS
+            -----END PRIVATE KEY-----        
+        cert: |
+            -----BEGIN CERTIFICATE-----
+            MIIDYzCCAkugAwIBAgIJAIbjeVJsMa4MMA0GCSqGSIb3DQEBCwUAMEgxCzAJBgNV
+            BAYTAlVTMQswCQYDVQQIDAJOQzEPMA0GA1UEBwwGRHVyaGFtMQswCQYDVQQKDAJI
+            TDEOMAwGA1UEAwwFZHVtbXkwHhcNMTYwNjE4MTUzMTU3WhcNMjYwNjE2MTUzMTU3
+            WjBIMQswCQYDVQQGEwJVUzELMAkGA1UECAwCTkMxDzANBgNVBAcMBkR1cmhhbTEL
+            MAkGA1UECgwCSEwxDjAMBgNVBAMMBWR1bW15MIIBIjANBgkqhkiG9w0BAQEFAAOC
+            AQ8AMIIBCgKCAQEAvSOyXYSnUEnp9ElNdBgepkGqlNzTYXHBwmBGcVtBgMtntYt1
+            B0UjIyJuEJIGHhRzgtxZmnX5I3FEuwP+uTtAr2ufhpVaQKHYdoVs2yAhMIcJ5Lxb
+            wu5aZP+QgRsKzDJFnW+WJkSwX7QC7wJ8TWCGbW+MgwzHzYYyYL/muPpx7xjBbu86
+            G2R8NOPRvj8m/0HHX1drKt96/QVn4F4hjV1PyE9OuGi+wz/B3kPbW5t1I0MpDeze
+            DHkVL1AjlUA2qp7gRtZbcZjzZN3Whx7deXsxkI+/pbgmX6CsbD23RI0k2qOEByKY
+            l5JLY7Repx3uhxjZXEeKDg3U1sL8hz/nJbOhOQIDAQABo1AwTjAdBgNVHQ4EFgQU
+            O/l3pfRJKFQ4RvXPZolnUkreSngwHwYDVR0jBBgwFoAUO/l3pfRJKFQ4RvXPZoln
+            UkreSngwDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAaCUwh66AKgBY
+            mCg/q5XxdpFKCbKqPREoG/FG0fk94683+w5cERspoLDzdQNiq4Ij/vLKVmGtRr3L
+            tYBFT1ICH+kjb+tJMzerGrQxHuBBtyqQdsY1vpk7h/kj0tsAIyljm492+ETHxmlA
+            mFdxqA1YbGpDMs1r//iLBLgU17+hyqfO0POcXXSJnJDhKCuBmeeHtRcydYyDbETd
+            BgjFOPUQsprFBh7niHAl1vAEBqII/M6d9x23FNgm5kgmNJWoNu2DbWbnLOWQCBgv
+            CabzNVL93EIAhTiNQ0e1tkdNKy7rtiguAFdtZRIKVD/qIWEK40k6NXCBsTlwquDL
+            EMTljgKrSQ==
+            -----END CERTIFICATE-----
+
+testblk3:
+    new:
+        commonname: test.abc
+        isca: true
+
+
+testpools:
+
+    entries:
+        - abc
+        - def
+        - ghi
+
+    abc:
+        new:
+            commonname: test.abc
+            isca: true
+    
+    def:
+        pem:
+            cert: |
+                -----BEGIN CERTIFICATE-----
+                MIIDYzCCAkugAwIBAgIJAIbjeVJsMa4MMA0GCSqGSIb3DQEBCwUAMEgxCzAJBgNV
+                BAYTAlVTMQswCQYDVQQIDAJOQzEPMA0GA1UEBwwGRHVyaGFtMQswCQYDVQQKDAJI
+                TDEOMAwGA1UEAwwFZHVtbXkwHhcNMTYwNjE4MTUzMTU3WhcNMjYwNjE2MTUzMTU3
+                WjBIMQswCQYDVQQGEwJVUzELMAkGA1UECAwCTkMxDzANBgNVBAcMBkR1cmhhbTEL
+                MAkGA1UECgwCSEwxDjAMBgNVBAMMBWR1bW15MIIBIjANBgkqhkiG9w0BAQEFAAOC
+                AQ8AMIIBCgKCAQEAvSOyXYSnUEnp9ElNdBgepkGqlNzTYXHBwmBGcVtBgMtntYt1
+                B0UjIyJuEJIGHhRzgtxZmnX5I3FEuwP+uTtAr2ufhpVaQKHYdoVs2yAhMIcJ5Lxb
+                wu5aZP+QgRsKzDJFnW+WJkSwX7QC7wJ8TWCGbW+MgwzHzYYyYL/muPpx7xjBbu86
+                G2R8NOPRvj8m/0HHX1drKt96/QVn4F4hjV1PyE9OuGi+wz/B3kPbW5t1I0MpDeze
+                DHkVL1AjlUA2qp7gRtZbcZjzZN3Whx7deXsxkI+/pbgmX6CsbD23RI0k2qOEByKY
+                l5JLY7Repx3uhxjZXEeKDg3U1sL8hz/nJbOhOQIDAQABo1AwTjAdBgNVHQ4EFgQU
+                O/l3pfRJKFQ4RvXPZolnUkreSngwHwYDVR0jBBgwFoAUO/l3pfRJKFQ4RvXPZoln
+                UkreSngwDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAaCUwh66AKgBY
+                mCg/q5XxdpFKCbKqPREoG/FG0fk94683+w5cERspoLDzdQNiq4Ij/vLKVmGtRr3L
+                tYBFT1ICH+kjb+tJMzerGrQxHuBBtyqQdsY1vpk7h/kj0tsAIyljm492+ETHxmlA
+                mFdxqA1YbGpDMs1r//iLBLgU17+hyqfO0POcXXSJnJDhKCuBmeeHtRcydYyDbETd
+                BgjFOPUQsprFBh7niHAl1vAEBqII/M6d9x23FNgm5kgmNJWoNu2DbWbnLOWQCBgv
+                CabzNVL93EIAhTiNQ0e1tkdNKy7rtiguAFdtZRIKVD/qIWEK40k6NXCBsTlwquDL
+                EMTljgKrSQ==
+                -----END CERTIFICATE-----       
+    
+    ghi:
+        file: 
+            key: server1.key
+            cert: server1.pem
+
+testblk4:
+    new:
+        commonname: rrr.abc
+        authby: abc
+
+testblk41:
+    new:
+        commonname: rrr.abc
+        authby: ghi
+
+testblk4f:
+    new:
+        commonname: rrr.abc
+        authby: def
+
+testblk5:
+    new:
+        commonname: rem.abc
+        tag: blk5
+
+testblk6:
+    new:
+        commonname: kkk.abc
+        authby: abc
+        isca: true
+         
+x509Certs:
+
+    entries:
+        - loacalscheme
+        - created
+
+    created:
+        new:
+            commonname: test.abc
+            isca: true
+
+    loacalscheme:
+        new:
+            commonname: testpool
+            isca: true
+            tag: testX            
+
+tlsconfig1:
+    address: 127.0.0.1:19989
+    tls: 
+        enabled: true
+        file: 
+            key: server1.key
+            cert: server1.pem        
+        serverhostoverride: dummy
+
+tlsconfig2:
+    address: 127.0.0.1:19989
+    tls: 
+        enabled: true
+        predefined: loacalscheme
+        serverhostoverride: testpool
+
+tlsconfig3:
+    address: 127.0.0.1:19989
+    tls: 
+        enabled: true
+        new:
+            commonname: test2.abc
+            authby: created    
+
+tlsconfig3cli:
+    address: 127.0.0.1:19989
+    tls: 
+        enabled: true
+        predefined: created
+        serverhostoverride: test2.abc      

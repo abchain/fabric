@@ -28,6 +28,9 @@ import (
 
 	"path/filepath"
 
+	//important
+	_ "github.com/abchain/fabric/core/cred/default"
+
 	"github.com/abchain/fabric/core/chaincode/container"
 	"github.com/abchain/fabric/core/chaincode/container/ccintf"
 	"github.com/abchain/fabric/core/config"
@@ -39,7 +42,6 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 // attributes to request in the batch of tcerts while deploying, invoking or querying
@@ -98,7 +100,7 @@ func initPeer(vp *viper.Viper) (net.Listener, error) {
 	nodeName := "cc_test"
 	var opts []grpc.ServerOption
 	if conf.EnableTLS {
-		creds, err := credentials.NewServerTLSFromFile(conf.TLSCertFile, conf.TLSKeyFile)
+		creds, err := conf.GetServerTLSOptions()
 		if err != nil {
 			return nil, fmt.Errorf("Failed to generate credentials %v", err)
 		}

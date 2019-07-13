@@ -1,29 +1,23 @@
-package cred_driver
+package credentials
 
 import (
-	"fmt"
-	cred "github.com/abchain/fabric/core/cred"
+	"errors"
+	"github.com/abchain/fabric/core/config"
 	"github.com/spf13/viper"
 )
 
+var DriverImpl = map[string]func(*viper.Viper, *Credentials_PeerDriver) error{}
+
 //driver read config and build a custom CredentialCore
 
-type Credentials_PeerCredBase struct {
-	PeerValidator cred.PeerCreds
-	TxValidator   cred.TxHandlerFactory
-}
-
 type Credentials_PeerDriver struct {
-	*Credentials_PeerCredBase
-	TxEndorserDef cred.TxEndorserFactory
+	PeerValidator PeerCreds
+	TxValidator   TxHandlerFactory
+	TxEndorserDef TxEndorserFactory
 
 	//if config file specified a "custom" endorser and it can be obtained
 	//from this field, TxEndorserDef will be set to the corresponding one
-	SuppliedEndorser map[string]cred.TxEndorserFactory
-}
-
-func (drv *Credentials_PeerCredBase) Clone() *Credentials_PeerCredBase {
-	return &Credentials_PeerCredBase{}
+	SuppliedEndorser map[string]TxEndorserFactory
 }
 
 /*
@@ -39,5 +33,16 @@ func (drv *Credentials_PeerCredBase) Clone() *Credentials_PeerCredBase {
 	the peer credential
 */
 func (drv *Credentials_PeerDriver) Drive(vp *viper.Viper) error {
-	return fmt.Errorf("Not availiable")
+	drv.SuppliedEndorser = make(map[string]TxEndorserFactory)
+
+	credtopic := vp.GetString("credential.topic")
+	if credtopic == "" {
+		return errors.New("No credential scheme topic")
+	}
+
+	if f, ok := DriverImpl[credtopic]; !ok {
+		return errors.New("topic not availiable: " + credtopic)
+	} else {
+		return f(config.SubViper("credential", vp), drv)
+	}
 }

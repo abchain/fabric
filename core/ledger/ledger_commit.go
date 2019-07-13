@@ -227,22 +227,7 @@ func (blkc BlockCommit) LastCommit() []byte { return blkc.lastBlockHash }
 func (blkc *BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err error) {
 	ledger := blkc.ledger
 
-	writeBatch := ledger.blockchain.NewWriteBatch()
-	defer writeBatch.Destroy()
-	defer func() {
-		if err == nil {
-			err = writeBatch.BatchCommit()
-			if err == nil {
-				ledger.blockchain.blockPersisted(blkn)
-				ledger.index.persistDone(blkn)
-			}
-		}
-	}()
-
 	ledgerLogger.Debugf("Start commit block (prevhash is %x) on %d", block.GetPreviousBlockHash(), blkn)
-
-	ledger.readCache.Lock()
-	defer ledger.readCache.Unlock()
 
 	err = ledger.blockchain.prepareBlock(blkn, block)
 	if err != nil {
@@ -257,10 +242,14 @@ func (blkc *BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err 
 		}
 
 	}(blkInfo.GetCurrentBlockHash())
+
 	err = ledger.index.prepareIndexes(block, blkn, blkInfo.GetCurrentBlockHash())
 	if err != nil {
 		return
 	}
+
+	writeBatch := ledger.blockchain.NewWriteBatch()
+	defer writeBatch.Destroy()
 
 	_, err = ledger.index.persistPrepared(writeBatch)
 	if err != nil {
@@ -271,8 +260,21 @@ func (blkc *BlockCommit) SyncCommitBlock(blkn uint64, block *protos.Block) (err 
 		return err
 	}
 
+	ledger.readCache.Lock()
+	defer ledger.readCache.Unlock()
+
 	ledger.blockchain.commitBuilding()
 	ledger.index.commitIndex()
+
+	defer func() {
+		if err == nil {
+			err = writeBatch.BatchCommit()
+			if err == nil {
+				ledger.blockchain.blockPersisted(blkn)
+				ledger.index.persistDone(blkn)
+			}
+		}
+	}()
 
 	return ledger.PutTransactions(block.GetTransactions())
 }

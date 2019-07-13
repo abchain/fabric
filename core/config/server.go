@@ -56,6 +56,6 @@ func (s *ServerSpec) GetClient() *ClientSpec {
 
 	ret := new(ClientSpec)
 	ret.Address = s.ExternalAddr
-	ret.tlsClientSpec = s.tlsClientSpec
+	ret.tlsSpec = s.tlsSpec
 	return ret
 }

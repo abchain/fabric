@@ -34,6 +34,8 @@ func (s peerStatus) To() model.VClock {
 func (s peerStatus) PickFrom(d_in model.VClock, u_in model.Update) (model.ScuttlebuttPeerUpdate, model.Update) {
 
 	//a (parital) deep copy is made
+	//notice we could not simply copy ret for there may be some additional field
+	//defined by protobuf
 	ret := new(pb.PeerTxState)
 	ret.Num = s.GetNum()
 	ret.Digest = s.GetDigest()
@@ -57,8 +59,8 @@ func (s *peerStatus) Update(id string, u_in model.ScuttlebuttPeerUpdate, g_in mo
 	}
 
 	if g.peerHandler != nil {
-		err := g.peerHandler.ValidatePeerStatus(id, u.PeerTxState)
-		if err != nil {
+
+		if err := g.peerHandler.ValidatePeerStatus(id, u.PeerTxState); err != nil {
 			if err == PeerTemporaryUnavail {
 				//we could not update peer temparory, but this is not consider as an error (or blame our neighbour)
 				logger.Warningf("Peer [%s] is not allowed to be update now", id)

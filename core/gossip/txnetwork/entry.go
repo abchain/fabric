@@ -44,6 +44,10 @@ func (e *TxNetworkEntry) InitCred(v cred.TxHandlerFactory) {
 	logger.Debugf("txnetwork has set new txhandler %v(%T)", v, v)
 	e.net.peers.peerHandler = v
 	e.net.txPool.preValidator = v
+	if v != nil {
+		v.SetIdConverter(ToStringId)
+	}
+
 }
 
 //set the output for tx received in txnetwork

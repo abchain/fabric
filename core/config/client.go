@@ -7,7 +7,7 @@ import (
 
 type ClientSpec struct {
 	Address string
-	tlsClientSpec
+	tlsSpec
 }
 
 func (s *ClientSpec) Init(vp *viper.Viper) error {
@@ -19,8 +19,8 @@ func (s *ClientSpec) Init(vp *viper.Viper) error {
 	logger.Debugf("Set client's address as [%s]", s.Address)
 
 	if vp.IsSet("tls") {
-		logger.Debugf("Read tls configuration for clientspec")
-		s.tlsClientSpec.Init(SubViper("tls", vp))
+		logger.Debugf("Read tls configuration for client")
+		s.tlsSpec.Init(SubViper("tls", vp))
 	}
 
 	return nil

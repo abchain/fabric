@@ -18,15 +18,15 @@ package platforms
 
 import (
 	"archive/tar"
+	"bytes"
+	"encoding/pem"
 	"fmt"
 	"github.com/abchain/fabric/core/chaincode/platforms/car"
 	"github.com/abchain/fabric/core/chaincode/platforms/golang"
 	"github.com/abchain/fabric/core/chaincode/platforms/java"
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/util"
 	pb "github.com/abchain/fabric/protos"
 	"io"
-	"os"
 	"time"
 )
 
@@ -110,19 +110,24 @@ func WriteRunTime(spec *pb.ChaincodeSpec, clispec *config.ClientSpec, tw *tar.Wr
 	}
 
 	if clispec.EnableTLS {
+		cacers, err := clispec.GetRootCerts()
 		//write tls certificate and append dockerfile
-		ca, err := os.Open(util.CanonicalizeFilePath(clispec.TLSRootCertFile))
 		if err != nil {
-			return fmt.Errorf("fail to open certificate file %s: %s", clispec.TLSRootCertFile, err)
+			return fmt.Errorf("fail to get certificate pool: %s", err)
 		}
-		fstat, err := ca.Stat()
-		if err != nil {
-			return fmt.Errorf("fail to state certificate file %s: %s", clispec.TLSRootCertFile, err)
+		var pemBuffer bytes.Buffer
+		for _, cerDER := range cacers.Subjects() {
+			err := pem.Encode(&pemBuffer, &pem.Block{Type: "CERTIFICATE", Bytes: cerDER})
+			if err != nil {
+				return fmt.Errorf("fail to buffer write PEM block: %s", err)
+			}
 		}
-		tw.WriteHeader(&tar.Header{Name: "cert/ca.crt", Size: fstat.Size(), ModTime: zeroTime, AccessTime: zeroTime, ChangeTime: zeroTime})
-		_, err = io.Copy(tw, ca)
+		tw.WriteHeader(&tar.Header{Name: "cert/ca.crt", Size: int64(pemBuffer.Len()),
+			ModTime: zeroTime, AccessTime: zeroTime, ChangeTime: zeroTime})
+
+		_, err = io.Copy(tw, &pemBuffer)
 		if err != nil {
-			return fmt.Errorf("fail to open certificate file %s: %s", clispec.TLSRootCertFile, err)
+			return fmt.Errorf("fail to copy certificate PEM data: %s", err)
 		}
 		dockerfile = fmt.Sprintf("%s\nCOPY cert/ca.crt .\n", dockerfile)
 	}

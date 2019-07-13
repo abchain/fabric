@@ -16,7 +16,7 @@ type tCertEndorsment interface {
 
 func endorseTxMsg(tx *obc.Transaction) ([]byte, error) {
 
-	ret, err := TxToSignatureMsg(tx)
+	ret, err := tx.Digest()
 	if err != nil {
 		return nil, fmt.Errorf("Failed digesting tx [%s].", err.Error())
 	}

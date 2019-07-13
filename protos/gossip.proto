@@ -1,6 +1,7 @@
 syntax = "proto3";
 package protos;
 import "fabric.proto";
+option go_package = "github.com/abchain/fabric/protos";
 
 service Gossip {
     // Request a new stream for bi-direction gossip
