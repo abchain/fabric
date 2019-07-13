@@ -283,22 +283,25 @@ func (openchainDB *OpenchainDB) DeleteState() error {
 	openchainDB.Lock()
 	defer openchainDB.Unlock()
 
+	opts := openchainDB.db.OpenOpt.Options()
+	defer opts.Destroy()
+
 	err := openchainDB.db.DropColumnFamily(openchainDB.db.StateCF)
 	if err != nil {
 		dbLogger.Errorf("Error dropping state CF: %s", err)
 		return err
 	}
-	err = openchainDB.db.DropColumnFamily(openchainDB.db.StateDeltaCF)
-	if err != nil {
-		dbLogger.Errorf("Error dropping state delta CF: %s", err)
-		return err
-	}
-
-	opts := openchainDB.db.OpenOpt.Options()
-	defer opts.Destroy()
 	openchainDB.db.StateCF, err = openchainDB.db.CreateColumnFamily(opts, StateCF)
 	if err != nil {
 		dbLogger.Errorf("Error creating state CF: %s", err)
+		return err
+	}
+	openchainDB.db.cfMap[StateCF].Destroy()
+	openchainDB.db.cfMap[StateCF] = openchainDB.db.StateCF
+
+	err = openchainDB.db.DropColumnFamily(openchainDB.db.StateDeltaCF)
+	if err != nil {
+		dbLogger.Errorf("Error dropping state delta CF: %s", err)
 		return err
 	}
 	openchainDB.db.StateDeltaCF, err = openchainDB.db.CreateColumnFamily(opts, StateDeltaCF)
@@ -306,8 +309,7 @@ func (openchainDB *OpenchainDB) DeleteState() error {
 		dbLogger.Errorf("Error creating state delta CF: %s", err)
 		return err
 	}
-
-	openchainDB.db.cfMap[StateCF] = openchainDB.db.StateCF
+	openchainDB.db.cfMap[StateDeltaCF].Destroy()
 	openchainDB.db.cfMap[StateDeltaCF] = openchainDB.db.StateDeltaCF
 
 	return nil
@@ -327,15 +329,17 @@ func (openchainDB *OpenchainDB) DeleteAll() error {
 		dbLogger.Errorf("Error dropping index CF: %s", err)
 		return err
 	}
-	err = openchainDB.db.DropColumnFamily(openchainDB.db.BlockchainCF)
-	if err != nil {
-		dbLogger.Errorf("Error dropping chain CF: %s", err)
-		return err
-	}
-
 	openchainDB.db.IndexesCF, err = openchainDB.db.CreateColumnFamily(openchainDB.indexesCFOpt, IndexesCF)
 	if err != nil {
 		dbLogger.Errorf("Error creating state delta CF: %s", err)
+		return err
+	}
+	openchainDB.db.cfMap[IndexesCF].Destroy()
+	openchainDB.db.cfMap[IndexesCF] = openchainDB.db.IndexesCF
+
+	err = openchainDB.db.DropColumnFamily(openchainDB.db.BlockchainCF)
+	if err != nil {
+		dbLogger.Errorf("Error dropping chain CF: %s", err)
 		return err
 	}
 
@@ -346,8 +350,7 @@ func (openchainDB *OpenchainDB) DeleteAll() error {
 		dbLogger.Errorf("Error creating state CF: %s", err)
 		return err
 	}
-
-	openchainDB.db.cfMap[IndexesCF] = openchainDB.db.IndexesCF
+	openchainDB.db.cfMap[BlockchainCF].Destroy()
 	openchainDB.db.cfMap[BlockchainCF] = openchainDB.db.BlockchainCF
 
 	return nil
