@@ -177,8 +177,10 @@ func (g *txNetworkPeers) AddNewPeer(id string) (ret *peerStatus, ids []string) {
 		return
 	}
 
-	if len(g.lruIndex) > g.maxPeers {
-		ids = g.truncateTailPeer(len(g.lruIndex) - g.maxPeers)
+	if curPeers := len(g.lruIndex); curPeers > g.maxPeers {
+		ids = g.truncateTailPeer(curPeers - g.maxPeers)
+		logger.Infof("Truncate peers (current %d, allow max %d), will remove %d",
+			curPeers, g.maxPeers, len(ids))
 	}
 
 	//if we can't truncate anypeer, just give up
