@@ -132,6 +132,7 @@ func (g *peersGlobal) NewPeer(id string) model.ScuttlebuttPeerStatus {
 func (g *peersGlobal) RemovePeer(id string, _ model.ScuttlebuttPeerStatus) {
 
 	ok := g.txNetworkPeers.RemovePeer(id)
+	logger.Infof("Request require peer [%s] to be remove (done: %v)", id, ok)
 
 	if ok {
 		g.network.txPool.RemoveCaches(id)
