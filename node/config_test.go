@@ -3,10 +3,14 @@ package node
 import (
 	"github.com/abchain/fabric/core/config"
 	_ "github.com/abchain/fabric/core/cred/default"
-	"github.com/spf13/viper"
+	"github.com/abchain/fabric/core/db"
 	"io/ioutil"
 	"testing"
 )
+
+func setDataPath(path string) {
+	db.InitDBPath(path)
+}
 
 func TestLegacyInit(t *testing.T) {
 
@@ -18,8 +22,7 @@ func TestLegacyInit(t *testing.T) {
 		t.Fatal("tempfile fail", err)
 	}
 
-	viper.Set("peer.fileSystemPath", tempDir)
-	config.CacheViper()
+	setDataPath(tempDir)
 
 	ne := new(NodeEngine)
 	ne.Name = "test"
@@ -51,8 +54,7 @@ func TestInit(t *testing.T) {
 		t.Fatal("tempfile fail", err)
 	}
 
-	viper.Set("node.fileSystemPath", tempDir)
-	config.CacheViper()
+	setDataPath(tempDir)
 
 	ne := new(NodeEngine)
 	ne.Name = "test"

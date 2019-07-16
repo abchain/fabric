@@ -20,6 +20,9 @@ type txNetworkGlobal struct {
 	notifies
 	peers  *txNetworkPeers
 	txPool *transactionPool
+
+	//registered utilities
+	selfTxProcess func(string) (uint64, []byte)
 }
 
 //if this is set, network will be created with default peer status,
@@ -46,12 +49,10 @@ func createNetworkGlobal() *txNetworkGlobal {
 		lruIndex: make(map[string]*list.Element),
 	}
 
-	l, err := ledger.GetLedger()
-	if err != nil {
-		logger.Warning("Could not get default ledger", err)
+	txPool := &transactionPool{
+		cCaches:     make(map[string]commitData),
+		cPendingTxs: make(map[string]bool),
 	}
-
-	txPool := newTransactionPool(l)
 
 	if DefaultInitPeer.Id != "" {
 		peers.selfId = DefaultInitPeer.Id
@@ -333,24 +334,26 @@ type transactionPool struct {
 	preValidator cred.TxHandlerFactory
 
 	sync.RWMutex
-	cCaches       map[string]commitData
-	cPendingTxs   map[string]bool
-	selfTxProcess func() (uint64, []byte)
-	currentEpoch  struct {
+	cCaches      map[string]commitData
+	cPendingTxs  map[string]bool
+	currentEpoch struct {
 		height uint64
 		hash   []byte
 	}
 }
 
-func newTransactionPool(ledger *ledger.Ledger) *transactionPool {
-	ret := new(transactionPool)
-	ret.cCaches = make(map[string]commitData)
-	ret.cPendingTxs = make(map[string]bool)
+func (tp *transactionPool) resetLedger(l *ledger.Ledger) {
+	tp.ledger = l
+	l.AddCommitHook(tp.onCommit)
+	l.SubScribeNewState(tp.SetEpoch)
 
-	ledger.AddCommitHook(ret.onCommit)
-	ret.ledger = ledger
-
-	return ret
+	linfo, err := l.GetLedgerInfo()
+	if err != nil {
+		logger.Infof("Can not get ledger info: %s, we have no epoch yet", err)
+	} else {
+		tp.SetEpoch(linfo.Persisted.States, linfo.States.AvaliableHash)
+		logger.Infof("Init epoch to [%X]", linfo.States.AvaliableHash)
+	}
 }
 
 func (tp *transactionPool) onCommit(txids []string, _ uint64) {

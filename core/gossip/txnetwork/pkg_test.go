@@ -47,7 +47,10 @@ func TestMain(m *testing.M) {
 
 func initGlobalStatus() *txNetworkGlobal {
 
-	return createNetworkGlobal()
+	txglb := createNetworkGlobal()
+	l, _ := ledger.GetLedger()
+	txglb.txPool.resetLedger(l)
+	return txglb
 }
 
 func initTestLedgerWrapper(t *testing.T) *ledger.Ledger {

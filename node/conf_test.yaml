@@ -126,6 +126,9 @@ ledgers:
 network1:
     # mark this peer is default
     default: true
+    # use ledger
+    ledger: base
+
     # The Peer id is used for identifying this Peer instance.
     id: vp0
 
@@ -247,6 +250,7 @@ network1:
 
 network2:
     id: vp0
+    ledger: additional    
     # The Address this Peer will listen on can be omitted
     # listenAddress: 127.0.0.1:8055
     # The Address expose to other peers
@@ -293,6 +297,7 @@ network2:
         disable: true  
 network3:
     id: vp0
+    ledger: more    
     address: 127.0.0.1:9055
     addressAutoDetect: false
     #validator:
