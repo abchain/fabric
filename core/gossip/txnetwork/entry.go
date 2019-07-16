@@ -22,21 +22,7 @@ type TxNetworkEntry struct {
 //the default settings
 func (e *TxNetworkEntry) InitLedger(l *ledger.Ledger) {
 	logger.Debugf("txnetwork has set new ledger %v", l)
-	e.net.txPool.ledger = l
-
-	defer func() {
-
-		l.SubScribeNewState(e.net.txPool.SetEpoch)
-
-	}()
-
-	linfo, err := l.GetLedgerInfo()
-	if err != nil {
-		logger.Infof("Can not get ledger info: %s, we have no epoch yet", err)
-	} else {
-		e.net.txPool.SetEpoch(linfo.Persisted.States, linfo.States.AvaliableHash)
-		logger.Infof("Init epoch to %X", linfo.States.AvaliableHash)
-	}
+	e.net.txPool.resetLedger(l)
 }
 
 //[optional] set the credential for peer in txnetwork
@@ -44,6 +30,7 @@ func (e *TxNetworkEntry) InitCred(v cred.TxHandlerFactory) {
 	logger.Debugf("txnetwork has set new txhandler %v(%T)", v, v)
 	e.net.peers.peerHandler = v
 	e.net.txPool.preValidator = v
+
 	if v != nil {
 		v.SetIdConverter(ToStringId)
 	}
@@ -169,11 +156,11 @@ func (e *TxNetworkEntry) GetPeerStatus() (*pb.PeerTxState, string) {
 	return e.net.peers.QuerySelf()
 }
 
-func (e *TxNetworkEntry) GetTxStatus() (uint64, []byte) {
-	if e.net.txPool.selfTxProcess == nil {
+func (e *TxNetworkEntry) GetTxStatus(id string) (uint64, []byte) {
+	if e.net.selfTxProcess == nil {
 		return 0, nil
 	}
-	return e.net.txPool.selfTxProcess()
+	return e.net.selfTxProcess(id)
 }
 
 var catsToReferOnPaused = []string{globalCatName, hotTxCatName}

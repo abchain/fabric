@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+func newTransactionPool(ledger *ledger.Ledger) *transactionPool {
+	ret := new(transactionPool)
+	ret.cCaches = make(map[string]commitData)
+	ret.cPendingTxs = make(map[string]bool)
+
+	ret.resetLedger(ledger)
+
+	return ret
+}
+
 func TestTxChain(t *testing.T) {
 	tx1, _ := buildTestTx(t)
 	tx2, _ := buildTestTx(t)

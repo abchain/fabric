@@ -209,7 +209,7 @@ func TestTxGlobalTruncate(t *testing.T) {
 
 func TestAsAWhole(t *testing.T) {
 
-	initTestLedgerWrapper(t)
+	tledger := initTestLedgerWrapper(t)
 	defer func(bits uint) {
 		SetPeerTxQueueLen(bits)
 	}(peerTxQueueLenBit)
@@ -218,6 +218,7 @@ func TestAsAWhole(t *testing.T) {
 
 	stub := stub.InitGossipStub(peer.NewPeer(&pb.PeerEndpoint{ID: &pb.PeerID{Name: "testpeer"}}), nil)
 
+	getTxNetwork(stub).txPool.resetLedger(tledger)
 	globalM := stub.GetCatalogHandler(globalCatName).Model()
 	globalS := model.DumpScuttlebutt(globalM)
 
@@ -329,7 +330,7 @@ func TestAsAWhole(t *testing.T) {
 
 func TestSelfUpdateAsAWhole(t *testing.T) {
 
-	initTestLedgerWrapper(t)
+	tledger := initTestLedgerWrapper(t)
 	defer func(bits uint) {
 		SetPeerTxQueueLen(bits)
 	}(peerTxQueueLenBit)
@@ -337,6 +338,8 @@ func TestSelfUpdateAsAWhole(t *testing.T) {
 	SetPeerTxQueueLen(3)
 
 	stub := stub.InitGossipStub(peer.NewPeer(&pb.PeerEndpoint{ID: &pb.PeerID{Name: "testpeer"}}), nil)
+
+	getTxNetwork(stub).txPool.resetLedger(tledger)
 
 	globalM := stub.GetCatalogHandler(globalCatName).Model()
 	globalS := model.DumpScuttlebutt(globalM)

@@ -70,7 +70,7 @@ func (pe *PeerEngine) Run() error {
 	}
 
 	var txlast txPoint
-	txlast.Series, txlast.Digest = pe.txn.GetTxStatus()
+	txlast.Series, txlast.Digest = pe.txn.GetTxStatus(id)
 
 	if id != pe.lastID {
 		//ok, we start a new handler

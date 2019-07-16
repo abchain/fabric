@@ -645,10 +645,10 @@ func initHotTx(stub *gossip.GossipStub) {
 	txglobal.network.RegUpdateNotify(standardUpdateFunc(ch))
 	txglobal.network.RegEvictNotify(standardEvictFunc(ch))
 	txglobal.network.RegSetSelfPeer(setselfpeer)
-	txglobal.selfTxProcess = func() (uint64, []byte) {
+	txglobal.network.selfTxProcess = func(id string) (uint64, []byte) {
 		m.Lock()
 		defer m.Unlock()
-		us, ok := selfStatus.Peers[selfStatus.SelfID]
+		us, ok := selfStatus.Peers[id]
 		if !ok {
 			return 0, nil
 		} else if uss, ok := us.(*peerTxMemPool); !ok {

@@ -5,7 +5,6 @@ import (
 	"github.com/abchain/fabric/core/config"
 	"github.com/abchain/fabric/core/crypto"
 	pb "github.com/abchain/fabric/protos"
-	"github.com/spf13/viper"
 	"golang.org/x/net/context"
 	"io/ioutil"
 	"testing"
@@ -22,8 +21,7 @@ func buildLegacyNode(cfgname string, t *testing.T) *NodeEngine {
 		t.Fatal("tempfile fail", err)
 	}
 
-	viper.Set("peer.fileSystemPath", tempDir)
-	config.CacheViper()
+	setDataPath(tempDir)
 
 	ne := new(NodeEngine)
 	ne.Name = "test"
@@ -55,7 +53,7 @@ func compareTx(t *testing.T, origin, delivered *pb.Transaction) {
 }
 
 func TestTxNetwork(t *testing.T) {
-	thenode := buildLegacyNode("conf_legacy_test", t)
+	thenode := buildLegacyNode("conf_running_test", t)
 	defer thenode.FinalRelease()
 
 	testTxNetwork(thenode, t)
@@ -67,7 +65,7 @@ func TestTxNetworkWithCred(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	thenode := buildLegacyNode("conf_legacy_withcred_test", t)
+	thenode := buildLegacyNode("conf_running_withcred_test", t)
 	defer thenode.FinalRelease()
 
 	testTxNetwork(thenode, t)

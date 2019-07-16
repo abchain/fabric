@@ -72,16 +72,75 @@ logging:
     client: debug
 
     test: debug
+
+node:
+
+    ledgers:
+      - testledger
+
+    peers:
+      - testpeer
+
+    # rocksdb configurations
+    db:
+        # 10485760 = 10M
+        maxLogFileSize: 10485760
+        keepLogFileNum: 10
+        logLevel: "warn"
+        perBlockPerCheckpoint: true
+        #version: 0
     
+    api:
+        disabled: true
+
+ledgers:
+    testledger:
+        currentDbVersion: 1        
+        state:
+
+            # Control the number state deltas that are maintained. This takes additional
+            # disk space, but allow the state to be rolled backwards and forwards
+            # without the need to replay transactions.
+            deltaHistorySize: 500
+
+            # The data structure in which the state will be stored. Different data
+            # structures may offer different performance characteristics.
+            # Options are 'buckettree', 'trie' and 'raw'.
+            # ( Note:'raw' is experimental and incomplete. )
+            # If not set, the default data structure is the 'buckettree'.
+            # This CANNOT be changed after the DB has been created.
+            dataStructure:
+            # The name of the data structure is for storing the state
+            name: buckettree
+            # The data structure specific configurations
+            configs:
+                # configurations for 'bucketree'. These CANNOT be changed after the DB
+                # has been created. 'numBuckets' defines the number of bins that the
+                # state key-values are to be divided
+                numBuckets: 1000003
+                # 'maxGroupingAtEachLevel' defines the number of bins that are grouped
+                #together to construct next level of the merkle-tree (this is applied
+                # repeatedly for constructing the entire tree).
+                maxGroupingAtEachLevel: 5
+                # 'bucketCacheSize' defines the size (in MBs) of the cache that is used to keep
+                # the buckets (from root upto secondlast level) in memory. This cache helps
+                # in making state hash computation faster. A value less than or equals to zero
+                # leads to disabling this caching. This caching helps more if transactions
+                # perform significant writes.
+                bucketCacheSize: 100
+
+                # configurations for 'trie'
+                # 'tire' has no additional configurations exposed as yet
 ###############################################################################
 #
 #    Peer section
 #
 ###############################################################################
-peer:
+testpeer:
 
     # The Peer id is used for identifying this Peer instance.
     id: vp0
+    ledger: testledger
 
     # The privateKey to be used by this peer
     # privateKey: 794ef087680e2494fa4918fd8fb80fb284b50b57d321a31423fe42b9ccf6216047cea0b66fe8365a8e3f2a8140c6866cc45852e63124668bee1daa9c97da0c2a
@@ -112,34 +171,6 @@ peer:
     # Setting for runtime.GOMAXPROCS(n). If n < 1, it does not change the current setting
     gomaxprocs: -1
     workers: 2
-
-
-    # Validator defines whether this peer is a validating peer or not, and if
-    # it is enabled, what consensus plugin to load
-    validator:
-        enabled: true
-
-        consensus:
-            # Consensus plugin to use. The value is the name of the plugin, e.g. pbft, noops ( this value is case-insensitive)
-            # if the given value is not recognized, we will default to noops
-            plugin: noops
-
-            # total number of consensus messages which will be buffered per connection before delivery is rejected
-            buffersize: 1000
-
-        events:
-            # The address that the Event service will be enabled on the validator
-            address: 0.0.0.0:7053
-
-            # total number of events that could be buffered without blocking the
-            # validator sends
-            buffersize: 100
-
-            # milliseconds timeout for producer to send an event.
-            # if < 0, if buffer full, unblocks immediately and not send
-            # if 0, if buffer full, will block and guarantee the event will be sent out
-            # if > 0, if buffer full, blocks till timeout
-            timeout: 10
 
 
     # Peer discovery settings.  Controls how this peer discovers other peers
@@ -181,36 +212,6 @@ peer:
 
         #Abolished the discovered function of the node and retained the function of detecting other nodes
         disable: false
-
-    # Path on the file system where peer will store data
-    fileSystemPath: /var/hyperledger/production
-
-    currentDbVersion: 1
-    # rocksdb configurations
-    db:
-        # 10485760 = 10M
-        maxLogFileSize: 10485760
-        keepLogFileNum: 10
-        logLevel: "warn"
-        perBlockPerCheckpoint: true
-        #version: 0
-
-    profile:
-        enabled:     false
-        listenAddress: 0.0.0.0:6060
-
-    credential:
-        topic: x509
-        peer:
-            new:
-                commonname: testpeer
-                isca: true
-                tag: peerCred
-        
-        txnet:
-            new:
-                commonname: tx
-                isca: true
 
 ###############################################################################
 #
@@ -322,54 +323,6 @@ chaincode:
     # between peer and chaincode.
     # A value <= 0 turns keepalive off
     keepalive: 0
-
-###############################################################################
-#
-###############################################################################
-#
-#    Ledger section - ledger configuration encompases both the blockchain
-#    and the state
-#
-###############################################################################
-ledger:
-
-  blockchain:
-
-  state:
-
-    # Control the number state deltas that are maintained. This takes additional
-    # disk space, but allow the state to be rolled backwards and forwards
-    # without the need to replay transactions.
-    deltaHistorySize: 500
-
-    # The data structure in which the state will be stored. Different data
-    # structures may offer different performance characteristics.
-    # Options are 'buckettree', 'trie' and 'raw'.
-    # ( Note:'raw' is experimental and incomplete. )
-    # If not set, the default data structure is the 'buckettree'.
-    # This CANNOT be changed after the DB has been created.
-    dataStructure:
-      # The name of the data structure is for storing the state
-      name: buckettree
-      # The data structure specific configurations
-      configs:
-        # configurations for 'bucketree'. These CANNOT be changed after the DB
-        # has been created. 'numBuckets' defines the number of bins that the
-        # state key-values are to be divided
-        numBuckets: 1000003
-        # 'maxGroupingAtEachLevel' defines the number of bins that are grouped
-        #together to construct next level of the merkle-tree (this is applied
-        # repeatedly for constructing the entire tree).
-        maxGroupingAtEachLevel: 5
-        # 'bucketCacheSize' defines the size (in MBs) of the cache that is used to keep
-        # the buckets (from root upto secondlast level) in memory. This cache helps
-        # in making state hash computation faster. A value less than or equals to zero
-        # leads to disabling this caching. This caching helps more if transactions
-        # perform significant writes.
-        bucketCacheSize: 100
-
-        # configurations for 'trie'
-        # 'tire' has no additional configurations exposed as yet
 
 
 ###############################################################################
