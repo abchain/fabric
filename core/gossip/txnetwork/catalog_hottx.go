@@ -743,7 +743,7 @@ func (c *hotTxCat) TransUpdateToPb(cpo gossip.CatalogPeerPolicies, u_in model.Up
 		}
 
 		if gu.epoch != 0 {
-			gu.AcquireCachesRead(pu_in.Id).PruneTxs(gu.epoch, pu.HotTransactionBlock)
+			//			gu.AcquireCachesRead(pu_in.Id).PruneTxs(gu.epoch, pu.HotTransactionBlock)
 		}
 
 		msg.Txs[pu_in.Id] = pu.HotTransactionBlock
