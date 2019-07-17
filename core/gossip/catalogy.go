@@ -45,7 +45,6 @@ type pullWorks struct {
 	sync.Mutex
 	m map[CatalogPeerPolicies]*model.Puller
 	//a home-make sync.condition which can work along with a context
-	occFlag       int
 	releaseNotify chan error
 }
 
@@ -63,17 +62,13 @@ func (h *pullWorks) popPuller(cpo CatalogPeerPolicies) *model.Puller {
 	p, ok := h.m[cpo]
 	if ok {
 		delete(h.m, cpo)
-
-		if h.occFlag > 1 {
+		if len(h.m) != 0 {
 			select {
 			case h.releaseNotify <- nil:
 			default:
 				logger.Errorf("Seems [%s] try to made notify while no peer is waiting any more", cpo.GetId())
 			}
-		} else if h.occFlag != 1 {
-			panic("Impossible occFlag")
 		}
-		h.occFlag--
 
 	}
 	return p
@@ -85,15 +80,18 @@ func (h *pullWorks) newPuller(ctx context.Context, cpo CatalogPeerPolicies, m *m
 	h.Lock()
 	defer h.Unlock()
 
-	if _, ok := h.m[cpo]; ok {
+	if v, ok := h.m[cpo]; ok {
+		//sanity check
+		if v == nil {
+			panic("A nil puller is set")
+		}
 		return nil
 	}
 
 	puller := model.NewPuller(m)
 	h.m[cpo] = puller
-	h.occFlag++
 
-	if h.occFlag > 1 {
+	if len(h.m) > 1 {
 
 		//we must wait for another pulling is finish, so avoid a concurrent-polling which may
 		//waste a lot of bandwidth and comp. cost
@@ -104,8 +102,7 @@ func (h *pullWorks) newPuller(ctx context.Context, cpo CatalogPeerPolicies, m *m
 		case <-ctx.Done():
 			logger.Infof("Peer [%s] waiting for another pulling fail, give up this pulling", cpo.GetId())
 			h.Lock()
-			h.m[cpo] = nil
-			h.occFlag--
+			delete(h.m, cpo)
 			return nil
 		}
 
