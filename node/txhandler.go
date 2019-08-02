@@ -121,7 +121,10 @@ func (t *txNetworkHandlerImpl) HandleTxs(txs []*txnetwork.PendingTransaction) er
 		return nil
 	}
 
-	if err = t.UpdateLocalHotTx(&pb.HotTransactionBlock{htxs, t.lastSeries + 1}); err == nil {
+	if err = t.UpdateLocalHotTx(&pb.HotTransactionBlock{
+		Transactions: htxs,
+		BeginSeries:  t.lastSeries + 1,
+	}); err == nil {
 		t.lastSeries = t.lastSeries + uint64(len(htxs))
 		t.lastDigest = lastDigest
 	} else {

@@ -289,7 +289,9 @@ func (u txPeerUpdate) getRef(refSeries uint64) txPeerUpdate {
 	if u.BeginSeries < refSeries {
 		//possible panic if headpos exceed len of u.Transactions ?
 		//scuttlebutt scheme will check To() first and avoid this case
-		return txPeerUpdate{&pb.HotTransactionBlock{u.Transactions[int(refSeries-u.BeginSeries):], refSeries}}
+		return txPeerUpdate{&pb.HotTransactionBlock{
+			Transactions:u.Transactions[int(refSeries-u.BeginSeries):], 
+			BeginSeries: refSeries}}
 	} else {
 		//start from head
 		return u

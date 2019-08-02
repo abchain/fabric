@@ -71,7 +71,7 @@ func (v verifySet) excludeFail() (ret []string) {
 
 func toPeerId(name []string) (ret []*PeerID) {
 	for _, n := range name {
-		ret = append(ret, &PeerID{n})
+		ret = append(ret, &PeerID{Name: n})
 	}
 
 	return
@@ -79,32 +79,32 @@ func toPeerId(name []string) (ret []*PeerID) {
 
 func Test_StreamHub_Base(t *testing.T) {
 
-	tstub := NewStreamStub(nil, &PeerID{"peer0"})
+	tstub := NewStreamStub(nil, &PeerID{Name: "peer0"})
 
 	h1 := newStreamHandler(&dummyHandler{})
 
-	tstub.registerHandler(h1, &PeerID{"peer1"})
+	tstub.registerHandler(h1, &PeerID{Name: "peer1"})
 
-	if strm := tstub.PickHandler(&PeerID{"peer1"}); strm == nil {
+	if strm := tstub.PickHandler(&PeerID{Name: "peer1"}); strm == nil {
 		t.Fatal("1. Can not pick registered handler")
 	}
 
-	if strm := tstub.PickHandler(&PeerID{"peer2"}); strm != nil {
+	if strm := tstub.PickHandler(&PeerID{Name: "peer2"}); strm != nil {
 		t.Fatal("1. pick unregistered handler")
 	}
 
 	h2 := newStreamHandler(&dummyHandler{})
-	tstub.registerHandler(h2, &PeerID{"peer2"})
+	tstub.registerHandler(h2, &PeerID{Name: "peer2"})
 
-	if strm := tstub.PickHandler(&PeerID{"peer1"}); strm == nil {
+	if strm := tstub.PickHandler(&PeerID{Name: "peer1"}); strm == nil {
 		t.Fatal("2. Can not pick registered handler peer1")
 	}
 
-	if strm := tstub.PickHandler(&PeerID{"peer2"}); strm == nil {
+	if strm := tstub.PickHandler(&PeerID{Name: "peer2"}); strm == nil {
 		t.Fatal("2. Can not pick registered handler peer2")
 	}
 
-	if strms := tstub.PickHandlers([]*PeerID{&PeerID{"peer1"}, &PeerID{"peer3"}, &PeerID{"peer4"}}); len(strms) != 1 {
+	if strms := tstub.PickHandlers([]*PeerID{&PeerID{Name: "peer1"}, &PeerID{Name: "peer3"}, &PeerID{Name: "peer4"}}); len(strms) != 1 {
 		t.Fatal("2. Can not pick expected registered handlers", strms)
 	} else {
 		if strms[0] != h1 {
@@ -112,20 +112,20 @@ func Test_StreamHub_Base(t *testing.T) {
 		}
 	}
 
-	tstub.unRegisterHandler(&PeerID{"peer2"})
+	tstub.unRegisterHandler(&PeerID{Name: "peer2"})
 
-	if strm := tstub.PickHandler(&PeerID{"peer1"}); strm == nil {
+	if strm := tstub.PickHandler(&PeerID{Name: "peer1"}); strm == nil {
 		t.Fatal("3. Can not pick registered handler")
 	}
 
-	if strm := tstub.PickHandler(&PeerID{"peer2"}); strm != nil {
+	if strm := tstub.PickHandler(&PeerID{Name: "peer2"}); strm != nil {
 		t.Fatal("3. pick unregistered handler")
 	}
 }
 
 func Test_StreamHub_OverHandler(t *testing.T) {
 
-	tstub := NewStreamStub(nil, &PeerID{"peer0"})
+	tstub := NewStreamStub(nil, &PeerID{Name: "peer0"})
 
 	peerNames := []string{"peer1", "peer2", "peer3", "peer4", "peer5", "peer6", "peer7", "peer8"}
 
@@ -135,7 +135,7 @@ func Test_StreamHub_OverHandler(t *testing.T) {
 	//populate streamhub with dummy handler
 	for _, n := range peerNames {
 		h := newStreamHandler(&dummyHandler{})
-		tstub.registerHandler(h, &PeerID{n})
+		tstub.registerHandler(h, &PeerID{Name: n})
 		go HandleDummyWrite(wctx, h)
 	}
 
@@ -234,7 +234,7 @@ func ensureOneDummyWrite(ctx context.Context, h *StreamHandler) error {
 
 func Test_StreamHub_Broadcast(t *testing.T) {
 
-	tstub := NewStreamStub(nil, &PeerID{"peer0"})
+	tstub := NewStreamStub(nil, &PeerID{Name: "peer0"})
 
 	peerNames := []string{"peer1", "peer2", "peer3", "peer4", "peer5", "peer6", "peer7", "peer8"}
 
@@ -244,7 +244,7 @@ func Test_StreamHub_Broadcast(t *testing.T) {
 	//populate streamhub with dummy handler
 	for _, n := range peerNames {
 		h := newStreamHandler(&dummyHandler{})
-		tstub.registerHandler(h, &PeerID{n})
+		tstub.registerHandler(h, &PeerID{Name: n})
 		go func() {
 			if err := ensureOneDummyWrite(wctx, h); err != nil {
 				t.Fatal("Dummy write fail", err)

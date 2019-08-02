@@ -21,7 +21,7 @@ import (
 )
 
 func NewChaincodeStateDelta() *ChaincodeStateDelta {
-	return &ChaincodeStateDelta{make(map[string]*UpdatedValue)}
+	return &ChaincodeStateDelta{UpdatedKVs: make(map[string]*UpdatedValue)}
 }
 
 func (chaincodeStateDelta *ChaincodeStateDelta) Get(key string) *UpdatedValue {

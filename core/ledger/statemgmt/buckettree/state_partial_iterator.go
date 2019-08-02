@@ -168,9 +168,10 @@ func (partialItr *PartialSnapshotIterator) iterateBucketLegacy(md *protos.Bucket
 					}
 
 					//good, we have a new bucketnode and can iterate to next
-					node := &protos.BucketNode{uint64(bucketKey.level),
-						uint64(bucketKey.bucketNumber),
-						statemgmt.Copy(partialItr.dbItr.Value().Data())}
+					node := &protos.BucketNode{
+						Level:      uint64(bucketKey.level),
+						BucketNum:  uint64(bucketKey.bucketNumber),
+						CryptoHash: statemgmt.Copy(partialItr.dbItr.Value().Data())}
 					md.Nodes = append(md.Nodes, node)
 
 					continue
@@ -220,9 +221,10 @@ func (partialItr *PartialSnapshotIterator) GetMetaData() *protos.SyncMetadata {
 
 			partialItr.currentBucketNum = bucketKey.bucketNumber
 
-			node := &protos.BucketNode{uint64(bucketKey.level),
-				uint64(bucketKey.bucketNumber),
-				statemgmt.Copy(partialItr.dbItr.Value().Data())}
+			node := &protos.BucketNode{
+				Level:      uint64(bucketKey.level),
+				BucketNum:  uint64(bucketKey.bucketNumber),
+				CryptoHash: statemgmt.Copy(partialItr.dbItr.Value().Data())}
 			md.Nodes = append(md.Nodes, node)
 
 		}

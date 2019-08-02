@@ -3,28 +3,59 @@
 
 package protos
 
-import proto "github.com/golang/protobuf/proto"
-import fmt "fmt"
-import math "math"
+import (
+	fmt "fmt"
+	proto "github.com/golang/protobuf/proto"
+	math "math"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-// ChaincodeEvent is used for events and registrations that are specific to chaincode
-// string type - "chaincode"
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
+
+//ChaincodeEvent is used for events and registrations that are specific to chaincode
+//string type - "chaincode"
 type ChaincodeEvent struct {
-	ChaincodeID string `protobuf:"bytes,1,opt,name=chaincodeID" json:"chaincodeID,omitempty"`
-	TxID        string `protobuf:"bytes,2,opt,name=txID" json:"txID,omitempty"`
-	EventName   string `protobuf:"bytes,3,opt,name=eventName" json:"eventName,omitempty"`
-	Payload     []byte `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	ChaincodeID          string   `protobuf:"bytes,1,opt,name=chaincodeID,proto3" json:"chaincodeID,omitempty"`
+	TxID                 string   `protobuf:"bytes,2,opt,name=txID,proto3" json:"txID,omitempty"`
+	EventName            string   `protobuf:"bytes,3,opt,name=eventName,proto3" json:"eventName,omitempty"`
+	Payload              []byte   `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ChaincodeEvent) Reset()                    { *m = ChaincodeEvent{} }
-func (m *ChaincodeEvent) String() string            { return proto.CompactTextString(m) }
-func (*ChaincodeEvent) ProtoMessage()               {}
-func (*ChaincodeEvent) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
+func (m *ChaincodeEvent) Reset()         { *m = ChaincodeEvent{} }
+func (m *ChaincodeEvent) String() string { return proto.CompactTextString(m) }
+func (*ChaincodeEvent) ProtoMessage()    {}
+func (*ChaincodeEvent) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9383655e09466084, []int{0}
+}
+
+func (m *ChaincodeEvent) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_ChaincodeEvent.Unmarshal(m, b)
+}
+func (m *ChaincodeEvent) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_ChaincodeEvent.Marshal(b, m, deterministic)
+}
+func (m *ChaincodeEvent) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ChaincodeEvent.Merge(m, src)
+}
+func (m *ChaincodeEvent) XXX_Size() int {
+	return xxx_messageInfo_ChaincodeEvent.Size(m)
+}
+func (m *ChaincodeEvent) XXX_DiscardUnknown() {
+	xxx_messageInfo_ChaincodeEvent.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ChaincodeEvent proto.InternalMessageInfo
 
 func (m *ChaincodeEvent) GetChaincodeID() string {
 	if m != nil {
@@ -58,9 +89,9 @@ func init() {
 	proto.RegisterType((*ChaincodeEvent)(nil), "protos.ChaincodeEvent")
 }
 
-func init() { proto.RegisterFile("chaincodeevent.proto", fileDescriptor2) }
+func init() { proto.RegisterFile("chaincodeevent.proto", fileDescriptor_9383655e09466084) }
 
-var fileDescriptor2 = []byte{
+var fileDescriptor_9383655e09466084 = []byte{
 	// 180 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x49, 0xce, 0x48, 0xcc,
 	0xcc, 0x4b, 0xce, 0x4f, 0x49, 0x4d, 0x2d, 0x4b, 0xcd, 0x2b, 0xd1, 0x2b, 0x28, 0xca, 0x2f, 0xc9,

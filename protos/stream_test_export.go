@@ -137,7 +137,7 @@ func (s1 *SimuPeerStub) AddDummyPeer(id string, asCli bool) error {
 func NewSimuPeerStub(id string, ss *StreamStub) *SimuPeerStub {
 
 	return &SimuPeerStub{
-		id:         &PeerID{id},
+		id:         &PeerID{Name: id},
 		StreamStub: ss,
 	}
 
