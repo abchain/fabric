@@ -33,7 +33,7 @@ type syncTaskScheduler struct {
 
 	//the peer which has been handled and finished, so we never
 	//retry on them when retry another traversing
-	excluedePeers map[pb.PeerID]bool
+	excluedePeers map[string]bool
 }
 
 type NormalEnd struct{}
@@ -55,7 +55,7 @@ func ExecuteSyncTask(ctx context.Context, cf ClientFactory, sstub *pb.StreamStub
 
 	rt := &syncTaskScheduler{
 		conCurrentLimit:  opts.ConcurrentLimit,
-		excluedePeers:    make(map[pb.PeerID]bool),
+		excluedePeers:    make(map[string]bool),
 		excludeFatalOnly: opts.RetryFail,
 	}
 
@@ -125,14 +125,14 @@ func (s *syncTaskScheduler) activeTaskExit(peer *pb.PeerID, err error) {
 	if err == nil {
 		clilogger.Debugf("A task on peer [%s] has normally exited", peer.GetName())
 		s.conCurrentLimit--
-		delete(s.excluedePeers, *peer)
+		delete(s.excluedePeers, peer.GetName())
 	} else if _, ok := err.(FatalEnd); ok {
 		//exclude this peer
 		clilogger.Infof("task on peer [%s] is FATAL fail: %s, exclude this peer", peer.GetName(), err)
-		s.excluedePeers[*peer] = false
+		s.excluedePeers[peer.GetName()] = false
 	} else if !s.excludeFatalOnly {
 		clilogger.Infof("task on peer [%s] is fail: %s, exclude this peer", peer.GetName(), err)
-		s.excluedePeers[*peer] = false
+		s.excluedePeers[peer.GetName()] = false
 	}
 
 	s.taskEndNotify.Signal()
@@ -179,7 +179,7 @@ func (s *syncTaskScheduler) preFilter(peer *pb.PeerID) bool {
 	s.Lock()
 	defer s.Unlock()
 
-	_, existed := s.excluedePeers[*peer]
+	_, existed := s.excluedePeers[peer.GetName()]
 	if existed {
 		return false
 	}
@@ -206,7 +206,7 @@ func (s *syncTaskScheduler) innerSpawn(ctx context.Context, sstub *pb.StreamStub
 		s.Lock()
 		//do prepare works before spawning task
 		s.activedTasks++
-		s.excluedePeers[*strm.Id] = true
+		s.excluedePeers[strm.Id.GetName()] = true
 		s.Unlock()
 
 		clilogger.Debugf("start syncing task on peer %s", strm.Id)

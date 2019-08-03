@@ -17,6 +17,7 @@ limitations under the License.
 package testutil
 
 import (
+	"bytes"
 	"crypto/rand"
 	"flag"
 	"fmt"
@@ -32,6 +33,7 @@ import (
 	"github.com/abchain/fabric/core/config"
 	"github.com/abchain/fabric/core/db"
 	"github.com/abchain/fabric/core/util"
+	"github.com/golang/protobuf/proto"
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
 )
@@ -111,6 +113,21 @@ func AssertEquals(t testing.TB, actual interface{}, expected interface{}) {
 	if expected == nil && isNil(actual) {
 		return
 	}
+	//special handling for protobuf struct
+	if me, ok := expected.(proto.Message); ok {
+		ma, ok := actual.(proto.Message)
+		if !ok {
+			t.Fatalf("Values are not equal (type unmatch).\n Actual=[%t], \n Expected=[%t]\n %s", actual, expected, getCallerInfo())
+		}
+
+		btexpected, _ := proto.Marshal(me)
+		btactual, _ := proto.Marshal(ma)
+		if bytes.Compare(btexpected, btactual) != 0 {
+			t.Fatalf("Values are not equal.\n Actual=[%#v], \n Expected=[%#v]\n %s", actual, expected, getCallerInfo())
+		}
+		return
+	}
+
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("Values are not equal.\n Actual=[%#v], \n Expected=[%#v]\n %s", actual, expected, getCallerInfo())
 	}

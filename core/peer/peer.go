@@ -196,7 +196,7 @@ func NewPeerClientConnectionWithAddress(peerAddress string) (*grpc.ClientConn, e
 
 type handlerMap struct {
 	sync.RWMutex
-	m              map[pb.PeerID]MessageHandler
+	m              map[string]MessageHandler
 	cachedPeerList []*pb.PeerEndpoint
 }
 
@@ -257,7 +257,7 @@ func NewPeer(self *pb.PeerEndpoint) *Impl {
 
 	peer.self = self
 	peer.handlerMap = &handlerMap{
-		m: make(map[pb.PeerID]MessageHandler),
+		m: make(map[string]MessageHandler),
 	}
 
 	pctx, endf := context.WithCancel(PeerGlobalParentCtx)
@@ -485,7 +485,7 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
 
-	if existing, ok := p.handlerMap.m[*key]; ok {
+	if existing, ok := p.handlerMap.m[key.GetName()]; ok {
 
 		//resolving duplicated case: if current incoming connection is consider to be
 		//"strong", it replace the old one and if it was "weak" it will be abondanded
@@ -500,7 +500,7 @@ func (p *Impl) RegisterHandler(ctx context.Context, initiated bool, messageHandl
 			return newDuplicateHandlerError(existing)
 		}
 	}
-	p.handlerMap.m[*key] = messageHandler
+	p.handlerMap.m[key.GetName()] = messageHandler
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("registered handler with key: %s, active: %t", key, initiated)
 
@@ -566,7 +566,7 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 	p.handlerMap.Lock()
 	defer p.handlerMap.Unlock()
 
-	existing, ok := p.handlerMap.m[*key]
+	existing, ok := p.handlerMap.m[key.GetName()]
 	if !ok {
 		// Handler NOT found
 		return fmt.Errorf("Error deregistering handler, could not find handler with key: %s", key)
@@ -584,17 +584,17 @@ func (p *Impl) DeregisterHandler(messageHandler MessageHandler) error {
 		stub.CleanClientACL(key)
 	}
 
-	delete(p.handlerMap.m, *key)
+	delete(p.handlerMap.m, key.GetName())
 	p.handlerMap.cachedPeerList = nil
 	peerLogger.Debugf("Deregistered handler with key: %s", key)
 	return nil
 }
 
 // Clone the handler map to avoid locking across SendMessage
-func (p *Impl) cloneHandlerMap(typ pb.PeerEndpoint_Type) map[pb.PeerID]MessageHandler {
+func (p *Impl) cloneHandlerMap(typ pb.PeerEndpoint_Type) map[string]MessageHandler {
 	p.handlerMap.RLock()
 	defer p.handlerMap.RUnlock()
-	clone := make(map[pb.PeerID]MessageHandler)
+	clone := make(map[string]MessageHandler)
 	for id, msgHandler := range p.handlerMap.m {
 		//pb.PeerEndpoint_UNDEFINED collects all peers
 		if typ != pb.PeerEndpoint_UNDEFINED {
@@ -650,7 +650,7 @@ func (p *Impl) Broadcast(msg *pb.Message, typ pb.PeerEndpoint_Type) []error {
 func (p *Impl) getMessageHandler(receiverHandle *pb.PeerID) (MessageHandler, error) {
 	p.handlerMap.RLock()
 	defer p.handlerMap.RUnlock()
-	msgHandler, ok := p.handlerMap.m[*receiverHandle]
+	msgHandler, ok := p.handlerMap.m[receiverHandle.GetName()]
 	if !ok {
 		return nil, fmt.Errorf("Message handler not found for receiver %s", receiverHandle.Name)
 	}

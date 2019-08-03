@@ -1694,7 +1694,7 @@ func (s *ServerOpenchainREST) GetPeers(rw web.ResponseWriter, req *web.Request) 
 		peersList := peers.Peers
 		for _, peer := range peers.Peers {
 			for _, cPeer := range currentPeer.Peers {
-				if *peer.GetID() == *cPeer.GetID() {
+				if peer.GetID().GetName() == cPeer.GetID().GetName() {
 					currentPeerFound = true
 				}
 			}

@@ -181,7 +181,7 @@ func (h *StreamHandler) handleStream(stream grpc.Stream) error {
 
 type shandlerMap struct {
 	sync.Mutex
-	m map[PeerID]*StreamHandler
+	m map[string]*StreamHandler
 }
 
 type accessCtl struct {
@@ -204,7 +204,7 @@ func NewStreamStub(factory StreamHandlerFactory, peerid *PeerID) *StreamStub {
 		localID:              peerid,
 	}
 
-	ret.handlerMap.m = make(map[PeerID]*StreamHandler)
+	ret.handlerMap.m = make(map[string]*StreamHandler)
 	ret.allowedCli.m = make(map[string][]byte)
 
 	return ret
@@ -215,12 +215,12 @@ func (s *StreamStub) registerHandler(h *StreamHandler, peerid *PeerID) error {
 	s.handlerMap.Lock()
 	defer s.handlerMap.Unlock()
 
-	if _, ok := s.handlerMap.m[*peerid]; ok {
+	if _, ok := s.handlerMap.m[peerid.GetName()]; ok {
 		// Duplicate,
 		return fmt.Errorf("Duplicate handler for peer %s", peerid)
 	}
 	h.name = peerid.Name
-	s.handlerMap.m[*peerid] = h
+	s.handlerMap.m[peerid.GetName()] = h
 
 	logger.Debugf("register handler for far-end peer %s", peerid.GetName())
 	return nil
@@ -229,9 +229,9 @@ func (s *StreamStub) registerHandler(h *StreamHandler, peerid *PeerID) error {
 func (s *StreamStub) unRegisterHandler(peerid *PeerID) {
 	s.handlerMap.Lock()
 	defer s.handlerMap.Unlock()
-	if _, ok := s.handlerMap.m[*peerid]; ok {
+	if _, ok := s.handlerMap.m[peerid.GetName()]; ok {
 		logger.Debugf("unregister handler for far-end peer %s", peerid.GetName())
-		delete(s.handlerMap.m, *peerid)
+		delete(s.handlerMap.m, peerid.GetName())
 	}
 }
 
@@ -265,7 +265,7 @@ func (s *StreamStub) deliverHandlers(ctx context.Context, peerids []*PeerID, out
 
 	for _, id := range peerids {
 		s.handlerMap.Lock()
-		h, ok := s.handlerMap.m[*id]
+		h, ok := s.handlerMap.m[id.GetName()]
 		s.handlerMap.Unlock()
 		if ok {
 			select {
@@ -302,9 +302,7 @@ func (s *StreamStub) OverAllHandlers(ctx context.Context) chan *PickedStreamHand
 
 	ids := make([]*PeerID, 0, len(s.handlerMap.m))
 	for k, _ := range s.handlerMap.m {
-		//CAUTION: &k is point to same address
-		kcopy := k
-		ids = append(ids, &kcopy)
+		ids = append(ids, &PeerID{Name: k})
 	}
 
 	s.handlerMap.Unlock()
@@ -347,7 +345,7 @@ func (s *StreamStub) PickHandlers(peerids []*PeerID) []*StreamHandler {
 	ret := make([]*StreamHandler, 0, len(peerids))
 
 	for _, id := range peerids {
-		h, ok := s.handlerMap.m[*id]
+		h, ok := s.handlerMap.m[id.GetName()]
 		if ok {
 			ret = append(ret, h)
 		}

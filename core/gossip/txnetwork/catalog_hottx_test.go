@@ -554,7 +554,7 @@ func TestCatalogyHandler(t *testing.T) {
 	var udt = txPeerUpdate{new(pb.HotTransactionBlock)}
 	udt.fromTxs(txchainBase.fetch(1, nil))
 
-	u_in := &pb.Gossip_Tx{map[string]*pb.HotTransactionBlock{testname: udt.HotTransactionBlock}}
+	u_in := &pb.Gossip_Tx{Txs: map[string]*pb.HotTransactionBlock{testname: udt.HotTransactionBlock}}
 
 	u, err := hotTx.TransPbToUpdate(nil, &pb.GossipMsg_Update{U: &pb.GossipMsg_Update_Txs{Txs: u_in}})
 	if err != nil {

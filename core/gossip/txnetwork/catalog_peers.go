@@ -207,7 +207,7 @@ func (c *globalCat) TransUpdateToPb(cpo gossip.CatalogPeerPolicies, u_in model.U
 		panic("Type error, not ScuttlebuttUpdate")
 	}
 
-	msg := &pb.Gossip_TxState{make(map[string]*pb.PeerTxState)}
+	msg := &pb.Gossip_TxState{Txs:make(map[string]*pb.PeerTxState)}
 
 	for _, iu_in := range u.PeerUpdate() {
 		iu, ok := iu_in.U.(peerStatus)

@@ -3,20 +3,25 @@
 
 package protos
 
-import proto "github.com/golang/protobuf/proto"
-import fmt "fmt"
-import math "math"
-import google_protobuf "github.com/golang/protobuf/ptypes/timestamp"
-
 import (
+	fmt "fmt"
+	proto "github.com/golang/protobuf/proto"
+	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
+	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type Transaction_Type int32
 
@@ -39,6 +44,7 @@ var Transaction_Type_name = map[int32]string{
 	3: "CHAINCODE_QUERY",
 	4: "CHAINCODE_TERMINATE",
 }
+
 var Transaction_Type_value = map[string]int32{
 	"UNDEFINED":           0,
 	"CHAINCODE_DEPLOY":    1,
@@ -50,7 +56,10 @@ var Transaction_Type_value = map[string]int32{
 func (x Transaction_Type) String() string {
 	return proto.EnumName(Transaction_Type_name, int32(x))
 }
-func (Transaction_Type) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{3, 0} }
+
+func (Transaction_Type) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{3, 0}
+}
 
 type PeerEndpoint_Type int32
 
@@ -65,6 +74,7 @@ var PeerEndpoint_Type_name = map[int32]string{
 	1: "VALIDATOR",
 	2: "NON_VALIDATOR",
 }
+
 var PeerEndpoint_Type_value = map[string]int32{
 	"UNDEFINED":     0,
 	"VALIDATOR":     1,
@@ -74,7 +84,10 @@ var PeerEndpoint_Type_value = map[string]int32{
 func (x PeerEndpoint_Type) String() string {
 	return proto.EnumName(PeerEndpoint_Type_name, int32(x))
 }
-func (PeerEndpoint_Type) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{12, 0} }
+
+func (PeerEndpoint_Type) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{12, 0}
+}
 
 type Message_Type int32
 
@@ -115,6 +128,7 @@ var Message_Type_name = map[int32]string{
 	20: "RESPONSE",
 	21: "CONSENSUS",
 }
+
 var Message_Type_value = map[string]int32{
 	"UNDEFINED":               0,
 	"DISC_HELLO":              1,
@@ -137,7 +151,10 @@ var Message_Type_value = map[string]int32{
 func (x Message_Type) String() string {
 	return proto.EnumName(Message_Type_name, int32(x))
 }
-func (Message_Type) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{16, 0} }
+
+func (Message_Type) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{16, 0}
+}
 
 type Response_StatusCode int32
 
@@ -152,6 +169,7 @@ var Response_StatusCode_name = map[int32]string{
 	200: "SUCCESS",
 	500: "FAILURE",
 }
+
 var Response_StatusCode_value = map[string]int32{
 	"UNDEFINED": 0,
 	"SUCCESS":   200,
@@ -161,21 +179,47 @@ var Response_StatusCode_value = map[string]int32{
 func (x Response_StatusCode) String() string {
 	return proto.EnumName(Response_StatusCode_name, int32(x))
 }
-func (Response_StatusCode) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{17, 0} }
+
+func (Response_StatusCode) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{17, 0}
+}
 
 // Globalstate defines the global graph of all states
 type GlobalState struct {
-	Count                   uint64   `protobuf:"varint,1,opt,name=count" json:"count,omitempty"`
+	Count                   uint64   `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
 	NextNodeStateHash       [][]byte `protobuf:"bytes,3,rep,name=nextNodeStateHash,proto3" json:"nextNodeStateHash,omitempty"`
 	ParentNodeStateHash     [][]byte `protobuf:"bytes,4,rep,name=parentNodeStateHash,proto3" json:"parentNodeStateHash,omitempty"`
 	LastBranchNodeStateHash []byte   `protobuf:"bytes,5,opt,name=lastBranchNodeStateHash,proto3" json:"lastBranchNodeStateHash,omitempty"`
 	NextBranchNodeStateHash []byte   `protobuf:"bytes,7,opt,name=nextBranchNodeStateHash,proto3" json:"nextBranchNodeStateHash,omitempty"`
+	XXX_NoUnkeyedLiteral    struct{} `json:"-"`
+	XXX_unrecognized        []byte   `json:"-"`
+	XXX_sizecache           int32    `json:"-"`
 }
 
-func (m *GlobalState) Reset()                    { *m = GlobalState{} }
-func (m *GlobalState) String() string            { return proto.CompactTextString(m) }
-func (*GlobalState) ProtoMessage()               {}
-func (*GlobalState) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
+func (m *GlobalState) Reset()         { *m = GlobalState{} }
+func (m *GlobalState) String() string { return proto.CompactTextString(m) }
+func (*GlobalState) ProtoMessage()    {}
+func (*GlobalState) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{0}
+}
+
+func (m *GlobalState) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GlobalState.Unmarshal(m, b)
+}
+func (m *GlobalState) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GlobalState.Marshal(b, m, deterministic)
+}
+func (m *GlobalState) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GlobalState.Merge(m, src)
+}
+func (m *GlobalState) XXX_Size() int {
+	return xxx_messageInfo_GlobalState.Size(m)
+}
+func (m *GlobalState) XXX_DiscardUnknown() {
+	xxx_messageInfo_GlobalState.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GlobalState proto.InternalMessageInfo
 
 func (m *GlobalState) GetCount() uint64 {
 	if m != nil {
@@ -213,17 +257,40 @@ func (m *GlobalState) GetNextBranchNodeStateHash() []byte {
 }
 
 type GlobalStateUpdateTask struct {
-	Target        []byte `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
-	TargetEdgeBeg []byte `protobuf:"bytes,2,opt,name=targetEdgeBeg,proto3" json:"targetEdgeBeg,omitempty"`
-	TargetEdgeEnd []byte `protobuf:"bytes,3,opt,name=targetEdgeEnd,proto3" json:"targetEdgeEnd,omitempty"`
-	TargetId      uint64 `protobuf:"varint,4,opt,name=targetId" json:"targetId,omitempty"`
-	IsBackward    bool   `protobuf:"varint,6,opt,name=isBackward" json:"isBackward,omitempty"`
+	Target               []byte   `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	TargetEdgeBeg        []byte   `protobuf:"bytes,2,opt,name=targetEdgeBeg,proto3" json:"targetEdgeBeg,omitempty"`
+	TargetEdgeEnd        []byte   `protobuf:"bytes,3,opt,name=targetEdgeEnd,proto3" json:"targetEdgeEnd,omitempty"`
+	TargetId             uint64   `protobuf:"varint,4,opt,name=targetId,proto3" json:"targetId,omitempty"`
+	IsBackward           bool     `protobuf:"varint,6,opt,name=isBackward,proto3" json:"isBackward,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *GlobalStateUpdateTask) Reset()                    { *m = GlobalStateUpdateTask{} }
-func (m *GlobalStateUpdateTask) String() string            { return proto.CompactTextString(m) }
-func (*GlobalStateUpdateTask) ProtoMessage()               {}
-func (*GlobalStateUpdateTask) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
+func (m *GlobalStateUpdateTask) Reset()         { *m = GlobalStateUpdateTask{} }
+func (m *GlobalStateUpdateTask) String() string { return proto.CompactTextString(m) }
+func (*GlobalStateUpdateTask) ProtoMessage()    {}
+func (*GlobalStateUpdateTask) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{1}
+}
+
+func (m *GlobalStateUpdateTask) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_GlobalStateUpdateTask.Unmarshal(m, b)
+}
+func (m *GlobalStateUpdateTask) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_GlobalStateUpdateTask.Marshal(b, m, deterministic)
+}
+func (m *GlobalStateUpdateTask) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GlobalStateUpdateTask.Merge(m, src)
+}
+func (m *GlobalStateUpdateTask) XXX_Size() int {
+	return xxx_messageInfo_GlobalStateUpdateTask.Size(m)
+}
+func (m *GlobalStateUpdateTask) XXX_DiscardUnknown() {
+	xxx_messageInfo_GlobalStateUpdateTask.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GlobalStateUpdateTask proto.InternalMessageInfo
 
 func (m *GlobalStateUpdateTask) GetTarget() []byte {
 	if m != nil {
@@ -269,14 +336,37 @@ func (m *GlobalStateUpdateTask) GetIsBackward() bool {
 // if the length of target has no enough WORDs, the hashes
 // of rest are considered as 0
 type StateFilter struct {
-	Filter     []byte `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
-	HashCounts uint32 `protobuf:"varint,2,opt,name=hashCounts" json:"hashCounts,omitempty"`
+	Filter               []byte   `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	HashCounts           uint32   `protobuf:"varint,2,opt,name=hashCounts,proto3" json:"hashCounts,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *StateFilter) Reset()                    { *m = StateFilter{} }
-func (m *StateFilter) String() string            { return proto.CompactTextString(m) }
-func (*StateFilter) ProtoMessage()               {}
-func (*StateFilter) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
+func (m *StateFilter) Reset()         { *m = StateFilter{} }
+func (m *StateFilter) String() string { return proto.CompactTextString(m) }
+func (*StateFilter) ProtoMessage()    {}
+func (*StateFilter) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{2}
+}
+
+func (m *StateFilter) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_StateFilter.Unmarshal(m, b)
+}
+func (m *StateFilter) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_StateFilter.Marshal(b, m, deterministic)
+}
+func (m *StateFilter) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StateFilter.Merge(m, src)
+}
+func (m *StateFilter) XXX_Size() int {
+	return xxx_messageInfo_StateFilter.Size(m)
+}
+func (m *StateFilter) XXX_DiscardUnknown() {
+	xxx_messageInfo_StateFilter.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_StateFilter proto.InternalMessageInfo
 
 func (m *StateFilter) GetFilter() []byte {
 	if m != nil {
@@ -298,25 +388,48 @@ func (m *StateFilter) GetHashCounts() uint32 {
 // For example, they may wish to use JSON, XML, or a custom format.
 // TODO: Defined remaining fields.
 type Transaction struct {
-	Type Transaction_Type `protobuf:"varint,1,opt,name=type,enum=protos.Transaction_Type" json:"type,omitempty"`
-	// store ChaincodeID as bytes so its encrypted value can be stored
-	ChaincodeID                    []byte                     `protobuf:"bytes,2,opt,name=chaincodeID,proto3" json:"chaincodeID,omitempty"`
-	Payload                        []byte                     `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
-	Metadata                       []byte                     `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Txid                           string                     `protobuf:"bytes,5,opt,name=txid" json:"txid,omitempty"`
-	Timestamp                      *google_protobuf.Timestamp `protobuf:"bytes,6,opt,name=timestamp" json:"timestamp,omitempty"`
-	ConfidentialityLevel           ConfidentialityLevel       `protobuf:"varint,7,opt,name=confidentialityLevel,enum=protos.ConfidentialityLevel" json:"confidentialityLevel,omitempty"`
-	ConfidentialityProtocolVersion string                     `protobuf:"bytes,8,opt,name=confidentialityProtocolVersion" json:"confidentialityProtocolVersion,omitempty"`
-	Nonce                          []byte                     `protobuf:"bytes,9,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	ToValidators                   []byte                     `protobuf:"bytes,10,opt,name=toValidators,proto3" json:"toValidators,omitempty"`
-	Cert                           []byte                     `protobuf:"bytes,11,opt,name=cert,proto3" json:"cert,omitempty"`
-	Signature                      []byte                     `protobuf:"bytes,12,opt,name=signature,proto3" json:"signature,omitempty"`
+	Type Transaction_Type `protobuf:"varint,1,opt,name=type,proto3,enum=protos.Transaction_Type" json:"type,omitempty"`
+	//store ChaincodeID as bytes so its encrypted value can be stored
+	ChaincodeID                    []byte               `protobuf:"bytes,2,opt,name=chaincodeID,proto3" json:"chaincodeID,omitempty"`
+	Payload                        []byte               `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	Metadata                       []byte               `protobuf:"bytes,4,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Txid                           string               `protobuf:"bytes,5,opt,name=txid,proto3" json:"txid,omitempty"`
+	Timestamp                      *timestamp.Timestamp `protobuf:"bytes,6,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	ConfidentialityLevel           ConfidentialityLevel `protobuf:"varint,7,opt,name=confidentialityLevel,proto3,enum=protos.ConfidentialityLevel" json:"confidentialityLevel,omitempty"`
+	ConfidentialityProtocolVersion string               `protobuf:"bytes,8,opt,name=confidentialityProtocolVersion,proto3" json:"confidentialityProtocolVersion,omitempty"`
+	Nonce                          []byte               `protobuf:"bytes,9,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	ToValidators                   []byte               `protobuf:"bytes,10,opt,name=toValidators,proto3" json:"toValidators,omitempty"`
+	Cert                           []byte               `protobuf:"bytes,11,opt,name=cert,proto3" json:"cert,omitempty"`
+	Signature                      []byte               `protobuf:"bytes,12,opt,name=signature,proto3" json:"signature,omitempty"`
+	XXX_NoUnkeyedLiteral           struct{}             `json:"-"`
+	XXX_unrecognized               []byte               `json:"-"`
+	XXX_sizecache                  int32                `json:"-"`
 }
 
-func (m *Transaction) Reset()                    { *m = Transaction{} }
-func (m *Transaction) String() string            { return proto.CompactTextString(m) }
-func (*Transaction) ProtoMessage()               {}
-func (*Transaction) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{3} }
+func (m *Transaction) Reset()         { *m = Transaction{} }
+func (m *Transaction) String() string { return proto.CompactTextString(m) }
+func (*Transaction) ProtoMessage()    {}
+func (*Transaction) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{3}
+}
+
+func (m *Transaction) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Transaction.Unmarshal(m, b)
+}
+func (m *Transaction) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Transaction.Marshal(b, m, deterministic)
+}
+func (m *Transaction) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Transaction.Merge(m, src)
+}
+func (m *Transaction) XXX_Size() int {
+	return xxx_messageInfo_Transaction.Size(m)
+}
+func (m *Transaction) XXX_DiscardUnknown() {
+	xxx_messageInfo_Transaction.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Transaction proto.InternalMessageInfo
 
 func (m *Transaction) GetType() Transaction_Type {
 	if m != nil {
@@ -353,7 +466,7 @@ func (m *Transaction) GetTxid() string {
 	return ""
 }
 
-func (m *Transaction) GetTimestamp() *google_protobuf.Timestamp {
+func (m *Transaction) GetTimestamp() *timestamp.Timestamp {
 	if m != nil {
 		return m.Timestamp
 	}
@@ -404,13 +517,36 @@ func (m *Transaction) GetSignature() []byte {
 
 // TransactionBlock carries a batch of transactions.
 type TransactionBlock struct {
-	Transactions []*Transaction `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
+	Transactions         []*Transaction `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
+	XXX_unrecognized     []byte         `json:"-"`
+	XXX_sizecache        int32          `json:"-"`
 }
 
-func (m *TransactionBlock) Reset()                    { *m = TransactionBlock{} }
-func (m *TransactionBlock) String() string            { return proto.CompactTextString(m) }
-func (*TransactionBlock) ProtoMessage()               {}
-func (*TransactionBlock) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{4} }
+func (m *TransactionBlock) Reset()         { *m = TransactionBlock{} }
+func (m *TransactionBlock) String() string { return proto.CompactTextString(m) }
+func (*TransactionBlock) ProtoMessage()    {}
+func (*TransactionBlock) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{4}
+}
+
+func (m *TransactionBlock) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_TransactionBlock.Unmarshal(m, b)
+}
+func (m *TransactionBlock) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_TransactionBlock.Marshal(b, m, deterministic)
+}
+func (m *TransactionBlock) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TransactionBlock.Merge(m, src)
+}
+func (m *TransactionBlock) XXX_Size() int {
+	return xxx_messageInfo_TransactionBlock.Size(m)
+}
+func (m *TransactionBlock) XXX_DiscardUnknown() {
+	xxx_messageInfo_TransactionBlock.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_TransactionBlock proto.InternalMessageInfo
 
 func (m *TransactionBlock) GetTransactions() []*Transaction {
 	if m != nil {
@@ -427,18 +563,41 @@ func (m *TransactionBlock) GetTransactions() []*Transaction {
 // error - An error string for logging an issue.
 // chaincodeEvent - any event emitted by a transaction
 type TransactionResult struct {
-	Txid      string `protobuf:"bytes,1,opt,name=txid" json:"txid,omitempty"`
+	Txid      string `protobuf:"bytes,1,opt,name=txid,proto3" json:"txid,omitempty"`
 	Result    []byte `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
-	ErrorCode uint32 `protobuf:"varint,3,opt,name=errorCode" json:"errorCode,omitempty"`
-	Error     string `protobuf:"bytes,4,opt,name=error" json:"error,omitempty"`
-	// ChaincodeEvent chaincodeEvent = 5;
-	ChaincodeEvents []*ChaincodeEvent `protobuf:"bytes,6,rep,name=chaincodeEvents" json:"chaincodeEvents,omitempty"`
+	ErrorCode uint32 `protobuf:"varint,3,opt,name=errorCode,proto3" json:"errorCode,omitempty"`
+	Error     string `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	//ChaincodeEvent chaincodeEvent = 5;
+	ChaincodeEvents      []*ChaincodeEvent `protobuf:"bytes,6,rep,name=chaincodeEvents,proto3" json:"chaincodeEvents,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
+	XXX_unrecognized     []byte            `json:"-"`
+	XXX_sizecache        int32             `json:"-"`
 }
 
-func (m *TransactionResult) Reset()                    { *m = TransactionResult{} }
-func (m *TransactionResult) String() string            { return proto.CompactTextString(m) }
-func (*TransactionResult) ProtoMessage()               {}
-func (*TransactionResult) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{5} }
+func (m *TransactionResult) Reset()         { *m = TransactionResult{} }
+func (m *TransactionResult) String() string { return proto.CompactTextString(m) }
+func (*TransactionResult) ProtoMessage()    {}
+func (*TransactionResult) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{5}
+}
+
+func (m *TransactionResult) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_TransactionResult.Unmarshal(m, b)
+}
+func (m *TransactionResult) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_TransactionResult.Marshal(b, m, deterministic)
+}
+func (m *TransactionResult) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TransactionResult.Merge(m, src)
+}
+func (m *TransactionResult) XXX_Size() int {
+	return xxx_messageInfo_TransactionResult.Size(m)
+}
+func (m *TransactionResult) XXX_DiscardUnknown() {
+	xxx_messageInfo_TransactionResult.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_TransactionResult proto.InternalMessageInfo
 
 func (m *TransactionResult) GetTxid() string {
 	if m != nil {
@@ -488,20 +647,43 @@ func (m *TransactionResult) GetChaincodeEvents() []*ChaincodeEvent {
 // hash. This allows this data to be different per peer or discarded without
 // impacting the blockchain.
 type Block struct {
-	Version           uint32                     `protobuf:"varint,1,opt,name=version" json:"version,omitempty"`
-	Timestamp         *google_protobuf.Timestamp `protobuf:"bytes,2,opt,name=timestamp" json:"timestamp,omitempty"`
-	Transactions      []*Transaction             `protobuf:"bytes,3,rep,name=transactions" json:"transactions,omitempty"`
-	StateHash         []byte                     `protobuf:"bytes,4,opt,name=stateHash,proto3" json:"stateHash,omitempty"`
-	PreviousBlockHash []byte                     `protobuf:"bytes,5,opt,name=previousBlockHash,proto3" json:"previousBlockHash,omitempty"`
-	ConsensusMetadata []byte                     `protobuf:"bytes,6,opt,name=consensusMetadata,proto3" json:"consensusMetadata,omitempty"`
-	NonHashData       *NonHashData               `protobuf:"bytes,7,opt,name=nonHashData" json:"nonHashData,omitempty"`
-	Txids             []string                   `protobuf:"bytes,8,rep,name=txids" json:"txids,omitempty"`
+	Version              uint32               `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	Timestamp            *timestamp.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Transactions         []*Transaction       `protobuf:"bytes,3,rep,name=transactions,proto3" json:"transactions,omitempty"`
+	StateHash            []byte               `protobuf:"bytes,4,opt,name=stateHash,proto3" json:"stateHash,omitempty"`
+	PreviousBlockHash    []byte               `protobuf:"bytes,5,opt,name=previousBlockHash,proto3" json:"previousBlockHash,omitempty"`
+	ConsensusMetadata    []byte               `protobuf:"bytes,6,opt,name=consensusMetadata,proto3" json:"consensusMetadata,omitempty"`
+	NonHashData          *NonHashData         `protobuf:"bytes,7,opt,name=nonHashData,proto3" json:"nonHashData,omitempty"`
+	Txids                []string             `protobuf:"bytes,8,rep,name=txids,proto3" json:"txids,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
 }
 
-func (m *Block) Reset()                    { *m = Block{} }
-func (m *Block) String() string            { return proto.CompactTextString(m) }
-func (*Block) ProtoMessage()               {}
-func (*Block) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{6} }
+func (m *Block) Reset()         { *m = Block{} }
+func (m *Block) String() string { return proto.CompactTextString(m) }
+func (*Block) ProtoMessage()    {}
+func (*Block) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{6}
+}
+
+func (m *Block) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Block.Unmarshal(m, b)
+}
+func (m *Block) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Block.Marshal(b, m, deterministic)
+}
+func (m *Block) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Block.Merge(m, src)
+}
+func (m *Block) XXX_Size() int {
+	return xxx_messageInfo_Block.Size(m)
+}
+func (m *Block) XXX_DiscardUnknown() {
+	xxx_messageInfo_Block.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Block proto.InternalMessageInfo
 
 func (m *Block) GetVersion() uint32 {
 	if m != nil {
@@ -510,7 +692,7 @@ func (m *Block) GetVersion() uint32 {
 	return 0
 }
 
-func (m *Block) GetTimestamp() *google_protobuf.Timestamp {
+func (m *Block) GetTimestamp() *timestamp.Timestamp {
 	if m != nil {
 		return m.Timestamp
 	}
@@ -562,16 +744,39 @@ func (m *Block) GetTxids() []string {
 // Contains information about the blockchain ledger such as height, current
 // block hash, and previous block hash.
 type BlockchainInfo struct {
-	Height            uint64 `protobuf:"varint,1,opt,name=height" json:"height,omitempty"`
-	CurrentBlockHash  []byte `protobuf:"bytes,2,opt,name=currentBlockHash,proto3" json:"currentBlockHash,omitempty"`
-	PreviousBlockHash []byte `protobuf:"bytes,3,opt,name=previousBlockHash,proto3" json:"previousBlockHash,omitempty"`
-	CurrentStateHash  []byte `protobuf:"bytes,4,opt,name=currentStateHash,proto3" json:"currentStateHash,omitempty"`
+	Height               uint64   `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	CurrentBlockHash     []byte   `protobuf:"bytes,2,opt,name=currentBlockHash,proto3" json:"currentBlockHash,omitempty"`
+	PreviousBlockHash    []byte   `protobuf:"bytes,3,opt,name=previousBlockHash,proto3" json:"previousBlockHash,omitempty"`
+	CurrentStateHash     []byte   `protobuf:"bytes,4,opt,name=currentStateHash,proto3" json:"currentStateHash,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *BlockchainInfo) Reset()                    { *m = BlockchainInfo{} }
-func (m *BlockchainInfo) String() string            { return proto.CompactTextString(m) }
-func (*BlockchainInfo) ProtoMessage()               {}
-func (*BlockchainInfo) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{7} }
+func (m *BlockchainInfo) Reset()         { *m = BlockchainInfo{} }
+func (m *BlockchainInfo) String() string { return proto.CompactTextString(m) }
+func (*BlockchainInfo) ProtoMessage()    {}
+func (*BlockchainInfo) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{7}
+}
+
+func (m *BlockchainInfo) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_BlockchainInfo.Unmarshal(m, b)
+}
+func (m *BlockchainInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_BlockchainInfo.Marshal(b, m, deterministic)
+}
+func (m *BlockchainInfo) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_BlockchainInfo.Merge(m, src)
+}
+func (m *BlockchainInfo) XXX_Size() int {
+	return xxx_messageInfo_BlockchainInfo.Size(m)
+}
+func (m *BlockchainInfo) XXX_DiscardUnknown() {
+	xxx_messageInfo_BlockchainInfo.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_BlockchainInfo proto.InternalMessageInfo
 
 func (m *BlockchainInfo) GetHeight() uint64 {
 	if m != nil {
@@ -608,16 +813,39 @@ func (m *BlockchainInfo) GetCurrentStateHash() []byte {
 // chaincodeEvent - is an array ChaincodeEvents, one per transaction in the
 // block
 type NonHashData struct {
-	LocalLedgerCommitTimestamp *google_protobuf.Timestamp `protobuf:"bytes,1,opt,name=localLedgerCommitTimestamp" json:"localLedgerCommitTimestamp,omitempty"`
-	ChaincodeEvents            []*ChaincodeEvent          `protobuf:"bytes,2,rep,name=chaincodeEvents" json:"chaincodeEvents,omitempty"`
+	LocalLedgerCommitTimestamp *timestamp.Timestamp `protobuf:"bytes,1,opt,name=localLedgerCommitTimestamp,proto3" json:"localLedgerCommitTimestamp,omitempty"`
+	ChaincodeEvents            []*ChaincodeEvent    `protobuf:"bytes,2,rep,name=chaincodeEvents,proto3" json:"chaincodeEvents,omitempty"`
+	XXX_NoUnkeyedLiteral       struct{}             `json:"-"`
+	XXX_unrecognized           []byte               `json:"-"`
+	XXX_sizecache              int32                `json:"-"`
 }
 
-func (m *NonHashData) Reset()                    { *m = NonHashData{} }
-func (m *NonHashData) String() string            { return proto.CompactTextString(m) }
-func (*NonHashData) ProtoMessage()               {}
-func (*NonHashData) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{8} }
+func (m *NonHashData) Reset()         { *m = NonHashData{} }
+func (m *NonHashData) String() string { return proto.CompactTextString(m) }
+func (*NonHashData) ProtoMessage()    {}
+func (*NonHashData) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{8}
+}
 
-func (m *NonHashData) GetLocalLedgerCommitTimestamp() *google_protobuf.Timestamp {
+func (m *NonHashData) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_NonHashData.Unmarshal(m, b)
+}
+func (m *NonHashData) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_NonHashData.Marshal(b, m, deterministic)
+}
+func (m *NonHashData) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_NonHashData.Merge(m, src)
+}
+func (m *NonHashData) XXX_Size() int {
+	return xxx_messageInfo_NonHashData.Size(m)
+}
+func (m *NonHashData) XXX_DiscardUnknown() {
+	xxx_messageInfo_NonHashData.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_NonHashData proto.InternalMessageInfo
+
+func (m *NonHashData) GetLocalLedgerCommitTimestamp() *timestamp.Timestamp {
 	if m != nil {
 		return m.LocalLedgerCommitTimestamp
 	}
@@ -632,14 +860,37 @@ func (m *NonHashData) GetChaincodeEvents() []*ChaincodeEvent {
 }
 
 type PeerAddress struct {
-	Host string `protobuf:"bytes,1,opt,name=host" json:"host,omitempty"`
-	Port int32  `protobuf:"varint,2,opt,name=port" json:"port,omitempty"`
+	Host                 string   `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Port                 int32    `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *PeerAddress) Reset()                    { *m = PeerAddress{} }
-func (m *PeerAddress) String() string            { return proto.CompactTextString(m) }
-func (*PeerAddress) ProtoMessage()               {}
-func (*PeerAddress) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{9} }
+func (m *PeerAddress) Reset()         { *m = PeerAddress{} }
+func (m *PeerAddress) String() string { return proto.CompactTextString(m) }
+func (*PeerAddress) ProtoMessage()    {}
+func (*PeerAddress) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{9}
+}
+
+func (m *PeerAddress) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeerAddress.Unmarshal(m, b)
+}
+func (m *PeerAddress) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeerAddress.Marshal(b, m, deterministic)
+}
+func (m *PeerAddress) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeerAddress.Merge(m, src)
+}
+func (m *PeerAddress) XXX_Size() int {
+	return xxx_messageInfo_PeerAddress.Size(m)
+}
+func (m *PeerAddress) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeerAddress.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeerAddress proto.InternalMessageInfo
 
 func (m *PeerAddress) GetHost() string {
 	if m != nil {
@@ -656,13 +907,36 @@ func (m *PeerAddress) GetPort() int32 {
 }
 
 type PeerID struct {
-	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *PeerID) Reset()                    { *m = PeerID{} }
-func (m *PeerID) String() string            { return proto.CompactTextString(m) }
-func (*PeerID) ProtoMessage()               {}
-func (*PeerID) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{10} }
+func (m *PeerID) Reset()         { *m = PeerID{} }
+func (m *PeerID) String() string { return proto.CompactTextString(m) }
+func (*PeerID) ProtoMessage()    {}
+func (*PeerID) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{10}
+}
+
+func (m *PeerID) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeerID.Unmarshal(m, b)
+}
+func (m *PeerID) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeerID.Marshal(b, m, deterministic)
+}
+func (m *PeerID) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeerID.Merge(m, src)
+}
+func (m *PeerID) XXX_Size() int {
+	return xxx_messageInfo_PeerID.Size(m)
+}
+func (m *PeerID) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeerID.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeerID proto.InternalMessageInfo
 
 func (m *PeerID) GetName() string {
 	if m != nil {
@@ -671,17 +945,40 @@ func (m *PeerID) GetName() string {
 	return ""
 }
 
-// extended peerid for connection in separated streams, company with
-// the one-time password
+//extended peerid for connection in separated streams, company with
+//the one-time password
 type PeerIDOnStream struct {
-	Name  string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
-	Passw []byte `protobuf:"bytes,2,opt,name=passw,proto3" json:"passw,omitempty"`
+	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Passw                []byte   `protobuf:"bytes,2,opt,name=passw,proto3" json:"passw,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *PeerIDOnStream) Reset()                    { *m = PeerIDOnStream{} }
-func (m *PeerIDOnStream) String() string            { return proto.CompactTextString(m) }
-func (*PeerIDOnStream) ProtoMessage()               {}
-func (*PeerIDOnStream) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{11} }
+func (m *PeerIDOnStream) Reset()         { *m = PeerIDOnStream{} }
+func (m *PeerIDOnStream) String() string { return proto.CompactTextString(m) }
+func (*PeerIDOnStream) ProtoMessage()    {}
+func (*PeerIDOnStream) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{11}
+}
+
+func (m *PeerIDOnStream) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeerIDOnStream.Unmarshal(m, b)
+}
+func (m *PeerIDOnStream) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeerIDOnStream.Marshal(b, m, deterministic)
+}
+func (m *PeerIDOnStream) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeerIDOnStream.Merge(m, src)
+}
+func (m *PeerIDOnStream) XXX_Size() int {
+	return xxx_messageInfo_PeerIDOnStream.Size(m)
+}
+func (m *PeerIDOnStream) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeerIDOnStream.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeerIDOnStream proto.InternalMessageInfo
 
 func (m *PeerIDOnStream) GetName() string {
 	if m != nil {
@@ -698,16 +995,39 @@ func (m *PeerIDOnStream) GetPassw() []byte {
 }
 
 type PeerEndpoint struct {
-	ID      *PeerID           `protobuf:"bytes,1,opt,name=ID" json:"ID,omitempty"`
-	Address string            `protobuf:"bytes,2,opt,name=address" json:"address,omitempty"`
-	Type    PeerEndpoint_Type `protobuf:"varint,3,opt,name=type,enum=protos.PeerEndpoint_Type" json:"type,omitempty"`
-	PkiID   []byte            `protobuf:"bytes,4,opt,name=pkiID,proto3" json:"pkiID,omitempty"`
+	ID                   *PeerID           `protobuf:"bytes,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	Address              string            `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	Type                 PeerEndpoint_Type `protobuf:"varint,3,opt,name=type,proto3,enum=protos.PeerEndpoint_Type" json:"type,omitempty"`
+	PkiID                []byte            `protobuf:"bytes,4,opt,name=pkiID,proto3" json:"pkiID,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
+	XXX_unrecognized     []byte            `json:"-"`
+	XXX_sizecache        int32             `json:"-"`
 }
 
-func (m *PeerEndpoint) Reset()                    { *m = PeerEndpoint{} }
-func (m *PeerEndpoint) String() string            { return proto.CompactTextString(m) }
-func (*PeerEndpoint) ProtoMessage()               {}
-func (*PeerEndpoint) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{12} }
+func (m *PeerEndpoint) Reset()         { *m = PeerEndpoint{} }
+func (m *PeerEndpoint) String() string { return proto.CompactTextString(m) }
+func (*PeerEndpoint) ProtoMessage()    {}
+func (*PeerEndpoint) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{12}
+}
+
+func (m *PeerEndpoint) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeerEndpoint.Unmarshal(m, b)
+}
+func (m *PeerEndpoint) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeerEndpoint.Marshal(b, m, deterministic)
+}
+func (m *PeerEndpoint) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeerEndpoint.Merge(m, src)
+}
+func (m *PeerEndpoint) XXX_Size() int {
+	return xxx_messageInfo_PeerEndpoint.Size(m)
+}
+func (m *PeerEndpoint) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeerEndpoint.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeerEndpoint proto.InternalMessageInfo
 
 func (m *PeerEndpoint) GetID() *PeerID {
 	if m != nil {
@@ -738,13 +1058,36 @@ func (m *PeerEndpoint) GetPkiID() []byte {
 }
 
 type PeersMessage struct {
-	Peers []*PeerEndpoint `protobuf:"bytes,1,rep,name=peers" json:"peers,omitempty"`
+	Peers                []*PeerEndpoint `protobuf:"bytes,1,rep,name=peers,proto3" json:"peers,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}        `json:"-"`
+	XXX_unrecognized     []byte          `json:"-"`
+	XXX_sizecache        int32           `json:"-"`
 }
 
-func (m *PeersMessage) Reset()                    { *m = PeersMessage{} }
-func (m *PeersMessage) String() string            { return proto.CompactTextString(m) }
-func (*PeersMessage) ProtoMessage()               {}
-func (*PeersMessage) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{13} }
+func (m *PeersMessage) Reset()         { *m = PeersMessage{} }
+func (m *PeersMessage) String() string { return proto.CompactTextString(m) }
+func (*PeersMessage) ProtoMessage()    {}
+func (*PeersMessage) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{13}
+}
+
+func (m *PeersMessage) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeersMessage.Unmarshal(m, b)
+}
+func (m *PeersMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeersMessage.Marshal(b, m, deterministic)
+}
+func (m *PeersMessage) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeersMessage.Merge(m, src)
+}
+func (m *PeersMessage) XXX_Size() int {
+	return xxx_messageInfo_PeersMessage.Size(m)
+}
+func (m *PeersMessage) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeersMessage.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeersMessage proto.InternalMessageInfo
 
 func (m *PeersMessage) GetPeers() []*PeerEndpoint {
 	if m != nil {
@@ -754,13 +1097,36 @@ func (m *PeersMessage) GetPeers() []*PeerEndpoint {
 }
 
 type PeersAddresses struct {
-	Addresses []string `protobuf:"bytes,1,rep,name=addresses" json:"addresses,omitempty"`
+	Addresses            []string `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *PeersAddresses) Reset()                    { *m = PeersAddresses{} }
-func (m *PeersAddresses) String() string            { return proto.CompactTextString(m) }
-func (*PeersAddresses) ProtoMessage()               {}
-func (*PeersAddresses) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{14} }
+func (m *PeersAddresses) Reset()         { *m = PeersAddresses{} }
+func (m *PeersAddresses) String() string { return proto.CompactTextString(m) }
+func (*PeersAddresses) ProtoMessage()    {}
+func (*PeersAddresses) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{14}
+}
+
+func (m *PeersAddresses) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeersAddresses.Unmarshal(m, b)
+}
+func (m *PeersAddresses) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeersAddresses.Marshal(b, m, deterministic)
+}
+func (m *PeersAddresses) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeersAddresses.Merge(m, src)
+}
+func (m *PeersAddresses) XXX_Size() int {
+	return xxx_messageInfo_PeersAddresses.Size(m)
+}
+func (m *PeersAddresses) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeersAddresses.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeersAddresses proto.InternalMessageInfo
 
 func (m *PeersAddresses) GetAddresses() []string {
 	if m != nil {
@@ -770,18 +1136,41 @@ func (m *PeersAddresses) GetAddresses() []string {
 }
 
 type HelloMessage struct {
-	PeerEndpoint *PeerEndpoint `protobuf:"bytes,1,opt,name=peerEndpoint" json:"peerEndpoint,omitempty"`
-	// BlockchainInfo blockchainInfo = 2;
-	// this is the credential of remote peer, not ours, so the
-	// receiver could not replay or rely this message for
-	// mal-using
-	PeerCredential []byte `protobuf:"bytes,3,opt,name=peerCredential,proto3" json:"peerCredential,omitempty"`
+	PeerEndpoint *PeerEndpoint `protobuf:"bytes,1,opt,name=peerEndpoint,proto3" json:"peerEndpoint,omitempty"`
+	//BlockchainInfo blockchainInfo = 2;
+	//this is the credential of remote peer, not ours, so the
+	//receiver could not replay or rely this message for
+	//mal-using
+	PeerCredential       []byte   `protobuf:"bytes,3,opt,name=peerCredential,proto3" json:"peerCredential,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *HelloMessage) Reset()                    { *m = HelloMessage{} }
-func (m *HelloMessage) String() string            { return proto.CompactTextString(m) }
-func (*HelloMessage) ProtoMessage()               {}
-func (*HelloMessage) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{15} }
+func (m *HelloMessage) Reset()         { *m = HelloMessage{} }
+func (m *HelloMessage) String() string { return proto.CompactTextString(m) }
+func (*HelloMessage) ProtoMessage()    {}
+func (*HelloMessage) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{15}
+}
+
+func (m *HelloMessage) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_HelloMessage.Unmarshal(m, b)
+}
+func (m *HelloMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_HelloMessage.Marshal(b, m, deterministic)
+}
+func (m *HelloMessage) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HelloMessage.Merge(m, src)
+}
+func (m *HelloMessage) XXX_Size() int {
+	return xxx_messageInfo_HelloMessage.Size(m)
+}
+func (m *HelloMessage) XXX_DiscardUnknown() {
+	xxx_messageInfo_HelloMessage.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_HelloMessage proto.InternalMessageInfo
 
 func (m *HelloMessage) GetPeerEndpoint() *PeerEndpoint {
 	if m != nil {
@@ -798,16 +1187,39 @@ func (m *HelloMessage) GetPeerCredential() []byte {
 }
 
 type Message struct {
-	Type      Message_Type               `protobuf:"varint,1,opt,name=type,enum=protos.Message_Type" json:"type,omitempty"`
-	Timestamp *google_protobuf.Timestamp `protobuf:"bytes,2,opt,name=timestamp" json:"timestamp,omitempty"`
-	Payload   []byte                     `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
-	Signature []byte                     `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
+	Type                 Message_Type         `protobuf:"varint,1,opt,name=type,proto3,enum=protos.Message_Type" json:"type,omitempty"`
+	Timestamp            *timestamp.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Payload              []byte               `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	Signature            []byte               `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
 }
 
-func (m *Message) Reset()                    { *m = Message{} }
-func (m *Message) String() string            { return proto.CompactTextString(m) }
-func (*Message) ProtoMessage()               {}
-func (*Message) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{16} }
+func (m *Message) Reset()         { *m = Message{} }
+func (m *Message) String() string { return proto.CompactTextString(m) }
+func (*Message) ProtoMessage()    {}
+func (*Message) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{16}
+}
+
+func (m *Message) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Message.Unmarshal(m, b)
+}
+func (m *Message) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Message.Marshal(b, m, deterministic)
+}
+func (m *Message) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Message.Merge(m, src)
+}
+func (m *Message) XXX_Size() int {
+	return xxx_messageInfo_Message.Size(m)
+}
+func (m *Message) XXX_DiscardUnknown() {
+	xxx_messageInfo_Message.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Message proto.InternalMessageInfo
 
 func (m *Message) GetType() Message_Type {
 	if m != nil {
@@ -816,7 +1228,7 @@ func (m *Message) GetType() Message_Type {
 	return Message_UNDEFINED
 }
 
-func (m *Message) GetTimestamp() *google_protobuf.Timestamp {
+func (m *Message) GetTimestamp() *timestamp.Timestamp {
 	if m != nil {
 		return m.Timestamp
 	}
@@ -838,15 +1250,38 @@ func (m *Message) GetSignature() []byte {
 }
 
 type Response struct {
-	Status Response_StatusCode `protobuf:"varint,1,opt,name=status,enum=protos.Response_StatusCode" json:"status,omitempty"`
-	Msg    []byte              `protobuf:"bytes,2,opt,name=msg,proto3" json:"msg,omitempty"`
-	Height uint64              `protobuf:"varint,3,opt,name=height" json:"height,omitempty"`
+	Status               Response_StatusCode `protobuf:"varint,1,opt,name=status,proto3,enum=protos.Response_StatusCode" json:"status,omitempty"`
+	Msg                  []byte              `protobuf:"bytes,2,opt,name=msg,proto3" json:"msg,omitempty"`
+	Height               uint64              `protobuf:"varint,3,opt,name=height,proto3" json:"height,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}            `json:"-"`
+	XXX_unrecognized     []byte              `json:"-"`
+	XXX_sizecache        int32               `json:"-"`
 }
 
-func (m *Response) Reset()                    { *m = Response{} }
-func (m *Response) String() string            { return proto.CompactTextString(m) }
-func (*Response) ProtoMessage()               {}
-func (*Response) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{17} }
+func (m *Response) Reset()         { *m = Response{} }
+func (m *Response) String() string { return proto.CompactTextString(m) }
+func (*Response) ProtoMessage()    {}
+func (*Response) Descriptor() ([]byte, []int) {
+	return fileDescriptor_284efff686d8e9bf, []int{17}
+}
+
+func (m *Response) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_Response.Unmarshal(m, b)
+}
+func (m *Response) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_Response.Marshal(b, m, deterministic)
+}
+func (m *Response) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Response.Merge(m, src)
+}
+func (m *Response) XXX_Size() int {
+	return xxx_messageInfo_Response.Size(m)
+}
+func (m *Response) XXX_DiscardUnknown() {
+	xxx_messageInfo_Response.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Response proto.InternalMessageInfo
 
 func (m *Response) GetStatus() Response_StatusCode {
 	if m != nil {
@@ -870,6 +1305,10 @@ func (m *Response) GetHeight() uint64 {
 }
 
 func init() {
+	proto.RegisterEnum("protos.Transaction_Type", Transaction_Type_name, Transaction_Type_value)
+	proto.RegisterEnum("protos.PeerEndpoint_Type", PeerEndpoint_Type_name, PeerEndpoint_Type_value)
+	proto.RegisterEnum("protos.Message_Type", Message_Type_name, Message_Type_value)
+	proto.RegisterEnum("protos.Response_StatusCode", Response_StatusCode_name, Response_StatusCode_value)
 	proto.RegisterType((*GlobalState)(nil), "protos.GlobalState")
 	proto.RegisterType((*GlobalStateUpdateTask)(nil), "protos.GlobalStateUpdateTask")
 	proto.RegisterType((*StateFilter)(nil), "protos.StateFilter")
@@ -888,159 +1327,11 @@ func init() {
 	proto.RegisterType((*HelloMessage)(nil), "protos.HelloMessage")
 	proto.RegisterType((*Message)(nil), "protos.Message")
 	proto.RegisterType((*Response)(nil), "protos.Response")
-	proto.RegisterEnum("protos.Transaction_Type", Transaction_Type_name, Transaction_Type_value)
-	proto.RegisterEnum("protos.PeerEndpoint_Type", PeerEndpoint_Type_name, PeerEndpoint_Type_value)
-	proto.RegisterEnum("protos.Message_Type", Message_Type_name, Message_Type_value)
-	proto.RegisterEnum("protos.Response_StatusCode", Response_StatusCode_name, Response_StatusCode_value)
 }
 
-// Reference imports to suppress errors if they are not otherwise used.
-var _ context.Context
-var _ grpc.ClientConn
+func init() { proto.RegisterFile("fabric.proto", fileDescriptor_284efff686d8e9bf) }
 
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
-
-// Client API for Peer service
-
-type PeerClient interface {
-	// Accepts a stream of Message during chat session, while receiving
-	// other Message (e.g. from other peers).
-	Chat(ctx context.Context, opts ...grpc.CallOption) (Peer_ChatClient, error)
-	// Process a transaction from a remote source.
-	ProcessTransaction(ctx context.Context, in *Transaction, opts ...grpc.CallOption) (*Response, error)
-}
-
-type peerClient struct {
-	cc *grpc.ClientConn
-}
-
-func NewPeerClient(cc *grpc.ClientConn) PeerClient {
-	return &peerClient{cc}
-}
-
-func (c *peerClient) Chat(ctx context.Context, opts ...grpc.CallOption) (Peer_ChatClient, error) {
-	stream, err := grpc.NewClientStream(ctx, &_Peer_serviceDesc.Streams[0], c.cc, "/protos.Peer/Chat", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &peerChatClient{stream}
-	return x, nil
-}
-
-type Peer_ChatClient interface {
-	Send(*Message) error
-	Recv() (*Message, error)
-	grpc.ClientStream
-}
-
-type peerChatClient struct {
-	grpc.ClientStream
-}
-
-func (x *peerChatClient) Send(m *Message) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *peerChatClient) Recv() (*Message, error) {
-	m := new(Message)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *peerClient) ProcessTransaction(ctx context.Context, in *Transaction, opts ...grpc.CallOption) (*Response, error) {
-	out := new(Response)
-	err := grpc.Invoke(ctx, "/protos.Peer/ProcessTransaction", in, out, c.cc, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// Server API for Peer service
-
-type PeerServer interface {
-	// Accepts a stream of Message during chat session, while receiving
-	// other Message (e.g. from other peers).
-	Chat(Peer_ChatServer) error
-	// Process a transaction from a remote source.
-	ProcessTransaction(context.Context, *Transaction) (*Response, error)
-}
-
-func RegisterPeerServer(s *grpc.Server, srv PeerServer) {
-	s.RegisterService(&_Peer_serviceDesc, srv)
-}
-
-func _Peer_Chat_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(PeerServer).Chat(&peerChatServer{stream})
-}
-
-type Peer_ChatServer interface {
-	Send(*Message) error
-	Recv() (*Message, error)
-	grpc.ServerStream
-}
-
-type peerChatServer struct {
-	grpc.ServerStream
-}
-
-func (x *peerChatServer) Send(m *Message) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func (x *peerChatServer) Recv() (*Message, error) {
-	m := new(Message)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func _Peer_ProcessTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Transaction)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(PeerServer).ProcessTransaction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/protos.Peer/ProcessTransaction",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PeerServer).ProcessTransaction(ctx, req.(*Transaction))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-var _Peer_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "protos.Peer",
-	HandlerType: (*PeerServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "ProcessTransaction",
-			Handler:    _Peer_ProcessTransaction_Handler,
-		},
-	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "Chat",
-			Handler:       _Peer_Chat_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-	},
-	Metadata: "fabric.proto",
-}
-
-func init() { proto.RegisterFile("fabric.proto", fileDescriptor5) }
-
-var fileDescriptor5 = []byte{
+var fileDescriptor_284efff686d8e9bf = []byte{
 	// 1485 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x57, 0x5f, 0x6b, 0xdb, 0x56,
 	0x14, 0xaf, 0x6c, 0xc7, 0x89, 0x8f, 0x1d, 0x47, 0xb9, 0x49, 0x5a, 0x35, 0x2d, 0x9d, 0x11, 0x63,
@@ -1135,4 +1426,148 @@ var fileDescriptor5 = []byte{
 	0xea, 0x77, 0x0e, 0xf5, 0xf7, 0x8d, 0x41, 0x90, 0x0c, 0x27, 0xe7, 0x4d, 0x8f, 0x8e, 0xf6, 0xf1,
 	0xb9, 0x98, 0xb3, 0xfb, 0xf2, 0x27, 0x9d, 0xfc, 0x55, 0xc6, 0xce, 0xe5, 0x6f, 0xba, 0x67, 0xff,
 	0x04, 0x00, 0x00, 0xff, 0xff, 0x26, 0x53, 0xf8, 0xe3, 0xea, 0x0d, 0x00, 0x00,
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ context.Context
+var _ grpc.ClientConn
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion4
+
+// PeerClient is the client API for Peer service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type PeerClient interface {
+	// Accepts a stream of Message during chat session, while receiving
+	// other Message (e.g. from other peers).
+	Chat(ctx context.Context, opts ...grpc.CallOption) (Peer_ChatClient, error)
+	// Process a transaction from a remote source.
+	ProcessTransaction(ctx context.Context, in *Transaction, opts ...grpc.CallOption) (*Response, error)
+}
+
+type peerClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewPeerClient(cc *grpc.ClientConn) PeerClient {
+	return &peerClient{cc}
+}
+
+func (c *peerClient) Chat(ctx context.Context, opts ...grpc.CallOption) (Peer_ChatClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Peer_serviceDesc.Streams[0], "/protos.Peer/Chat", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &peerChatClient{stream}
+	return x, nil
+}
+
+type Peer_ChatClient interface {
+	Send(*Message) error
+	Recv() (*Message, error)
+	grpc.ClientStream
+}
+
+type peerChatClient struct {
+	grpc.ClientStream
+}
+
+func (x *peerChatClient) Send(m *Message) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *peerChatClient) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *peerClient) ProcessTransaction(ctx context.Context, in *Transaction, opts ...grpc.CallOption) (*Response, error) {
+	out := new(Response)
+	err := c.cc.Invoke(ctx, "/protos.Peer/ProcessTransaction", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PeerServer is the server API for Peer service.
+type PeerServer interface {
+	// Accepts a stream of Message during chat session, while receiving
+	// other Message (e.g. from other peers).
+	Chat(Peer_ChatServer) error
+	// Process a transaction from a remote source.
+	ProcessTransaction(context.Context, *Transaction) (*Response, error)
+}
+
+func RegisterPeerServer(s *grpc.Server, srv PeerServer) {
+	s.RegisterService(&_Peer_serviceDesc, srv)
+}
+
+func _Peer_Chat_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(PeerServer).Chat(&peerChatServer{stream})
+}
+
+type Peer_ChatServer interface {
+	Send(*Message) error
+	Recv() (*Message, error)
+	grpc.ServerStream
+}
+
+type peerChatServer struct {
+	grpc.ServerStream
+}
+
+func (x *peerChatServer) Send(m *Message) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *peerChatServer) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _Peer_ProcessTransaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Transaction)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PeerServer).ProcessTransaction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/protos.Peer/ProcessTransaction",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PeerServer).ProcessTransaction(ctx, req.(*Transaction))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _Peer_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "protos.Peer",
+	HandlerType: (*PeerServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ProcessTransaction",
+			Handler:    _Peer_ProcessTransaction_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Chat",
+			Handler:       _Peer_Chat_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "fabric.proto",
 }
