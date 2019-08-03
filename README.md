@@ -36,6 +36,14 @@ If you wish to take a look at the original readme of fabric 0.6, found [here](ht
 
 * Use rocksdb 5.10
 
+## Release 0.96
+
+This is the first stable version which can be applied under production environment
+
+* A fully implement for credential, base on x509 certificates
+
+* Many bug fixing
+
 ## Release a preview of 0.95
 
 * The backbone of consensus framework
