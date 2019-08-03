@@ -1,0 +1,47 @@
+FROM ubuntu:xenial
+
+###############################
+## 1. preinstall
+RUN apt-get -y update
+RUN apt-get -y install software-properties-common curl wget
+# Update the entire system to the latest releases
+RUN apt-get update -qq
+RUN apt-get dist-upgrade -qqy
+RUN apt-get install --yes git
+RUN apt-get install --yes sudo
+RUN apt-get install -y autoconf automake libtool curl make g++ unzip build-essential libsnappy-dev zlib1g-dev libbz2-dev
+
+###############################
+## 2. install go
+ARG GO_VERSION=1.10
+RUN mkdir -p /tmp/golang \
+    && cd /tmp/golang \
+    && wget --quiet --no-check-certificate https://studygolang.com/dl/golang/go${GO_VERSION}.linux-amd64.tar.gz \
+    && mkdir -p /opt/gopath \
+    && tar -zvxf go${GO_VERSION}.linux-amd64.tar.gz \
+    && mv go /opt/go \
+    && chmod 775 /opt/go
+ENV GOROOT=/opt/go
+ENV GOPATH=/opt/gopath
+ENV PATH=$PATH:${GOROOT}/bin:${GOPATH}/bin
+RUN chmod a+rw -R ${GOPATH}
+
+###############################
+## 3. install rocksdb
+ARG ROCKSDB_VERSION=5.17.2
+RUN mkdir -p /tmp/rocksdb \
+    && cd /tmp/rocksdb \
+    && wget https://github.com/facebook/rocksdb/archive/v${ROCKSDB_VERSION}.tar.gz \
+    && tar -zxvf v${ROCKSDB_VERSION}.tar.gz \
+    && cd rocksdb-${ROCKSDB_VERSION} \
+    && PORTABLE=1 make shared_lib -j4 \
+    && INSTALL_PATH=/usr/local make install-shared -j4 \
+    && ldconfig
+
+###############################
+## 4. post install
+RUN apt-get -y autoremove
+RUN apt-get clean
+RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+

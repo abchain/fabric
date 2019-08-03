@@ -34,7 +34,28 @@ If you wish to take a look at the original readme of fabric 0.6, found [here](ht
 
 ### Rocksdb
 
-* Use rocksdb 5.10
+* Use rocksdb 5.17
+
+### Dependencies
+
+* Now we are making an effort to discard the outdate dependencies in our project and rebuild it base on modern dep. management scheme. 
+
+  We are underway and only part of the dependencies have been upgrade. A go dep scheme is provided and if you wish to apply the project under go mod,
+  remember keep vendored projected being involved in building
+
+  To manually resolve the dependencies, following libraries should be install:
+
+  + protobuf
+  + grpc
+  + golang.org/x/net,crypto,sys,text
+
+## Examples
+
+  build github.com/abchain/fabric/examples/chaincode/embedded, experience the power of embedded chaincode
+
+## Release 0.97
+
+* Upgrade dependencies
 
 ## Release 0.96
 
