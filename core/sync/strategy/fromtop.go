@@ -39,9 +39,13 @@ func (s *syncStrategyFromTop) Block(ctx context.Context) error {
 
 	blkAgent := ledger.NewBlockAgent(s.ledger)
 
+	indicator := newIndicator("FromTop-Syncing (blocks)")
+	tasks := sync.PruneSyncPlan(s.ledger, sync.CheckpointToSyncPlan(s.blockCheckpoints))
+	indicator.SetLimit(sync.TotalSyncBlocks(tasks))
+
 	//TODO: how to select other commit scheme?
-	blockCli := sync.NewBlockSyncClient(blkAgent.SyncCommitBlock, sync.PruneSyncPlan(
-		s.ledger, sync.CheckpointToSyncPlan(s.blockCheckpoints)))
+	blockCli := sync.NewBlockSyncClient(indicator.AdaptBlockSyncing(blkAgent.SyncCommitBlock), tasks)
+	indicator.Reset()
 
 	err := sync.ExecuteSyncTask(ctx, blockCli, s.sstub)
 	if err != nil {
@@ -68,9 +72,13 @@ func (s *syncStrategyFromTop) State(ctx context.Context) error {
 		return err
 	}
 
-	stateCli, endSyncF := sync.NewStateSyncClient(ctx, syncer)
+	indicator := newIndicator("FromTop-Syncing (full-state)")
+
+	stateCli, endSyncF := sync.NewStateSyncClient(ctx,
+		indicator.AdaptStateSyncing(syncer))
 	defer endSyncF()
 
+	indicator.Reset()
 	err = sync.ExecuteSyncTask(ctx, stateCli, s.sstub)
 	if err != nil {
 		logger.Errorf("from-to strategy: sync world-state fail: %s", err)

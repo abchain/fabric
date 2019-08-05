@@ -86,14 +86,14 @@ func (h *stateSyncHandler) handleSyncing(offset *pb.SyncOffset, waitF func() err
 
 }
 
-type stateSyncer interface {
+type StateSyncer interface {
 	GetTarget() []byte
 	ApplySyncData(data *pb.SyncStateChunk) error
 	AssignTasks() ([]*pb.SyncOffset, error)
 }
 
 type stateSyncClient struct {
-	syncer stateSyncer
+	syncer StateSyncer
 
 	taskAssigned <-chan *pb.SyncOffset
 	taskCounter  sync.WaitGroup
@@ -101,7 +101,7 @@ type stateSyncClient struct {
 
 //an additional cancel func is provided and should be called before the sync task is
 //stopped
-func NewStateSyncClient(ctx context.Context, syncer stateSyncer) (*sessionCliAdapter, func()) {
+func NewStateSyncClient(ctx context.Context, syncer StateSyncer) (*sessionCliAdapter, func()) {
 
 	target := syncer.GetTarget()
 	ret := &stateSyncClient{syncer: syncer}
