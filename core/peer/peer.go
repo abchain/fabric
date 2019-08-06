@@ -128,12 +128,12 @@ func newServerChatStream(ctx context.Context, stream pb.Peer_ChatServer) (ChatSt
 			msg, err := stream.Recv()
 			if err != nil {
 				ret.recvError = err
+				peerLogger.Debugf("Recv thread for chatserver [%v] quit", stream)
 				return
 			} else {
 				recvChn <- msg
 			}
 		}
-		peerLogger.Debugf("recv thread for chatserver [%v] quit", stream)
 
 	}()
 
