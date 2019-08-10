@@ -1,0 +1,5 @@
+FROM abchain/fabric:0.97
+
+RUN cd ${GOPATH}/src/github.com/abchain/fabric \
+    && git fetch &&
+    && git checkout origin/0.97
