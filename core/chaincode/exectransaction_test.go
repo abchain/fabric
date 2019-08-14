@@ -1344,10 +1344,6 @@ func TestMain(m *testing.M) {
 	cf := config.SetupTestConf{"CORE", "chaincodetest", ""}
 	cf.Setup()
 
-	//Initialize crypto
-	if err := crypto.Init(); err != nil {
-		panic(fmt.Errorf("Failed initializing the crypto layer [%s]", err))
-	}
 	config.CacheViper()
 	usercc = viper.GetString("chaincode.mode") == "dev"
 	viper.Set("peer.fileSystemPath", filepath.Join(os.TempDir(), "hyperledger", "production"))

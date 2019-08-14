@@ -5,8 +5,10 @@ import (
 
 	"github.com/abchain/fabric/core/config"
 	_ "github.com/abchain/fabric/core/cred/default"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"net"
+	"time"
 )
 
 func testConnect(spec *config.ServerSpec, clispec *config.ClientSpec, t *testing.T, expectedFail bool) {
@@ -44,7 +46,10 @@ func testConnect(spec *config.ServerSpec, clispec *config.ClientSpec, t *testing
 		t.Fatal(err)
 	}
 
-	conn, err := grpc.Dial(clispec.Address,
+	dctx, endf := context.WithTimeout(context.Background(), time.Second*3)
+	defer endf()
+
+	conn, err := grpc.DialContext(dctx, clispec.Address,
 		grpc.WithTransportCredentials(copt), grpc.WithBlock())
 	if expectedFail {
 		if err == nil {

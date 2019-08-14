@@ -3,7 +3,6 @@ package node
 import (
 	"bytes"
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/crypto"
 	pb "github.com/abchain/fabric/protos"
 	"github.com/spf13/viper"
 	"golang.org/x/net/context"
@@ -63,11 +62,7 @@ func TestTxNetwork(t *testing.T) {
 
 func TestTxNetworkWithCred(t *testing.T) {
 
-	if err := crypto.Init(); err != nil {
-		t.Fatal(err)
-	}
-
-	thenode := buildLegacyNode("conf_legacy_withcred_test", t)
+	thenode := buildLegacyNode("conf_running_withcred_test", t)
 	defer thenode.FinalRelease()
 
 	testTxNetwork(thenode, t)
@@ -136,7 +131,7 @@ func testTxNetwork(thenode *NodeEngine, t *testing.T) {
 	spec2 := &pb.ChaincodeInvocationSpec{
 		ChaincodeSpec: &pb.ChaincodeSpec{
 			ChaincodeID: &pb.ChaincodeID{Name: "mycc2"},
-			CtorMsg:     &pb.ChaincodeInput{[][]byte{[]byte{42, 42, 42}}},
+			CtorMsg:     &pb.ChaincodeInput{Args: [][]byte{[]byte{42, 42, 42}}},
 		},
 	}
 

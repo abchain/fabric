@@ -2,7 +2,7 @@ package startnode
 
 import (
 	"fmt"
-	"github.com/abchain/fabric/core/crypto"
+	"github.com/abchain/fabric/core/config"
 	"github.com/abchain/fabric/node"
 	"golang.org/x/net/context"
 	"os"
@@ -55,7 +55,7 @@ func RunNode(ncfg *NodeConfig) {
 	}
 
 	// Init the crypto layer
-	if err := crypto.Init(); err != nil {
+	if err := config.InitCryptoGlobal(nil); err != nil {
 		panic(fmt.Errorf("Failed to initialize the crypto layer: %s", err))
 	}
 
