@@ -69,6 +69,11 @@ func (c SetupTestConf) Setup() {
 
 	flogging.LoggingInit("test")
 
+	err = InitCryptoGlobal(viper.GetViper())
+	if err != nil {
+		panic(fmt.Errorf("Failed initializing the crypto layer [%s]", err))
+	}
+
 	// Set the number of maxprocs
 	var numProcsDesired = viper.GetInt("peer.gomaxprocs")
 	configLogger.Debugf("setting Number of procs to %d, was %d\n", numProcsDesired, runtime.GOMAXPROCS(2))

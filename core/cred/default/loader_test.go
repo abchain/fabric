@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/abchain/fabric/core/config"
 	cred "github.com/abchain/fabric/core/cred/default"
-	"github.com/abchain/fabric/core/crypto"
 	"os"
 	"testing"
 )
@@ -17,8 +16,6 @@ func TestMain(m *testing.M) {
 
 	cfg := config.SetupTestConf{"", "x509", ""}
 	cfg.Setup()
-
-	crypto.Init()
 
 	os.Exit(m.Run())
 }

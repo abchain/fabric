@@ -23,7 +23,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -39,8 +38,6 @@ import (
 	"github.com/abchain/fabric/core/chaincode"
 	"github.com/abchain/fabric/core/comm"
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/crypto"
-	"github.com/abchain/fabric/core/crypto/primitives"
 	"github.com/abchain/fabric/core/util"
 	"github.com/abchain/fabric/node/service"
 	pb "github.com/abchain/fabric/protos"
@@ -410,190 +407,61 @@ func (s *ServerOpenchainREST) DeleteEnrollmentID(rw web.ResponseWriter, req *web
 
 // GetEnrollmentCert retrieves the enrollment certificate for a given user.
 func (s *ServerOpenchainREST) GetEnrollmentCert(rw web.ResponseWriter, req *web.Request) {
-	// Parse out the user enrollment ID
-	enrollmentID := req.PathParams["id"]
+	/*
+		// Parse out the user enrollment ID
+		enrollmentID := req.PathParams["id"]
 
-	if !validateEnrollmentIDParameter(rw, enrollmentID) {
-		return
-	}
-
-	restLogger.Debugf("REST received enrollment certificate retrieval request for registrationID '%s'", enrollmentID)
-
-	encoder := json.NewEncoder(rw)
-
-	// If security is enabled, initialize the crypto client
-	if config.SecurityEnabled() {
-		if restLogger.IsEnabledFor(logging.DEBUG) {
-			restLogger.Debugf("Initializing secure client using context '%s'", enrollmentID)
-		}
-
-		// Initialize the security client
-		sec, err := crypto.InitClient(enrollmentID, nil)
-		if err != nil {
-			rw.WriteHeader(http.StatusBadRequest)
-			encoder.Encode(restResult{Error: err.Error()})
-			restLogger.Errorf("Error: %s", err)
-
+		if !validateEnrollmentIDParameter(rw, enrollmentID) {
 			return
 		}
 
-		// Obtain the client CertificateHandler
-		handler, err := sec.GetEnrollmentCertificateHandler()
-		if err != nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			encoder.Encode(restResult{Error: err.Error()})
-			restLogger.Errorf("Error: %s", err)
+		restLogger.Debugf("REST received enrollment certificate retrieval request for registrationID '%s'", enrollmentID)
 
-			return
-		}
+		encoder := json.NewEncoder(rw)
 
-		// Certificate handler can not be hil
-		if handler == nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			encoder.Encode(restResult{Error: "Error retrieving certificate handler."})
-			restLogger.Errorf("Error: Error retrieving certificate handler.")
+		// If security is enabled, initialize the crypto client
+		if config.SecurityEnabled() {
+			if restLogger.IsEnabledFor(logging.DEBUG) {
+				restLogger.Debugf("Initializing secure client using context '%s'", enrollmentID)
+			}
 
-			return
-		}
+			// Initialize the security client
+			sec, err := crypto.InitClient(enrollmentID, nil)
+			if err != nil {
+				rw.WriteHeader(http.StatusBadRequest)
+				encoder.Encode(restResult{Error: err.Error()})
+				restLogger.Errorf("Error: %s", err)
 
-		// Obtain the DER encoded certificate
-		certDER := handler.GetCertificate()
+				return
+			}
 
-		// Confirm the retrieved enrollment certificate is not nil
-		if certDER == nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			encoder.Encode(restResult{Error: "Enrollment certificate is nil."})
-			restLogger.Errorf("Error: Enrollment certificate is nil.")
+			// Obtain the client CertificateHandler
+			handler, err := sec.GetEnrollmentCertificateHandler()
+			if err != nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				encoder.Encode(restResult{Error: err.Error()})
+				restLogger.Errorf("Error: %s", err)
 
-			return
-		}
+				return
+			}
 
-		// Confirm the retrieved enrollment certificate has non-zero length
-		if len(certDER) == 0 {
-			rw.WriteHeader(http.StatusInternalServerError)
-			encoder.Encode(restResult{Error: "Enrollment certificate length is 0."})
-			restLogger.Errorf("Error: Enrollment certificate length is 0.")
+			// Certificate handler can not be hil
+			if handler == nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				encoder.Encode(restResult{Error: "Error retrieving certificate handler."})
+				restLogger.Errorf("Error: Error retrieving certificate handler.")
 
-			return
-		}
+				return
+			}
 
-		// Transforms the DER encoded certificate to a PEM encoded certificate
-		certPEM := primitives.DERCertToPEM(certDER)
-
-		// As the enrollment certificate contains \n characters, url encode it before outputting
-		urlEncodedCert := url.QueryEscape(string(certPEM))
-
-		// Close the security client
-		crypto.CloseClient(sec)
-
-		rw.WriteHeader(http.StatusOK)
-		encoder.Encode(restResult{OK: urlEncodedCert})
-		restLogger.Debugf("Successfully retrieved enrollment certificate for secure context '%s'", enrollmentID)
-	} else {
-		// Security must be enabled to request enrollment certificates
-		rw.WriteHeader(http.StatusBadRequest)
-		encoder.Encode(restResult{Error: "Security functionality must be enabled before requesting client certificates."})
-		restLogger.Errorf("Error: Security functionality must be enabled before requesting client certificates.")
-
-		return
-	}
-}
-
-// GetTransactionCert retrieves the transaction certificate(s) for a given user.
-func (s *ServerOpenchainREST) GetTransactionCert(rw web.ResponseWriter, req *web.Request) {
-	// Parse out the user enrollment ID
-	enrollmentID := req.PathParams["id"]
-
-	if !validateEnrollmentIDParameter(rw, enrollmentID) {
-		return
-	}
-
-	restLogger.Debugf("REST received transaction certificate retrieval request for registrationID '%s'", enrollmentID)
-
-	encoder := json.NewEncoder(rw)
-
-	// Parse out the count query parameter
-	req.ParseForm()
-	queryParams := req.Form
-
-	// The default number of TCerts to retrieve is 1
-	var count uint32 = 1
-
-	// If the query parameter is present, examine the supplied value
-	if queryParams["count"] != nil {
-		// Convert string to uint. The parse function return the widest type (uint64)
-		// Setting base to 32 allows you to subsequently cast the value to uint32
-		qParam, err := strconv.ParseUint(queryParams["count"][0], 10, 32)
-
-		// Check for count parameter being a non-negative integer
-		if err != nil {
-			rw.WriteHeader(http.StatusBadRequest)
-			encoder.Encode(restResult{Error: "Count query parameter must be a non-negative integer."})
-			restLogger.Errorf("Error: Count query parameter must be a non-negative integer.")
-
-			return
-		}
-
-		// If the query parameter is within the allowed range, record it
-		if qParam > 0 && qParam <= 500 {
-			count = uint32(qParam)
-		}
-
-		// Limit the number of TCerts retrieved to 500
-		if qParam > 500 {
-			count = 500
-		}
-	}
-
-	// If security is enabled, initialize the crypto client
-	if config.SecurityEnabled() {
-		if restLogger.IsEnabledFor(logging.DEBUG) {
-			restLogger.Debugf("Initializing secure client using context '%s'", enrollmentID)
-		}
-
-		// Initialize the security client
-		sec, err := crypto.InitClient(enrollmentID, nil)
-		if err != nil {
-			rw.WriteHeader(http.StatusBadRequest)
-			encoder.Encode(restResult{Error: err.Error()})
-			restLogger.Errorf("Error: %s", err)
-
-			return
-		}
-
-		// Obtain the client CertificateHandler
-		// TODO - Replace empty attributes map
-		attributes := []string{}
-		handler, err := sec.GetTCertificateHandlerNext(attributes...)
-		if err != nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			encoder.Encode(restResult{Error: err.Error()})
-			restLogger.Errorf("Error: %s", err)
-
-			return
-		}
-
-		// Certificate handler can not be hil
-		if handler == nil {
-			rw.WriteHeader(http.StatusInternalServerError)
-			encoder.Encode(restResult{Error: "Error retrieving certificate handler."})
-			restLogger.Errorf("Error: Error retrieving certificate handler.")
-
-			return
-		}
-
-		// Retrieve the required number of TCerts
-		tcertArray := make([]string, count)
-		var i uint32
-		for i = 0; i < count; i++ {
 			// Obtain the DER encoded certificate
 			certDER := handler.GetCertificate()
 
 			// Confirm the retrieved enrollment certificate is not nil
 			if certDER == nil {
 				rw.WriteHeader(http.StatusInternalServerError)
-				encoder.Encode(restResult{Error: "Transaction certificate is nil."})
-				restLogger.Errorf("Error: Transaction certificate is nil.")
+				encoder.Encode(restResult{Error: "Enrollment certificate is nil."})
+				restLogger.Errorf("Error: Enrollment certificate is nil.")
 
 				return
 			}
@@ -601,8 +469,8 @@ func (s *ServerOpenchainREST) GetTransactionCert(rw web.ResponseWriter, req *web
 			// Confirm the retrieved enrollment certificate has non-zero length
 			if len(certDER) == 0 {
 				rw.WriteHeader(http.StatusInternalServerError)
-				encoder.Encode(restResult{Error: "Transaction certificate length is 0."})
-				restLogger.Errorf("Error: Transaction certificate length is 0.")
+				encoder.Encode(restResult{Error: "Enrollment certificate length is 0."})
+				restLogger.Errorf("Error: Enrollment certificate length is 0.")
 
 				return
 			}
@@ -610,27 +478,178 @@ func (s *ServerOpenchainREST) GetTransactionCert(rw web.ResponseWriter, req *web
 			// Transforms the DER encoded certificate to a PEM encoded certificate
 			certPEM := primitives.DERCertToPEM(certDER)
 
-			// As the transaction certificate contains \n characters, url encode it before outputting
+			// As the enrollment certificate contains \n characters, url encode it before outputting
 			urlEncodedCert := url.QueryEscape(string(certPEM))
 
-			// Add the urlEncodedCert transaction certificate to the certificate array
-			tcertArray[i] = urlEncodedCert
+			// Close the security client
+			crypto.CloseClient(sec)
+
+			rw.WriteHeader(http.StatusOK)
+			encoder.Encode(restResult{OK: urlEncodedCert})
+			restLogger.Debugf("Successfully retrieved enrollment certificate for secure context '%s'", enrollmentID)
+		} else {
+
+			// Security must be enabled to request enrollment certificates
+			rw.WriteHeader(http.StatusBadRequest)
+			encoder.Encode(restResult{Error: "Security functionality must be enabled before requesting client certificates."})
+			restLogger.Errorf("Error: Security functionality must be enabled before requesting client certificates.")
+
+			return
+		}
+	*/
+
+	encoder := json.NewEncoder(rw)
+
+	// Security must be enabled to request enrollment certificates
+	rw.WriteHeader(http.StatusBadRequest)
+	encoder.Encode(restResult{Error: "Security functionality must be enabled before requesting client certificates."})
+	restLogger.Errorf("Error: Security functionality must be enabled before requesting client certificates.")
+
+	return
+}
+
+// GetTransactionCert retrieves the transaction certificate(s) for a given user.
+func (s *ServerOpenchainREST) GetTransactionCert(rw web.ResponseWriter, req *web.Request) {
+
+	encoder := json.NewEncoder(rw)
+
+	rw.WriteHeader(http.StatusBadRequest)
+	encoder.Encode(restResult{Error: "Security functionality must be enabled before requesting client certificates."})
+	restLogger.Errorf("Error: Security functionality must be enabled before requesting client certificates.")
+
+	return
+	/*
+		// Parse out the user enrollment ID
+		enrollmentID := req.PathParams["id"]
+
+		if !validateEnrollmentIDParameter(rw, enrollmentID) {
+			return
 		}
 
-		// Close the security client
-		crypto.CloseClient(sec)
+		restLogger.Debugf("REST received transaction certificate retrieval request for registrationID '%s'", enrollmentID)
 
-		rw.WriteHeader(http.StatusOK)
-		encoder.Encode(tcertsResult{OK: tcertArray})
-		restLogger.Debugf("Successfully retrieved transaction certificates for secure context '%s'", enrollmentID)
-	} else {
-		// Security must be enabled to request transaction certificates
-		rw.WriteHeader(http.StatusBadRequest)
-		encoder.Encode(restResult{Error: "Security functionality must be enabled before requesting client certificates."})
-		restLogger.Errorf("Error: Security functionality must be enabled before requesting client certificates.")
+		encoder := json.NewEncoder(rw)
 
-		return
-	}
+		// Parse out the count query parameter
+		req.ParseForm()
+		queryParams := req.Form
+
+		// The default number of TCerts to retrieve is 1
+		var count uint32 = 1
+
+		// If the query parameter is present, examine the supplied value
+		if queryParams["count"] != nil {
+			// Convert string to uint. The parse function return the widest type (uint64)
+			// Setting base to 32 allows you to subsequently cast the value to uint32
+			qParam, err := strconv.ParseUint(queryParams["count"][0], 10, 32)
+
+			// Check for count parameter being a non-negative integer
+			if err != nil {
+				rw.WriteHeader(http.StatusBadRequest)
+				encoder.Encode(restResult{Error: "Count query parameter must be a non-negative integer."})
+				restLogger.Errorf("Error: Count query parameter must be a non-negative integer.")
+
+				return
+			}
+
+			// If the query parameter is within the allowed range, record it
+			if qParam > 0 && qParam <= 500 {
+				count = uint32(qParam)
+			}
+
+			// Limit the number of TCerts retrieved to 500
+			if qParam > 500 {
+				count = 500
+			}
+		}
+
+		// If security is enabled, initialize the crypto client
+		if config.SecurityEnabled() {
+			if restLogger.IsEnabledFor(logging.DEBUG) {
+				restLogger.Debugf("Initializing secure client using context '%s'", enrollmentID)
+			}
+
+			// Initialize the security client
+			sec, err := crypto.InitClient(enrollmentID, nil)
+			if err != nil {
+				rw.WriteHeader(http.StatusBadRequest)
+				encoder.Encode(restResult{Error: err.Error()})
+				restLogger.Errorf("Error: %s", err)
+
+				return
+			}
+
+			// Obtain the client CertificateHandler
+			// TODO - Replace empty attributes map
+			attributes := []string{}
+			handler, err := sec.GetTCertificateHandlerNext(attributes...)
+			if err != nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				encoder.Encode(restResult{Error: err.Error()})
+				restLogger.Errorf("Error: %s", err)
+
+				return
+			}
+
+			// Certificate handler can not be hil
+			if handler == nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				encoder.Encode(restResult{Error: "Error retrieving certificate handler."})
+				restLogger.Errorf("Error: Error retrieving certificate handler.")
+
+				return
+			}
+
+			// Retrieve the required number of TCerts
+			tcertArray := make([]string, count)
+			var i uint32
+			for i = 0; i < count; i++ {
+				// Obtain the DER encoded certificate
+				certDER := handler.GetCertificate()
+
+				// Confirm the retrieved enrollment certificate is not nil
+				if certDER == nil {
+					rw.WriteHeader(http.StatusInternalServerError)
+					encoder.Encode(restResult{Error: "Transaction certificate is nil."})
+					restLogger.Errorf("Error: Transaction certificate is nil.")
+
+					return
+				}
+
+				// Confirm the retrieved enrollment certificate has non-zero length
+				if len(certDER) == 0 {
+					rw.WriteHeader(http.StatusInternalServerError)
+					encoder.Encode(restResult{Error: "Transaction certificate length is 0."})
+					restLogger.Errorf("Error: Transaction certificate length is 0.")
+
+					return
+				}
+
+				// Transforms the DER encoded certificate to a PEM encoded certificate
+				certPEM := primitives.DERCertToPEM(certDER)
+
+				// As the transaction certificate contains \n characters, url encode it before outputting
+				urlEncodedCert := url.QueryEscape(string(certPEM))
+
+				// Add the urlEncodedCert transaction certificate to the certificate array
+				tcertArray[i] = urlEncodedCert
+			}
+
+			// Close the security client
+			crypto.CloseClient(sec)
+
+			rw.WriteHeader(http.StatusOK)
+			encoder.Encode(tcertsResult{OK: tcertArray})
+			restLogger.Debugf("Successfully retrieved transaction certificates for secure context '%s'", enrollmentID)
+		} else {
+			// Security must be enabled to request transaction certificates
+			rw.WriteHeader(http.StatusBadRequest)
+			encoder.Encode(restResult{Error: "Security functionality must be enabled before requesting client certificates."})
+			restLogger.Errorf("Error: Security functionality must be enabled before requesting client certificates.")
+
+			return
+		}
+	*/
 }
 
 // GetBlockchainInfo returns information about the blockchain ledger such as

@@ -30,7 +30,6 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/abchain/fabric/core/config"
-	"github.com/abchain/fabric/core/crypto"
 	"github.com/abchain/fabric/flogging"
 	"github.com/abchain/fabric/peer/chaincode"
 	"github.com/abchain/fabric/peer/network"
@@ -113,7 +112,7 @@ func main() {
 	runtime.GOMAXPROCS(viper.GetInt("peer.gomaxprocs"))
 
 	// Init the crypto layer
-	if err := crypto.Init(); err != nil {
+	if err := config.InitCryptoGlobal(nil); err != nil {
 		panic(fmt.Errorf("Failed to initialize the crypto layer: %s", err))
 	}
 
