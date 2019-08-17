@@ -71,7 +71,7 @@ func (impl *StateImpl) AddChangesForPersistence(writeBatch *db.DBWriteBatch) err
 	if delta == nil {
 		return nil
 	}
-	openchainDB := writeBatch.GetDBHandle()
+	openchainDB := writeBatch.GetCFs()
 	updatedChaincodeIds := delta.GetUpdatedChaincodeIds(false)
 	for _, updatedChaincodeID := range updatedChaincodeIds {
 		updates := delta.GetUpdates(updatedChaincodeID)

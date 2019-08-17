@@ -155,7 +155,7 @@ func (state *State) AddChangesForPersistence(blockNumber uint64, writeBatch *db.
 	state.stateImpl.AddChangesForPersistence(writeBatch)
 
 	serializedStateDelta := state.stateDelta.Marshal()
-	cf := writeBatch.GetDBHandle().StateDeltaCF
+	cf := writeBatch.GetCFs().StateDeltaCF
 	logger.Debugf("Adding state-delta corresponding to block number[%d]", blockNumber)
 	writeBatch.PutCF(cf, encodeStateDeltaKey(blockNumber), serializedStateDelta)
 

@@ -65,6 +65,8 @@ type genesisBlock struct {
 
 var defaultTime = time.Date(2019, time.June, 9, 15, 0, 0, 0, time.FixedZone("UTC-8", -8*60*60))
 
+func NewGenesisBlock(blk *protos.Block) genesisBlock { return genesisBlock{blk} }
+
 func NewGenesisBlockTemplateDefault(metadata []byte) genesisBlock {
 	return NewGenesisBlockTemplate(metadata, defaultTime)
 }

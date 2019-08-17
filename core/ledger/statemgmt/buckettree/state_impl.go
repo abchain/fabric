@@ -324,7 +324,7 @@ func (stateImpl *StateImpl) AddChangesForPersistence(writeBatch *db.DBWriteBatch
 		if err != nil {
 			return err
 		}
-		writeBatch.PutCF(writeBatch.GetDBHandle().StateCF, partialStatusKey, bt)
+		writeBatch.PutCF(writeBatch.GetCFs().StateCF, partialStatusKey, bt)
 	}
 
 	return nil
@@ -334,7 +334,7 @@ func (stateImpl *StateImpl) addDataNodeChangesForPersistence(writeBatch *db.DBWr
 	if stateImpl.dataNodesDelta == nil {
 		return
 	}
-	openchainDB := writeBatch.GetDBHandle()
+	openchainDB := writeBatch.GetCFs()
 	affectedBuckets := stateImpl.dataNodesDelta.getAffectedBuckets()
 	for _, affectedBucket := range affectedBuckets {
 		dataNodes := stateImpl.dataNodesDelta.getSortedDataNodesFor(affectedBucket)
@@ -354,7 +354,7 @@ func (stateImpl *StateImpl) addBucketNodeChangesForPersistence(writeBatch *db.DB
 	if stateImpl.bucketTreeDelta == nil {
 		return
 	}
-	openchainDB := writeBatch.GetDBHandle()
+	openchainDB := writeBatch.GetCFs()
 	secondLastLevel := stateImpl.currentConfig.getLowestLevel() - 1
 	for level := secondLastLevel; level >= 0; level-- {
 		bucketNodes := stateImpl.bucketTreeDelta.getBucketNodesAt(level)

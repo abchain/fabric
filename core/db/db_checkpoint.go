@@ -61,31 +61,22 @@ func (oc *OpenchainDB) StateSwitch(statehash []byte) error {
 	statename := encodeStatehash(statehash)
 
 	dbLogger.Infof("[%s] Start state switching to %s", printGID, statename)
+	opts, cfopts := oc.openDBOptions()
 
-	opts := gorocksdb.NewDefaultOptions()
-	defer opts.Destroy()
-	opts.SetCreateIfMissing(false)
-	opts.SetCreateIfMissingColumnFamilies(false)
-
-	//open checkpoint. CAUTION: you CAN NOT build checkpoint from RO-opened db
-	cfname := append(columnfamilies, "default")
-	cfopts := make([]*gorocksdb.Options, len(cfname))
-	for i, _ := range cfopts {
-		cfopts[i] = opts
-	}
+	//open checkpoint without a wrapper of ocdb
+	//CAUTION: you CAN NOT build checkpoint from RO-opened db
 	chkp, cfhandles, err := gorocksdb.OpenDbColumnFamilies(opts,
-		getCheckPointPath(statename), cfname, cfopts)
+		getCheckPointPath(statename), columnfamilies, cfopts)
 	if err != nil {
 		return fmt.Errorf("[%s] Open checkpoint [%s] fail: %s", printGID, statename, err)
 	}
 
-	clear := func() {
+	defer func() {
 		for _, cf := range cfhandles {
 			cf.Destroy()
 		}
 		chkp.Close()
-	}
-	defer clear()
+	}()
 
 	newtag := util.GenerateUUID()
 	newdbPath := getDBPath("db_" + oc.dbTag + newtag)
@@ -108,8 +99,7 @@ func (oc *OpenchainDB) StateSwitch(statehash []byte) error {
 
 	//now open the new state ...
 	newdb := &ocDB{}
-	newdb.OpenOpt = oc.db.OpenOpt
-	err = newdb.open(newdbPath, oc.buildOpenDBOptions())
+	err = newdb.open(newdbPath, opts, cfopts)
 	if err != nil {
 		return err
 	}
@@ -123,8 +113,12 @@ func (oc *OpenchainDB) StateSwitch(statehash []byte) error {
 	dbLogger.Infof("[%s] State switch to %s done", printGID, statename)
 
 	//done, now release one refcount, and close db if needed
-	olddb.additionalClean = func() { olddb.dropDB() } //DATA RACE? No, it should be SAFE
-	if hasReleased := olddb.finalRelease(); hasReleased {
+	//DATA RACE? No, it should be SAFE
+	olddb.onReleased = func() {
+		olddb.close()
+		olddb.DropDB()
+	}
+	if hasReleased := olddb.release(); hasReleased {
 		dbLogger.Infof("[%s] Delay release current db <%s>", printGID, olddb.dbName)
 	} else {
 		dbLogger.Infof("[%s] Release current db <%s>", printGID, olddb.dbName)

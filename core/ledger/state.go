@@ -311,7 +311,7 @@ func (s *stateWrapper) persistentState(writeBatch *db.DBWriteBatch) error {
 	s.GetImpl().AddChangesForPersistence(writeBatch)
 
 	//we also manage state delta ...
-	cf := writeBatch.GetDBHandle().StateDeltaCF
+	cf := writeBatch.GetCFs().StateDeltaCF
 	statelogger.Debugf("Adding state-delta corresponding to block number[%d]", pblkN)
 	writeBatch.PutCF(cf, encodeStateDeltaKey(pblkN), pdelta.Marshal())
 

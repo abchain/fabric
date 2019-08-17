@@ -66,8 +66,7 @@ func (testDB *TestDBWrapper) CleanCF(t testing.TB, cfName string) {
 	case IndexesCF:
 		cfOpt = GetDBHandle().indexesCFOpt
 	default:
-		cfOpt = GetDBHandle().db.OpenOpt.Options()
-		defer cfOpt.Destroy()
+		cfOpt = GetDBHandle().baseOpt
 	}
 
 	newcf, err := GetDBHandle().db.CreateColumnFamily(cfOpt, cfName)

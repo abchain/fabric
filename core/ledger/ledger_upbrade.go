@@ -158,7 +158,7 @@ func reconstructBlockChain(odb *db.OpenchainDB) (err error, r *reconstructInfo) 
 				r = &reconstructInfo{i - 1, make([][]byte, 0, size-i+1)}
 				r.newhash = append(r.newhash, previousHash)
 
-				writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF,
+				writeBatch.PutCF(writeBatch.GetCFs().IndexesCF,
 					encodeBlockHashKey(previousHash), encodeBlockNumber(i-1))
 			}
 			block.PreviousBlockHash = previousHash
@@ -170,7 +170,7 @@ func reconstructBlockChain(odb *db.OpenchainDB) (err error, r *reconstructInfo) 
 		}
 		if r != nil {
 			//we must also update index of block
-			writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF,
+			writeBatch.PutCF(writeBatch.GetCFs().IndexesCF,
 				encodeBlockHashKey(previousHash), blkk)
 			r.newhash = append(r.newhash, previousHash)
 		}
@@ -180,7 +180,7 @@ func reconstructBlockChain(odb *db.OpenchainDB) (err error, r *reconstructInfo) 
 			return
 		}
 
-		writeBatch.PutCF(writeBatch.GetDBHandle().BlockchainCF, blkk, blockBytes)
+		writeBatch.PutCF(writeBatch.GetCFs().BlockchainCF, blkk, blockBytes)
 		bytesAfter = bytesAfter + uint64(len(blockBytes))
 	}
 
@@ -259,7 +259,7 @@ var rawLegacyPBFTPrefix = []byte(db.RawLegacyPBFTPrefix)
 func updateLegacyPBFTChkp(odb *db.OpenchainDB, itr *db.DBIterator, r *reconstructInfo) error {
 
 	wb := odb.NewWriteBatch()
-	cf := wb.GetDBHandle().PersistCF
+	cf := wb.GetCFs().PersistCF
 	defer wb.Destroy()
 
 	for ; itr.ValidForPrefix(rawLegacyPBFTPrefix); itr.Next() {

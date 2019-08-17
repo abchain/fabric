@@ -32,6 +32,7 @@ var txDbColumnfamilies = []string{
 	GlobalCF,
 	ConsensusCF,
 	PersistCF,
+	"default",
 }
 
 type txCFs struct {
@@ -243,18 +244,26 @@ var globalDataDB = new(GlobalDataDB)
 var openglobalDBLock sync.Mutex
 var stateHashLimit = 64
 
-func (txdb *GlobalDataDB) open(dbpath string) error {
+func (txdb *GlobalDataDB) open(dbpath string, optGen baseOpt) error {
 
-	cfhandlers := txdb.opendb(dbpath, txDbColumnfamilies, txdb.buildOpenDBOptions())
-
-	if len(cfhandlers) != len(txDbColumnfamilies) {
+	opt, cfopts := txdb.buildOpenDBOptions(optGen)
+	defer opt.Destroy()
+	hdb, cfHandlers, err := gorocksdb.OpenDbColumnFamilies(opt, dbpath,
+		txDbColumnfamilies, cfopts)
+	if err != nil {
+		dbLogger.Error("Error opening DB:", err)
+		return nil
+	}
+	if len(cfHandlers) != len(txDbColumnfamilies) {
 		return errors.New("rocksdb may ruin or not work as expected")
 	}
 
+	dbLogger.Infof("<txdb> gorocksdb.OpenDbColumnFamilies <%s>, len cfHandlers<%d>", dbpath, len(cfHandlers))
+	txdb.DB = hdb
 	//feed cfs
 	txdb.cfMap = make(map[string]*gorocksdb.ColumnFamilyHandle)
 	for i, cfName := range txDbColumnfamilies {
-		txdb.cfMap[cfName] = cfhandlers[i]
+		txdb.cfMap[cfName] = cfHandlers[i]
 	}
 
 	txdb.feed(txdb.cfMap)

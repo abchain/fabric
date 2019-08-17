@@ -354,7 +354,7 @@ func performBasicReadWrite(openchainDB *OpenchainDB, t *testing.T) {
 
 	writeBatch := openchainDB.NewWriteBatch()
 	defer writeBatch.Destroy()
-	dbh := writeBatch.GetDBHandle()
+	dbh := writeBatch.GetCFs()
 	writeBatch.PutCF(dbh.BlockchainCF, []byte("dummyKey"), []byte("dummyValue"))
 	writeBatch.PutCF(dbh.StateCF, []byte("dummyKey1"), []byte("dummyValue1"))
 	writeBatch.PutCF(dbh.StateDeltaCF, []byte("dummyKey2"), []byte("dummyValue2"))
