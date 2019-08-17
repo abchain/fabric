@@ -331,7 +331,7 @@ func updateBlock(writeBatch *db.DBWriteBatch, blkNumber uint64, block *protos.Bl
 		return err
 	}
 
-	cf := writeBatch.GetDBHandle().BlockchainCF
+	cf := writeBatch.GetCFs().BlockchainCF
 	writeBatch.PutCF(cf, encodeBlockNumberDBKey(blkNumber), blockBytes)
 	return nil
 }
@@ -343,7 +343,7 @@ func (blockchain *blockchain) persistentBuilding(writeBatch *db.DBWriteBatch) er
 		return err
 	}
 
-	cf := writeBatch.GetDBHandle().BlockchainCF
+	cf := writeBatch.GetCFs().BlockchainCF
 	writeBatch.PutCF(cf, encodeBlockNumberDBKey(blockchain.buildingBlock.blockNumber), blockBytes)
 
 	nextCid := blockchain.continuousTo.PreviewProgress(blockchain.buildingBlock.blockNumber)

@@ -230,7 +230,7 @@ func checkIndexTill(odb *db.OpenchainDB, till uint64) (error, uint64) {
 		return fmt.Errorf("progressIndexs fail: %s", err), 0
 	}
 
-	writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(finalBlockNum))
+	writeBatch.PutCF(writeBatch.GetCFs().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(finalBlockNum))
 	if err := writeBatch.BatchCommit(); err != nil {
 		return fmt.Errorf("fail in last commit batch: %s", err), 0
 	}

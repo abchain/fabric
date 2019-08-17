@@ -41,7 +41,7 @@ func newBlockIndexCache(blockHash []byte, block *protos.Block) *blockIndexCache 
 
 func (ind *blockIndexCache) persistence(writeBatch *db.DBWriteBatch, blockNumber uint64) {
 
-	cf := writeBatch.GetDBHandle().IndexesCF
+	cf := writeBatch.GetCFs().IndexesCF
 
 	indexLogger.Debugf("Indexing block number [%d] by hash = [%x](shash [%12x]", blockNumber, ind.blockHash, ind.stateHash)
 	//add the mark
@@ -205,7 +205,7 @@ func (indexer *blockchainIndexerImpl) persistIndexes(writeBatch *db.DBWriteBatch
 
 	ciid := indexer.cache.indexedTo.PreviewProgress(blockNumber)
 	if ciid > indexer.cache.indexedTo.GetProgress() {
-		writeBatch.PutCF(writeBatch.GetDBHandle().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(ciid))
+		writeBatch.PutCF(writeBatch.GetCFs().IndexesCF, lastIndexedBlockKey, encodeBlockNumber(ciid))
 	}
 
 	return nil

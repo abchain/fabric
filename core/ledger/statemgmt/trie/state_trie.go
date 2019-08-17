@@ -166,7 +166,7 @@ func (stateTrie *StateTrie) AddChangesForPersistence(writeBatch *db.DBWriteBatch
 	}
 
 	lowestLevel := stateTrie.trieDelta.getLowestLevel()
-	openchainDB := writeBatch.GetDBHandle()
+	openchainDB := writeBatch.GetCFs()
 	for level := lowestLevel; level >= 0; level-- {
 		changedNodes := stateTrie.trieDelta.deltaMap[level]
 		for _, changedNode := range changedNodes {

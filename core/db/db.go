@@ -1,580 +1,284 @@
-/*
-Copyright IBM Corp. 2016 All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-		 http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package db
 
 import (
-	"errors"
 	"fmt"
+	"github.com/abchain/fabric/core/config"
+	"github.com/abchain/fabric/core/util"
+	flog "github.com/abchain/fabric/flogging"
+	"github.com/op/go-logging"
+	"github.com/spf13/viper"
 	"github.com/tecbot/gorocksdb"
-	"sync"
+	"path/filepath"
+	"time"
 )
 
-var columnfamilies = []string{
-	BlockchainCF, // blocks of the block chain
-	StateCF,      // world state
-	StateDeltaCF, // open transaction state
-	IndexesCF,    // tx uuid -> blockno
-	PersistCF,    // persistent per-peer state (consensus)
+var dbLogger = logging.MustGetLogger("db")
+var printGID = flog.GoRDef
+var rocksDBLogLevelMap = map[string]gorocksdb.InfoLogLevel{
+	"debug": gorocksdb.DebugInfoLogLevel,
+	"info":  gorocksdb.InfoInfoLogLevel,
+	"warn":  gorocksdb.WarnInfoLogLevel,
+	"error": gorocksdb.ErrorInfoLogLevel,
+	"fatal": gorocksdb.FatalInfoLogLevel}
+
+const DBVersion = 1
+const txDBVersion = 3
+
+// cf in txdb
+const TxCF = "txCF"
+const GlobalCF = "globalCF"
+const ConsensusCF = "consensusCF"
+const PersistCF = "persistCF"
+
+// cf in db
+const BlockchainCF = "blockchainCF"
+const StateCF = "stateCF"
+const StateDeltaCF = "stateDeltaCF"
+const IndexesCF = "indexesCF"
+
+const odbsettings = "openchainDBsetting"
+
+var odbPersistor = NewPersistor(PersistKeyRegister(odbsettings))
+
+const currentDBKey = "currentDB"
+const currentVersionKey = "currentVer"
+
+const currentGlobalVersionKey = "currentVerGlobal"
+
+//ver global is a simple key, we reg it for duplicating detecting but not use it
+var _ = PersistKeyRegister(currentGlobalVersionKey)
+
+func GetDBHandle() *OpenchainDB {
+	return originalDB
 }
 
-type openchainCFs struct {
-	BlockchainCF *gorocksdb.ColumnFamilyHandle
-	StateCF      *gorocksdb.ColumnFamilyHandle
-	StateDeltaCF *gorocksdb.ColumnFamilyHandle
-	IndexesCF    *gorocksdb.ColumnFamilyHandle
-	PersistCF    *gorocksdb.ColumnFamilyHandle
+func GetGlobalDBHandle() *GlobalDataDB {
+	return globalDataDB
 }
 
-func (c *openchainCFs) feed(cfmap map[string]*gorocksdb.ColumnFamilyHandle) {
-	c.BlockchainCF = cfmap[BlockchainCF]
-	c.StateCF = cfmap[StateCF]
-	c.StateDeltaCF = cfmap[StateDeltaCF]
-	c.IndexesCF = cfmap[IndexesCF]
-	c.PersistCF = cfmap[PersistCF]
-}
+func DefaultOption() baseOpt {
 
-type ocDB struct {
-	baseHandler
-	openchainCFs
-	extendedLock    chan int //use a channel as locking for opening extend interface
-	dbName          string
-	additionalClean func()
-}
-
-type OpenchainDB struct {
-	//lock to access db field
-	sync.RWMutex
-	db           *ocDB
-	dbTag        string
-	indexesCFOpt *gorocksdb.Options
-
-	managedSnapshots struct {
-		sync.Mutex
-		m map[string]*DBSnapshot
-	}
-}
-
-var originalDB = &OpenchainDB{db: &ocDB{}}
-
-func (oc *ocDB) dropDB() {
-
-	err := DropDB(oc.dbName)
-
-	if err == nil {
-		dbLogger.Infof("[%s] Drop whole db <%s>", printGID, oc.dbName)
+	//test new configuration, then the legacy one
+	vp := config.SubViper("node.db")
+	if vp != nil {
+		return baseOpt{vp}
 	} else {
-		dbLogger.Errorf("[%s] Drop whole db <%s> FAIL: %s", printGID, oc.dbName, err)
-	}
-}
-
-func (oc *ocDB) finalRelease() bool {
-
-	if oc == nil {
-		return false
-	}
-
-	//we "absorb" a lock, the final release also "absorb" one, so
-	//the one which could not asbord any lock will be the last
-	//and response to do cleaning
-	select {
-	case <-oc.extendedLock:
-		return false
-	default:
-		dbLogger.Infof("[%s] Final release current db <%s>", printGID, oc.dbName)
-
-		oc.close()
-
-		if oc.additionalClean != nil {
-			oc.additionalClean()
+		vp = config.SubViper("peer.db")
+		if vp == nil {
+			dbLogger.Warning("DB has no any custom options, complete default")
 		}
-		return true
+		return baseOpt{vp}
 	}
 
 }
 
-func (openchainDB *ocDB) open(dbpath string, cfopts []*gorocksdb.Options) error {
+//if global db is not opened, it is also created
+func startDBInner(odb *OpenchainDB, opts baseOpt, forcePath bool) error {
 
-	openchainDB.dbName = dbpath
-
-	cfhandlers := openchainDB.opendb(dbpath, columnfamilies, cfopts)
-
-	if len(cfhandlers) != len(columnfamilies) {
-		return errors.New("rocksdb may ruin or not work as expected")
+	//k, err := globalDataDB.get(globalDataDB.persistCF, odb.getDBKey(currentDBKey))
+	k, err := odbPersistor.LoadByKeys(odb.getDBKey(currentDBKey))
+	if err != nil {
+		return fmt.Errorf("get db [%s]'s path fail: %s", odb.dbTag, err)
 	}
 
-	//feed cfs
-	openchainDB.cfMap = make(map[string]*gorocksdb.ColumnFamilyHandle)
-	for i, cfName := range columnfamilies {
-		openchainDB.cfMap[cfName] = cfhandlers[i]
-	}
-
-	openchainDB.feed(openchainDB.cfMap)
-
-	//TODO: custom maxOpenedExtend
-	openchainDB.extendedLock = make(chan int, maxOpenedExtend)
-
-	return nil
-}
-
-func (openchainDB *OpenchainDB) GetDBPath() string { return openchainDB.db.dbName }
-func (openchainDB *OpenchainDB) GetDBTag() string  { return openchainDB.dbTag }
-
-func (openchainDB *OpenchainDB) getDBKey(kc string) []string {
-	return []string{openchainDB.dbTag, kc}
-}
-
-// func (openchainDB *OpenchainDB) getLegacyDBKey(kc string) []byte {
-// 	if openchainDB.dbTag == "" {
-// 		return []byte(kc)
-// 	} else {
-// 		return []byte(openchainDB.dbTag + "." + kc)
-// 	}
-// }
-
-func (openchainDB *OpenchainDB) CleanManagedSnapshot() {
-	openchainDB.managedSnapshots.Lock()
-	defer openchainDB.managedSnapshots.Unlock()
-
-	for _, sn := range openchainDB.managedSnapshots.m {
-		sn.Release()
-	}
-	openchainDB.managedSnapshots.m = make(map[string]*DBSnapshot)
-}
-
-func (openchainDB *OpenchainDB) GetManagedSnapshot(name string) *DBSnapshot {
-	openchainDB.managedSnapshots.Lock()
-	defer openchainDB.managedSnapshots.Unlock()
-	if ret := openchainDB.managedSnapshots.m[name]; ret != nil {
-		return ret.clone()
+	var orgDBPath string
+	if k == nil {
+		if forcePath {
+			orgDBPath = getDBPath("db")
+		} else {
+			newtag := util.GenerateUUID()
+			err = odbPersistor.StoreByKeys(odb.getDBKey(currentDBKey), []byte(newtag))
+			//err = globalDataDB.put(globalDataDB.persistCF, odb.getDBKey(currentDBKey), []byte(newtag))
+			if err != nil {
+				return fmt.Errorf("Save storage tag for db <%s> fail: %s", odb.dbTag, newtag)
+			}
+			orgDBPath = getDBPath("db_" + odb.dbTag + newtag)
+		}
 	} else {
-		return nil
-	}
-}
-
-// unmanage the snapshot
-func (openchainDB *OpenchainDB) UnManageSnapshot(name string) {
-	openchainDB.managedSnapshots.Lock()
-	defer openchainDB.managedSnapshots.Unlock()
-	ret := openchainDB.managedSnapshots.m[name]
-	if ret != nil {
-		delete(openchainDB.managedSnapshots.m, name)
-		ret.Release()
-	}
-}
-
-//manage a new snapshot for current db, if name is duplicated, the old one is returned
-//and should be released. notice the managed snapshot CANNOT call Release anymore
-func (openchainDB *OpenchainDB) ManageSnapshot(name string) *DBSnapshot {
-
-	newsn := openchainDB.GetSnapshot()
-	newsn.hosting = &snapshotManager{count: 1}
-
-	openchainDB.managedSnapshots.Lock()
-	defer openchainDB.managedSnapshots.Unlock()
-
-	//sanity check ...
-	if len(openchainDB.managedSnapshots.m) > maxOpenedExtend/2 {
-		dbLogger.Warningf("We have cached too many snapshots, never cache current")
-		newsn.Release()
-		return nil
+		orgDBPath = getDBPath("db_" + odb.dbTag + string(k))
 	}
 
-	old := openchainDB.managedSnapshots.m[name]
-	openchainDB.managedSnapshots.m[name] = newsn
-	return old
-}
-
-func (openchainDB *OpenchainDB) GetDBVersion() int {
-
-	//v, _ := globalDataDB.get(globalDataDB.persistCF, openchainDB.getDBKey(currentVersionKey))
-	v, _ := odbPersistor.LoadByKeys(openchainDB.getDBKey(currentVersionKey))
-	if len(v) == 0 {
-		return 0
-	}
-	return int(v[0])
-}
-
-func (openchainDB *OpenchainDB) UpdateDBVersion(v int) error {
-	return odbPersistor.StoreByKeys(openchainDB.getDBKey(currentVersionKey), []byte{byte(v)})
-	//return globalDataDB.put(globalDataDB.persistCF, openchainDB.getDBKey(currentVersionKey), []byte{byte(v)})
-}
-
-// override methods with rwlock
-func (openchainDB *OpenchainDB) GetValue(cfname string, key []byte) ([]byte, error) {
-	openchainDB.RLock()
-	defer openchainDB.RUnlock()
-	return openchainDB.db.GetValue(cfname, key)
-}
-
-func (openchainDB *OpenchainDB) DeleteKey(cfname string, key []byte) error {
-	openchainDB.RLock()
-	defer openchainDB.RUnlock()
-	return openchainDB.db.DeleteKey(cfname, key)
-}
-
-func (openchainDB *OpenchainDB) PutValue(cfname string, key []byte, value []byte) error {
-	openchainDB.RLock()
-	defer openchainDB.RUnlock()
-	return openchainDB.db.PutValue(cfname, key, value)
-}
-
-//func (orgdb *OpenchainDB) getTxids(blockNumber uint64) []string {
-//
-//	block, err := orgdb.FetchBlockFromDB(blockNumber, false)
-//	if err != nil {
-//		dbg.Errorf("Error Fetch BlockFromDB by blockNumber<%d>. Err: %s", blockNumber, err)
-//		return nil
-//	}
-//
-//	if block == nil {
-//		dbg.Errorf("No such a block, blockNumber<%d>. Err: %s", blockNumber)
-//		return nil
-//	}
-//
-//	return block.Txids
-//}
-
-// func (orgdb *OpenchainDB) FetchBlockFromDB(blockNumber uint64) (*protos.Block, error) {
-
-// 	orgdb.RLock()
-// 	defer orgdb.RUnlock()
-
-// 	blockBytes, err := orgdb.db.get(orgdb.db.BlockchainCF, EncodeBlockNumberDBKey(blockNumber))
-// 	if err != nil {
-
-// 		return nil, err
-// 	}
-// 	if blockBytes == nil {
-
-// 		return nil, nil
-// 	}
-// 	block, errUnmarshall := protos.UnmarshallBlock(blockBytes)
-
-// 	return block, errUnmarshall
-// }
-
-func (orgdb *OpenchainDB) GetFromBlockchainCF(key []byte) ([]byte, error) {
-
-	orgdb.RLock()
-	defer orgdb.RUnlock()
-
-	return orgdb.db.get(orgdb.db.BlockchainCF, key)
-}
-
-// DeleteState delets ALL state keys/values from the DB. This is generally
-// only used during state synchronization when creating a new state from
-// a snapshot.
-func (openchainDB *OpenchainDB) DeleteState() error {
-
-	openchainDB.Lock()
-	defer openchainDB.Unlock()
-
-	err := openchainDB.db.DropColumnFamily(openchainDB.db.StateCF)
+	//check if db is just created
+	roOpt := gorocksdb.NewDefaultOptions()
+	defer roOpt.Destroy()
+	roDB, err := gorocksdb.OpenDbForReadOnly(roOpt, orgDBPath, false)
 	if err != nil {
-		dbLogger.Errorf("Error dropping state CF: %s", err)
-		return err
-	}
-	err = openchainDB.db.DropColumnFamily(openchainDB.db.StateDeltaCF)
-	if err != nil {
-		dbLogger.Errorf("Error dropping state delta CF: %s", err)
-		return err
-	}
-
-	opts := openchainDB.db.OpenOpt.Options()
-	defer opts.Destroy()
-	openchainDB.db.StateCF, err = openchainDB.db.CreateColumnFamily(opts, StateCF)
-	if err != nil {
-		dbLogger.Errorf("Error creating state CF: %s", err)
-		return err
-	}
-	openchainDB.db.StateDeltaCF, err = openchainDB.db.CreateColumnFamily(opts, StateDeltaCF)
-	if err != nil {
-		dbLogger.Errorf("Error creating state delta CF: %s", err)
-		return err
+		err = odb.UpdateDBVersion(DBVersion)
+		if err != nil {
+			return fmt.Errorf("set db [%s]'s version fail: %s", odb.dbTag, err)
+		}
+	} else {
+		roDB.Close()
+		dbLogger.Infof("DB [%s] at %s is created before", odb.dbTag, orgDBPath)
 	}
 
-	openchainDB.db.cfMap[StateCF] = openchainDB.db.StateCF
-	openchainDB.db.cfMap[StateDeltaCF] = openchainDB.db.StateDeltaCF
+	odb.managedSnapshots.m = make(map[string]*DBSnapshot)
+	if odb.db == nil {
+		odb.db = new(ocDB)
+	}
+
+	dbopt, cfopt := odb.buildOpenDBOptions(opts)
+	err = odb.db.open(orgDBPath, dbopt, cfopt)
+	if err != nil {
+		return fmt.Errorf("open db [%s] fail: %s", odb.dbTag, err)
+	}
+
+	//notice: we only create cf/db on first opending
+	odb.baseOpt.SetCreateIfMissing(false)
+	odb.baseOpt.SetCreateIfMissingColumnFamilies(false)
+	odb.indexesCFOpt.SetCreateIfMissingColumnFamilies(false)
 
 	return nil
 }
 
-func (openchainDB *OpenchainDB) DeleteAll() error {
+func startGlobalDB() {
 
-	if err := openchainDB.DeleteState(); err != nil {
-		return err
+	globalDataDB.openDB.Do(func() {
+		if err := globalDataDB.open(getDBPath("txdb"), DefaultOption()); err != nil {
+			globalDataDB.openError = fmt.Errorf("open global db fail: %s", err)
+			return
+		}
+		if err := globalDataDB.setDBVersion(); err != nil {
+			globalDataDB.openError = fmt.Errorf("handle global db version fail: %s", err)
+			return
+		}
+	})
+}
+
+func StartDB(tag string, vp *viper.Viper) (*OpenchainDB, error) {
+
+	startGlobalDB()
+	ret := &OpenchainDB{dbTag: tag}
+	if err := startDBInner(ret, baseOpt{vp}, false); err != nil {
+		return nil, err
 	}
 
-	openchainDB.Lock()
-	defer openchainDB.Unlock()
+	return ret, nil
+}
 
-	err := openchainDB.db.DropColumnFamily(openchainDB.db.IndexesCF)
-	if err != nil {
-		dbLogger.Errorf("Error dropping index CF: %s", err)
-		return err
+// Start the db, init the openchainDB instance and open the db. Note this method has no guarantee correct behavior concurrent invocation.
+func Start() {
+
+	startGlobalDB()
+	if err := startDBInner(originalDB, DefaultOption(), true); err != nil {
+		panic(err)
 	}
-	err = openchainDB.db.DropColumnFamily(openchainDB.db.BlockchainCF)
-	if err != nil {
-		dbLogger.Errorf("Error dropping chain CF: %s", err)
-		return err
+}
+
+// Stop the db. Note this method has no guarantee correct behavior concurrent invocation.
+func Stop() {
+
+	//we not care about the concurrent problem because it is never touched except for legacy usage
+	StopDB(originalDB)
+	originalDB = &OpenchainDB{db: &ocDB{}}
+
+	openglobalDBLock.Lock()
+	defer openglobalDBLock.Unlock()
+	globalDataDB.close()
+	globalDataDB.cleanDBOptions()
+	globalDataDB = new(GlobalDataDB)
+}
+
+//NOTICE: stop the db do not ensure a completely "clean" of all resource, memory leak
+//is highly possible and we should avoid to use it frequently
+func StopDB(odb *OpenchainDB) {
+
+	// notice you don't need to lock odb for you don't change the underlying db field
+	// odb.Lock()
+	// defer odb.Unlock()
+	odb.CleanManagedSnapshot()
+
+	notifyChn := make(chan interface{})
+
+	odb.db.onReleased = func() {
+		dbLogger.Infof("current db [%s] has been completed stopped", odb.db.dbName)
+		close(notifyChn)
 	}
+	odb.db.release()
 
-	openchainDB.db.IndexesCF, err = openchainDB.db.CreateColumnFamily(openchainDB.indexesCFOpt, IndexesCF)
-	if err != nil {
-		dbLogger.Errorf("Error creating state delta CF: %s", err)
-		return err
-	}
-
-	opts := openchainDB.db.OpenOpt.Options()
-	defer opts.Destroy()
-	openchainDB.db.BlockchainCF, err = openchainDB.db.CreateColumnFamily(opts, BlockchainCF)
-	if err != nil {
-		dbLogger.Errorf("Error creating state CF: %s", err)
-		return err
-	}
-
-	openchainDB.db.cfMap[IndexesCF] = openchainDB.db.IndexesCF
-	openchainDB.db.cfMap[BlockchainCF] = openchainDB.db.BlockchainCF
-
-	return nil
-}
-
-const (
-	//the maxium of long-run rocksdb interfaces can be open at the same time
-	maxOpenedExtend = 128
-)
-
-type snapshotManager struct {
-	sync.Mutex
-	count uint
-}
-
-func (m *snapshotManager) addRef() {
-	m.Lock()
-	defer m.Unlock()
-	//sanity check
-	if m.count == 0 {
-		panic("Try to ref an object which has been released")
-	}
-	m.count++
-}
-
-func (m *snapshotManager) releaseRef() bool {
-	m.Lock()
-	defer m.Unlock()
-	//sanity check
-	if m.count == 0 {
-		panic("Try to deref an object which has been released")
-	}
-	m.count--
-	return m.count == 0
-}
-
-type DBSnapshot struct {
-	h *ocDB
-	*openchainCFs
-	snapshot *gorocksdb.Snapshot
-	hosting  *snapshotManager
-}
-
-type DBIterator struct {
-	h *ocDB
-	*gorocksdb.Iterator
-}
-
-type DBWriteBatch struct {
-	h *ocDB
-	*gorocksdb.WriteBatch
-}
-
-// GetSnapshot create a point-in-time view of the DB.
-func (openchainDB *OpenchainDB) GetSnapshot() *DBSnapshot {
-	openchainDB.RLock()
-	defer openchainDB.RUnlock()
-
-	cfCopy := openchainDB.db.openchainCFs
-
-	openchainDB.db.extendedLock <- 0
-	return &DBSnapshot{openchainDB.db, &cfCopy,
-		openchainDB.db.NewSnapshot(), nil}
-}
-
-func (openchainDB *OpenchainDB) getExtended() *ocDB {
-
-	openchainDB.RLock()
-	defer openchainDB.RUnlock()
-
-	openchainDB.db.extendedLock <- 0
-	return openchainDB.db
-}
-
-func (openchainDB *OpenchainDB) NewWriteBatch() *DBWriteBatch {
-	return &DBWriteBatch{openchainDB.getExtended(), gorocksdb.NewWriteBatch()}
-}
-
-func (openchainDB *OpenchainDB) GetIterator(cfName string) *DBIterator {
-	theDb := openchainDB.getExtended()
-
-	cf := theDb.cfMap[cfName]
-
-	if cf == nil {
-		panic(fmt.Sprintf("Wrong CF Name %s", cfName))
+	//we wait here, until all resource is ENSURED to be release
+	//(we put a default timeout here, for warnning and debug purpose)
+	select {
+	case _, notClosed := <-notifyChn:
+		if notClosed {
+			panic("wrong code, channel get msg rather than closed notify")
+		}
+	case <-time.NewTimer(5 * time.Second).C:
+		panic("can not stop db clean, check your code")
 	}
 
-	opt := gorocksdb.NewDefaultReadOptions()
-	opt.SetFillCache(true)
+	odb.db.close()
+	odb.cleanDBOptions()
+}
+
+func DropDB(path string) error {
+
+	opt := gorocksdb.NewDefaultOptions()
 	defer opt.Destroy()
 
-	return &DBIterator{theDb, theDb.NewIteratorCF(opt, cf)}
+	return gorocksdb.DestroyDb(path, opt)
 }
 
-func (e *DBWriteBatch) Destroy() {
+//generate paths for backuping, only understanded by this package
+func GetBackupPath(tag string) []string {
 
-	if e == nil {
-		return
-	} else if e.h == nil {
-		panic("Object is duplicated destroy")
+	return []string{
+		getDBPath("txdb_" + tag + "_bak"),
+		getDBPath("db_" + tag + "_bak"),
 	}
-
-	if e.WriteBatch != nil {
-		e.WriteBatch.Destroy()
-	}
-	e.h.finalRelease()
-	e.h = nil
 }
 
-func (e *DBIterator) Close() {
+func Backup(odb *OpenchainDB) (tag string, err error) {
 
-	if e == nil {
-		return
-	} else if e.h == nil {
-		panic("Object is duplicated closed")
+	tag = util.GenerateUUID()
+	paths := GetBackupPath(tag)
+
+	if len(paths) < 2 {
+		panic("Not match backup paths with backup expected")
 	}
 
-	if e.Iterator != nil {
-		e.Iterator.Close()
-	}
-	e.h.finalRelease()
-	e.h = nil
-}
-
-func (e *DBSnapshot) clone() *DBSnapshot {
-
-	if e == nil {
-		return nil
-	} else if e.hosting == nil {
-		//sanity check
-		panic("Wrong code: called clone for unmanaged snapshot")
-	}
-	e.hosting.addRef()
-	return &DBSnapshot{e.h, e.openchainCFs, e.snapshot, e.hosting}
-}
-
-//protect the close function declared in ocDB to avoiding a wrong calling
-func (*DBSnapshot) Close(*DBSnapshot) {}
-
-func (e *DBSnapshot) Release() {
-
-	if e == nil {
-		return
-	} else if e.h == nil {
-		//sanity check
-		panic("snapshot is duplicated release")
-	}
-
-	if e.hosting != nil && !e.hosting.releaseRef() {
+	err = createCheckpoint(globalDataDB.DB, paths[0])
+	if err != nil {
 		return
 	}
-	if e.snapshot != nil {
-		e.h.ReleaseSnapshot(e.snapshot)
-	}
-	e.h.finalRelease()
-	e.h = nil
-}
 
-func (e *DBWriteBatch) GetDBHandle() *ocDB {
-	return e.h
-}
-
-func (e *DBWriteBatch) BatchCommit() error {
-	return e.h.BatchCommit(e.WriteBatch)
-}
-
-func (e *DBSnapshot) GetSnapshot() *gorocksdb.Snapshot {
-	return e.snapshot
-}
-
-// // Some legacy entries, we make all "fromsnapshot" function becoming simple api (not member func)....
-// func (e *DBSnapshot) FetchBlockchainSizeFromSnapshot() (uint64, error) {
-
-// 	blockNumberBytes, err := e.GetFromBlockchainCFSnapshot(BlockCountKey)
-// 	if err != nil {
-// 		return 0, err
-// 	}
-// 	var blockNumber uint64
-// 	if blockNumberBytes != nil {
-// 		blockNumber = DecodeToUint64(blockNumberBytes)
-// 	}
-// 	return blockNumber, nil
-// }
-
-// GetFromBlockchainCFSnapshot get value for given key from column family in a DB snapshot - blockchainCF
-func (e *DBSnapshot) GetFromBlockchainCFSnapshot(key []byte) ([]byte, error) {
-
-	if e.snapshot == nil {
-		return nil, fmt.Errorf("Snapshot is not inited")
-	}
-	return e.h.getFromSnapshot(e.snapshot, e.BlockchainCF, key)
-}
-
-func (e *DBSnapshot) GetFromStateCFSnapshot(key []byte) ([]byte, error) {
-
-	if e.snapshot == nil {
-		return nil, fmt.Errorf("Snapshot is not inited")
+	err = createCheckpoint(odb.db.DB, paths[1])
+	if err != nil {
+		return
 	}
 
-	return e.h.getFromSnapshot(e.snapshot, e.StateCF, key)
+	return
 }
 
-func (e *DBSnapshot) GetFromIndexCFSnapshot(key []byte) ([]byte, error) {
+var dbPathSetting = ""
 
-	if e.snapshot == nil {
-		return nil, fmt.Errorf("Snapshot is not inited")
-	}
-
-	return e.h.getFromSnapshot(e.snapshot, e.IndexesCF, key)
+func InitDBPath(path string) {
+	dbLogger.Infof("DBPath has been set as [%s]", path)
+	dbPathSetting = path
 }
 
-// GetStateCFSnapshotIterator get iterator for column family - stateCF. This iterator
-// is based on a snapshot and should be used for long running scans, such as
-// reading the entire state. Remember to call iterator.Close() when you are done.
-func (e *DBSnapshot) GetStateCFSnapshotIterator() *gorocksdb.Iterator {
-
-	if e.snapshot == nil {
-		dbLogger.Error("Snapshot is not inited")
-		return nil
+func GetCurrentDBPath() []string {
+	return []string{
+		getDBPath("txdb"),
+		originalDB.db.dbName,
 	}
-	return e.h.getSnapshotIterator(e.snapshot, e.StateCF)
 }
 
-func (e *DBSnapshot) GetFromStateDeltaCFSnapshot(key []byte) ([]byte, error) {
-
-	if e.snapshot == nil {
-		return nil, fmt.Errorf("Snapshot is not inited")
+func getDBPath(dbname ...string) string {
+	var dbPath string
+	if dbPathSetting == "" {
+		dbPath = config.GlobalFileSystemPath()
+		//though null string is OK, we still avoid this problem
+		if dbPath == "" {
+			panic("DB path not specified in configuration file. Please check that property 'peer.fileSystemPath' is set")
+		}
+	} else {
+		dbPath = util.CanonicalizePath(dbPathSetting)
 	}
-	return e.h.getFromSnapshot(e.snapshot, e.StateDeltaCF, key)
+
+	if util.MkdirIfNotExist(dbPath) {
+		dbLogger.Infof("dbpath %s not exist, we have created it", dbPath)
+	}
+
+	return filepath.Join(append([]string{dbPath}, dbname...)...)
 }

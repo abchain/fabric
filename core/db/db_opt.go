@@ -1,12 +1,50 @@
 package db
 
 import (
+	"github.com/spf13/viper"
 	"github.com/tecbot/gorocksdb"
-	"sync"
 )
 
-var defaultOption baseOpt
-var getDefaultOption sync.Once
+type baseOpt struct {
+	conf *viper.Viper
+}
+
+func (o baseOpt) Inited() bool { return o.conf != nil }
+
+func (o baseOpt) Options() (opts *gorocksdb.Options) {
+
+	//most common options
+	opts = gorocksdb.NewDefaultOptions()
+	opts.SetCreateIfMissing(true)
+	opts.SetCreateIfMissingColumnFamilies(true)
+
+	if !o.Inited() {
+		return
+	}
+
+	vp := o.conf
+	maxLogFileSize := vp.GetInt("maxLogFileSize")
+	if maxLogFileSize > 0 {
+		dbLogger.Infof("Setting rocksdb maxLogFileSize to %d", maxLogFileSize)
+		opts.SetMaxLogFileSize(maxLogFileSize)
+	}
+
+	keepLogFileNum := vp.GetInt("keepLogFileNum")
+	if keepLogFileNum > 0 {
+		dbLogger.Infof("Setting rocksdb keepLogFileNum to %d", keepLogFileNum)
+		opts.SetKeepLogFileNum(keepLogFileNum)
+	}
+
+	logLevelStr := vp.GetString("loglevel")
+	logLevel, ok := rocksDBLogLevelMap[logLevelStr]
+
+	if ok {
+		dbLogger.Infof("Setting rocks db InfoLogLevel to %d", logLevel)
+		opts.SetInfoLogLevel(logLevel)
+	}
+
+	return
+}
 
 // basically it was just a fixed-length prefix extractor
 type indexCFPrefixGen struct{}
@@ -28,12 +66,16 @@ func (*indexCFPrefixGen) InRange(src []byte) bool {
 }
 
 //define options for db
-func (openchainDB *OpenchainDB) buildOpenDBOptions() []*gorocksdb.Options {
-	opt := openchainDB.db.OpenOpt
+func (openchainDB *OpenchainDB) buildOpenDBOptions(base baseOpt) (*gorocksdb.Options,
+	[]*gorocksdb.Options) {
 
-	//opts for indexesCF
+	if openchainDB.baseOpt == nil {
+		openchainDB.baseOpt = base.Options()
+	}
+
+	//cache opts for indexesCF
 	if openchainDB.indexesCFOpt == nil {
-		iopt := opt.Options()
+		iopt := base.Options()
 		if globalDataDB.GetDBVersion() > 1 {
 			/*
 				It seems gorocksdb has no way to completely release a go object
@@ -46,15 +88,29 @@ func (openchainDB *OpenchainDB) buildOpenDBOptions() []*gorocksdb.Options {
 		}
 	}
 
+	return openchainDB.openDBOptions()
+}
+
+func (openchainDB *OpenchainDB) openDBOptions() (*gorocksdb.Options,
+	[]*gorocksdb.Options) {
+
+	//sanity check
+	if openchainDB.baseOpt == nil {
+		panic("Called before buildOpenDBOptions is invoked")
+	}
+
 	var dbOpts = make([]*gorocksdb.Options, len(columnfamilies))
 	for i, cf := range columnfamilies {
 		switch cf {
 		case IndexesCF:
 			dbOpts[i] = openchainDB.indexesCFOpt
+		default:
+			dbOpts[i] = openchainDB.baseOpt
 		}
 	}
 
-	return dbOpts
+	return openchainDB.baseOpt, dbOpts
+
 }
 
 func (openchainDB *OpenchainDB) cleanDBOptions() {
@@ -70,26 +126,39 @@ func (openchainDB *OpenchainDB) cleanDBOptions() {
 		*/
 		openchainDB.indexesCFOpt.SetPrefixExtractor(gorocksdb.NewNativeSliceTransform(nil))
 		openchainDB.indexesCFOpt.Destroy()
+		openchainDB.indexesCFOpt = nil
+	}
+
+	if openchainDB.baseOpt != nil {
+		openchainDB.baseOpt.Destroy()
+		openchainDB.baseOpt = nil
 	}
 
 }
 
 //open of txdb is ensured to be Once
-func (txdb *GlobalDataDB) buildOpenDBOptions() []*gorocksdb.Options {
+func (txdb *GlobalDataDB) buildOpenDBOptions(base baseOpt) (*gorocksdb.Options,
+	[]*gorocksdb.Options) {
 
-	sOpt := txdb.OpenOpt.Options()
+	sOpt := base.Options()
 	sOpt.SetMergeOperator(&globalstatusMO{})
-	txdb.globalStateOpt = sOpt
 
 	txOpts := make([]*gorocksdb.Options, len(txDbColumnfamilies))
 	for i, cf := range txDbColumnfamilies {
 		switch cf {
 		case GlobalCF:
+			if txdb.globalStateOpt == nil {
+				sOpt := base.Options()
+				sOpt.SetMergeOperator(&globalstatusMO{})
+				txdb.globalStateOpt = sOpt
+			}
 			txOpts[i] = txdb.globalStateOpt
+		default:
+			txOpts[i] = sOpt
 		}
 	}
 
-	return txOpts
+	return sOpt, txOpts
 }
 
 func (txdb *GlobalDataDB) cleanDBOptions() {
