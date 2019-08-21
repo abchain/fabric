@@ -18,6 +18,7 @@ package protos
 
 import (
 	"bytes"
+	"encoding/json"
 	"github.com/golang/protobuf/proto"
 	"testing"
 )
@@ -106,37 +107,78 @@ func Test_YFCCNameParse(t *testing.T) {
 	fname = "single"
 	n, tmp, ls := ParseYFCCName(fname)
 	if len(ls) != 0 || tmp != "" || n != "single" {
-		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+		t.Fatalf("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
 	}
 
 	fname = "tt:single"
 	n, tmp, ls = ParseYFCCName(fname)
 	if len(ls) != 0 || tmp != "tt" || n != "single" {
-		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+		t.Fatalf("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
 	}
 
 	fname = "tt:single@1,2,3"
 	n, tmp, ls = ParseYFCCName(fname)
 	if len(ls) != 3 || tmp != "tt" || n != "single" {
-		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+		t.Fatalf("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
 	}
 
 	fname = "single@1,2,3"
 	n, tmp, ls = ParseYFCCName(fname)
 	if len(ls) != 3 || tmp != "" || n != "single" {
-		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+		t.Fatalf("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
 	}
 
 	fname = "tt:@1,2,3"
 	n, tmp, ls = ParseYFCCName(fname)
 	if len(ls) != 3 || tmp != "tt" || n != "" {
-		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+		t.Fatalf("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
 	}
 
 	fname = "tt:rr@1"
 	n, tmp, ls = ParseYFCCName(fname)
 	if len(ls) != 1 || tmp != "tt" || n != "rr" {
-		t.Fatal("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
+		t.Fatalf("wrong parse for <%s>: %s, %s, %v", fname, n, tmp, ls)
 	}
 
+}
+
+func Test_ChaincodeInput_Unmarshal(t *testing.T) {
+
+	example1 := `{"function":"ASTRO.TOKEN.TRANSFER","args":["ChMKB0FCQ0hBSU4SCEFzdHJvX3YxEgYIlePV5gUaFB18sHWzREHZIlJg6Ajq4HKMwncB","CglkYW1laW52eXkiCUBBc3Ryb192MSoWChQSbaukOOqE58Q8L1ajIA7WXjcbO0JLCgFvEhYKFPmAE1K+T8V+y4ObshuwV2faNMOdGhYKFBJtq6Q46oTnxDwvVqMgDtZeNxs7IhYKFAAAAAAAAAAAAAAAAAAAAAAAAAAA","CpUBCpIBGo8BIowBCiDPu6oRSF0fwwmiESmKlG30QxiqjHWiB8bBiMgG+wxbwBIg+ek/eiR9t8Nh3gR0F75xBYtmOQGwaG3F4mNISEFt6VggASpECiDQ3gqurvrQK4vcigGhuLEcaWvT1mosXxB4DZW330JkXBIg2FIopvsplA6Fjn5VhCrivRFdHtfMDoLZNOkpyXZIywo="],"ByteArgs":true}`
+	example2 := `{"function":"init","args":["a","100","b","200"]}`
+	example3 := `{"args":["ChMKB0FCQ0hBSU4SCEFzdHJvX3YxEgYIlePV5gUaFB18sHWzREHZIlJg6Ajq4HKMwncB"],"ByteArgs":true}`
+
+	var v1, v2 ChaincodeInput
+	if err := json.Unmarshal([]byte(example1), &v1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := json.Unmarshal([]byte(example2), &v2); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(v1.Args) != 4 {
+		t.Fatal("Unexpected args")
+	}
+
+	if len(v2.Args) != 5 {
+		t.Fatal("Unexpected args")
+	}
+
+	if string(v1.Args[1]) == "ChMKB0FCQ0hBSU4SCEFzdHJvX3YxEgYIlePV5gUaFB18sHWzREHZIlJg6Ajq4HKMwncB" {
+		t.Fatal("Unexpected string arg")
+	}
+
+	if string(v2.Args[2]) != "100" {
+		t.Fatal("wrong string arg")
+	}
+
+	v1.Args = nil
+	if err := json.Unmarshal([]byte(example3), &v1); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(v1.Args) != 1 {
+		t.Fatal("Unexpected args")
+	}
 }

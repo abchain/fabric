@@ -13,7 +13,7 @@ func Test_TimeConvertion(t *testing.T) {
 	valTts := GetUnixTime(valTs)
 
 	if !valT.Equal(valTts) {
-		t.Fatal("Not equal after convert: %s vs %s", valT, valTts)
+		t.Fatalf("Not equal after convert: %s vs %s", valT, valTts)
 	}
 
 	yaTs := &timestamp.Timestamp{Seconds: 999999, Nanos: 99999}
