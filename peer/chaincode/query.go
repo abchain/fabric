@@ -42,5 +42,5 @@ var chaincodeQueryCmd = &cobra.Command{
 }
 
 func chaincodeQuery(cmd *cobra.Command, args []string) error {
-	return chaincodeInvokeOrQuery(cmd, args, false)
+	return chaincodeInvokeOrQuery2(cmd, args, false)
 }

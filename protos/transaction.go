@@ -17,6 +17,7 @@ limitations under the License.
 package protos
 
 import (
+	"encoding/base64"
 	bin "encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -351,6 +352,7 @@ func NewChaincodeExecute(chaincodeInvocationSpec *ChaincodeInvocationSpec, uuid 
 type strArgs struct {
 	Function string
 	Args     []string
+	ByteArgs bool
 }
 
 // UnmarshalJSON converts the string-based REST/JSON input to
@@ -361,11 +363,30 @@ func (c *ChaincodeInput) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	allArgs := sa.Args
-	if sa.Function != "" {
-		allArgs = append([]string{sa.Function}, sa.Args...)
+
+	if sa.ByteArgs {
+		if sa.Function != "" {
+			c.Args = [][]byte{[]byte(sa.Function)}
+		}
+
+		for _, arg := range sa.Args {
+
+			byteArg, err := base64.StdEncoding.DecodeString(arg)
+			if err != nil {
+				return err
+			}
+
+			c.Args = append(c.Args, byteArg)
+		}
+	} else {
+
+		allArgs := sa.Args
+		if sa.Function != "" {
+			allArgs = append([]string{sa.Function}, sa.Args...)
+		}
+		c.Args = util.ToChaincodeArgs(allArgs...)
 	}
-	c.Args = util.ToChaincodeArgs(allArgs...)
+
 	return nil
 }
 

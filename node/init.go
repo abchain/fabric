@@ -94,10 +94,14 @@ func (ne *NodeEngine) PreInit() {
 
 	//create default peer
 	if len(peerTags) == 0 {
-		logger.Info("Create old-fashion, default peer")
-		p := new(PeerEngine)
-		p.PreInit(ne)
-		ne.Peers["peer"] = p
+		if viper.IsSet("peer") {
+			logger.Info("Create old-fashion, default peer")
+			p := new(PeerEngine)
+			p.PreInit(ne)
+			ne.Peers["peer"] = p
+		} else {
+			logger.Warning("Create Engine without any peer")
+		}
 	}
 
 	ne.runPeersFunc = []func(){func() {

@@ -54,6 +54,11 @@ func chaincodeDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Error building %s: %s", chainFuncName, err)
 	}
 
+	if dryrun {
+		fmt.Printf("Will deploy chaincode with spec [%v]\n", spec)
+		return nil
+	}
+
 	chaincodeDeploymentSpec, err := devopsClient.Deploy(context.Background(), spec)
 	if err != nil {
 		return fmt.Errorf("Error building %s: %s\n", chainFuncName, err)

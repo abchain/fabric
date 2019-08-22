@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -104,6 +105,28 @@ func getChaincodeSpecification(cmd *cobra.Command) (*pb.ChaincodeSpec, error) {
 	return spec, nil
 }
 
+func chaincodeInvokeOrQuery2(cmd *cobra.Command, args []string, invoke bool) (err error) {
+
+	if chaincodeCtorJSON == "" {
+		for {
+			_, err := fmt.Scanln(&chaincodeCtorJSON)
+			if err == io.EOF {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			logger.Debug("Use ctor msg:", chaincodeCtorJSON)
+			err = chaincodeInvokeOrQuery(cmd, args, invoke)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		return chaincodeInvokeOrQuery(cmd, args, invoke)
+	}
+
+}
+
 // chaincodeInvokeOrQuery invokes or queries the chaincode. If successful, the
 // INVOKE form prints the transaction ID on STDOUT, and the QUERY form prints
 // the query result on STDOUT. A command-line flag (-r, --raw) determines
@@ -125,6 +148,19 @@ func chaincodeInvokeOrQuery(cmd *cobra.Command, args []string, invoke bool) (err
 	invocation := &pb.ChaincodeInvocationSpec{ChaincodeSpec: spec}
 	if customIDGenAlg != common.UndefinedParamValue {
 		invocation.IdGenerationAlg = customIDGenAlg
+	}
+
+	if dryrun {
+
+		var action string
+		if invoke {
+			action = "invoke"
+		} else {
+			action = "query"
+		}
+
+		fmt.Printf("Will %s chaincode with spec [%v]\n", action, invocation)
+		return nil
 	}
 
 	var resp *pb.Response
@@ -193,7 +229,7 @@ func checkChaincodeCmdParams(cmd *cobra.Command) error {
 		}
 		_, argsPresent := sm["args"]
 		_, funcPresent := sm["function"]
-		if !argsPresent || (len(m) == 2 && !funcPresent) || len(m) > 2 {
+		if !argsPresent || (len(m) >= 2 && !funcPresent) {
 			return fmt.Errorf("Non-empty JSON chaincode parameters must contain the following keys: 'Args' or 'Function' and 'Args'")
 		}
 	} else {
