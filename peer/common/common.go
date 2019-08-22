@@ -26,10 +26,20 @@ import (
 const UndefinedParamValue = ""
 
 var GenDevopsClient func() (pb.DevopsClient, error)
+var cachedClient pb.DevopsClient
 
 // GetDevopsClient returns a new client connection for this peer
 func GetDevopsClient(cmd *cobra.Command) (pb.DevopsClient, error) {
-	return GenDevopsClient()
+
+	if cachedClient == nil {
+		var err error
+		cachedClient, err = GenDevopsClient()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return cachedClient, nil
 }
 
 func genDevopsClient_default() (pb.DevopsClient, error) {

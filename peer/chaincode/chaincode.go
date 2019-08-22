@@ -36,7 +36,7 @@ func Cmd() *cobra.Command {
 
 	flags.StringVarP(&chaincodeLang, "lang", "l", "golang",
 		fmt.Sprintf("Language the %s is written in", chainFuncName))
-	flags.StringVarP(&chaincodeCtorJSON, "ctor", "c", "{}",
+	flags.StringVarP(&chaincodeCtorJSON, "ctor", "c", "",
 		fmt.Sprintf("Constructor message for the %s in JSON format", chainFuncName))
 	flags.StringVarP(&chaincodeAttributesJSON, "attributes", "a", "[]",
 		fmt.Sprintf("User attributes for the %s in JSON format", chainFuncName))
@@ -48,6 +48,8 @@ func Cmd() *cobra.Command {
 		fmt.Sprint("Username for chaincode operations when security is enabled"))
 	flags.StringVarP(&customIDGenAlg, "tid", "t", common.UndefinedParamValue,
 		fmt.Sprint("Name of a custom ID generation algorithm (hashing and decoding) e.g. sha256base64"))
+	flags.BoolVar(&dryrun, "dryrun", false,
+		fmt.Sprint("Execute dry-run for chaincode"))
 
 	chaincodeCmd.AddCommand(deployCmd())
 	chaincodeCmd.AddCommand(invokeCmd())
@@ -67,6 +69,7 @@ var (
 	chaincodeQueryHex       bool
 	chaincodeAttributesJSON string
 	customIDGenAlg          string
+	dryrun                  bool
 )
 
 var chaincodeCmd = &cobra.Command{

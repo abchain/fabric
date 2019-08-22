@@ -18,7 +18,6 @@ package chaincode
 
 import (
 	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -37,5 +36,7 @@ var chaincodeInvokeCmd = &cobra.Command{
 }
 
 func chaincodeInvoke(cmd *cobra.Command, args []string) error {
-	return chaincodeInvokeOrQuery(cmd, args, true)
+
+	return chaincodeInvokeOrQuery2(cmd, args, true)
+
 }
