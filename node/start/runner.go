@@ -82,7 +82,8 @@ func RunNode(ncfg *NodeConfig) {
 	guardctx, endguard := context.WithCancel(context.Background())
 	defer endguard()
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	//SIGINT & SIGTERM
+	signal.Notify(c, os.Interrupt, os.Signal(0xf))
 	go func() {
 		select {
 		case <-c:
