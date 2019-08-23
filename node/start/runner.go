@@ -7,6 +7,7 @@ import (
 	"golang.org/x/net/context"
 	"os"
 	"os/signal"
+	"syscall"
 )
 
 type NodeConfig struct {
@@ -83,7 +84,7 @@ func RunNode(ncfg *NodeConfig) {
 	defer endguard()
 	c := make(chan os.Signal, 1)
 	//SIGINT & SIGTERM
-	signal.Notify(c, os.Interrupt, os.Signal(0xf))
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		select {
 		case <-c:
