@@ -239,7 +239,7 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 		return &pb.Response{Status: pb.Response_SUCCESS,
 			Msg:    resp.GetPayload(),
 			Height: blkh}, nil
-	case pb.ChaincodeMessage_QUERY_ERROR:
+	case pb.ChaincodeMessage_QUERY_ERROR, pb.ChaincodeMessage_ERROR:
 		return &pb.Response{Status: pb.Response_FAILURE,
 			Msg:    resp.GetPayload(),
 			Height: blkh}, nil
