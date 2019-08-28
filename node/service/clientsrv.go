@@ -237,7 +237,7 @@ func (d *Devops) Query(ctx context.Context, chaincodeInvocationSpec *pb.Chaincod
 	switch resp.GetType() {
 	case pb.ChaincodeMessage_QUERY_COMPLETED:
 		return &pb.Response{Status: pb.Response_SUCCESS, Msg: resp.GetPayload()}, nil
-	case pb.ChaincodeMessage_QUERY_ERROR:
+	case pb.ChaincodeMessage_QUERY_ERROR, pb.ChaincodeMessage_ERROR:
 		return &pb.Response{Status: pb.Response_FAILURE, Msg: resp.GetPayload()}, nil
 	default:
 		return nil, fmt.Errorf("Unexpected msg type %s", resp.GetType())
