@@ -804,9 +804,10 @@ func (chaincodeSupport *ChaincodeSupport) Execute(ctxt context.Context, chrte *c
 
 // Executelite executes with minimal data requirement, can used for internal testing, syscc and some other cases
 // this method also omit the limit of exectimeout, and CAN NOT be run concurrently
-func (chaincodeSupport *ChaincodeSupport) ExecuteLite(ctxt context.Context, chrte *chaincodeRTEnv, ttype pb.Transaction_Type, input *pb.ChaincodeInput, outstate ledger.TxExecStates) (*pb.ChaincodeMessage, error) {
+func (chaincodeSupport *ChaincodeSupport) ExecuteLite(ctxt context.Context, chrte *chaincodeRTEnv,
+	ttype pb.Transaction_Type, input *pb.ChaincodeInput, outstate ledger.TxExecStates) (*pb.ChaincodeMessage, error) {
 
-	msg, err := createTransactionMessage(ttype, "lite_execute", input, nil)
+	msg, err := createTransactionMessage(ttype, fmt.Sprintf("%X", pb.MustGetUUID()), input, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to gen lite transaction message (%s)", err)
 	}
