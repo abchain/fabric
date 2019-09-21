@@ -62,5 +62,5 @@ FROM buildbase
 COPY --from=dbinstall /tmp/rocksdbinst /usr/local
 RUN ldconfig -v
 COPY --from=coderepo ${GOPATH}/src ${GOPATH}/src/
-COPY * ${GOPATH}/src/github.com/abchain/fabric/
+COPY / ${GOPATH}/src/github.com/abchain/fabric/
 
