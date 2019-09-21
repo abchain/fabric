@@ -62,6 +62,5 @@ FROM buildbase
 COPY --from=dbinstall /tmp/rocksdbinst /usr/local
 RUN ldconfig -v
 COPY --from=coderepo ${GOPATH}/src ${GOPATH}/src/
-RUN go get -d github.com/abchain/fabric/node \
-    && cd ${GOPATH}/src/github.com/abchain/fabric \
-    && git checkout 0.97
+COPY * ${GOPATH}/src/github.com/abchain/fabric/
+
