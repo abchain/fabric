@@ -215,7 +215,12 @@ func BlocSyncSimplePlan(l *ledger.Ledger, targetHeight uint64, targetBlock []byt
 func TotalSyncBlocks(tsks []*pb.SyncBlockRange) (val int64) {
 
 	for _, tsk := range tsks {
-		val += int64(tsk.GetEnd() - tsk.GetStart())
+		if tsk.GetEnd() > tsk.GetStart() {
+			val += int64(tsk.GetEnd() - tsk.GetStart())
+		} else {
+			val += int64(tsk.GetStart() - tsk.GetEnd())
+		}
+
 	}
 	return
 }
