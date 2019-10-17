@@ -45,6 +45,7 @@ type blockchain struct {
 	buildingBlock struct {
 		block       *protos.Block
 		blockHash   []byte
+		blockByte   []byte
 		blockNumber uint64
 		commited    bool
 	}
@@ -149,13 +150,13 @@ func (blockchain *blockchain) getContinuousBlockHeight() uint64 {
 // getBlock get block at arbitrary height in block chain
 func (blockchain *blockchain) getBlock(blockNumber uint64) (*protos.Block, error) {
 
-	if cblk := blockchain.blockIsCached(blockNumber); cblk != nil {
-		blockcopy, err := cblk.CloneBlock()
-		if err != nil {
-			return nil, err
-		}
-		return finishFetchedBlock(blockcopy)
-	}
+	// if cblk := blockchain.blockIsCached(blockNumber); cblk != nil {
+	// 	blockcopy, err := cblk.CloneBlock()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	return finishFetchedBlock(blockcopy)
+	// }
 
 	return fetchBlockFromDB(blockchain.OpenchainDB, blockNumber)
 }
@@ -316,10 +317,16 @@ func (blockchain *blockchain) prepareBlock(blkNumber uint64, block *protos.Block
 	if err != nil {
 		return err
 	}
-
-	blockchain.buildingBlock.commited = false
-	blockchain.buildingBlock.block = block
+	blockchain.buildingBlock.blockByte, err = block.GetBlockBytes()
+	if err != nil {
+		return err
+	}
+	blockchain.buildingBlock.block, err = protos.UnmarshallBlock(blockchain.buildingBlock.blockByte)
+	if err != nil {
+		return err
+	}
 	blockchain.buildingBlock.blockNumber = blkNumber
+	blockchain.buildingBlock.commited = false
 	return nil
 }
 
@@ -338,13 +345,9 @@ func updateBlock(writeBatch *db.DBWriteBatch, blkNumber uint64, block *protos.Bl
 
 func (blockchain *blockchain) persistentBuilding(writeBatch *db.DBWriteBatch) error {
 
-	blockBytes, err := blockchain.buildingBlock.block.GetBlockBytes()
-	if err != nil {
-		return err
-	}
-
 	cf := writeBatch.GetCFs().BlockchainCF
-	writeBatch.PutCF(cf, encodeBlockNumberDBKey(blockchain.buildingBlock.blockNumber), blockBytes)
+	writeBatch.PutCF(cf, encodeBlockNumberDBKey(blockchain.buildingBlock.blockNumber),
+		blockchain.buildingBlock.blockByte)
 
 	nextCid := blockchain.continuousTo.PreviewProgress(blockchain.buildingBlock.blockNumber)
 	if nextCid > blockchain.continuousTo.GetProgress() {
